@@ -49,7 +49,7 @@ from .acs.ensemble import (
     combine_forecasts,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     # Data classes

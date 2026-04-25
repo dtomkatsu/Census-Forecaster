@@ -7,7 +7,14 @@ Modules
   log-differences. Both produce `ForecastPoint` outputs with sample SE
   (from MOE) and forecast SE (from residual variance) propagated.
 * `ensemble` — inverse-variance combination of trend + AR(1), with
-  optional macro anchor (BLS-derived growth rate) at fixed weight.
+  optional macro anchor (BLS-derived growth rate) at fixed weight, plus
+  the multi-source `project_ensemble_multi` flavour.
+* `anchors` — multi-source macro-anchor combiner (CPI / PCE / QCEW /
+  HUD FMR / FHFA HPI) with publication-lag handling.
+* `sources` — embedded historical anchor series with documented
+  limitations and publication-lag windows.
+* `calibration` — hidden-data hold-out calibration of per-(indicator,
+  method) SE inflators and per-source weights.
 """
 from .client import AcsClient, DEFAULT_CACHE_PATH, SUSPENDED_ONE_YEAR
 from .projection import (
@@ -23,24 +30,58 @@ from .projection import (
 )
 from .ensemble import (
     project_ensemble,
+    project_ensemble_multi,
     macro_anchor_projection,
     combine_forecasts,
 )
+from .anchors import (
+    AnchorRate,
+    combined_anchor_rate,
+    anchor_as_forecast,
+    load_calibration,
+)
+from .sources import (
+    AnchorSource,
+    AnnualRate,
+    available_sources,
+)
+from .calibration import (
+    HoldOutFold,
+    run_holdout_calibration,
+    write_calibration,
+)
 
 __all__ = [
+    # Client
     "AcsClient",
     "DEFAULT_CACHE_PATH",
     "SUSPENDED_ONE_YEAR",
+    # Projection
     "project_damped_trend",
     "project_ar1_log_diff",
-    "project_ensemble",
     "fit_damped_trend",
     "fit_ar1_log_diff",
     "DampedTrendFit",
     "AR1LogDiffFit",
-    "macro_anchor_projection",
-    "combine_forecasts",
     "effective_year",
     "ANNUAL_RATE_CAP",
     "EMPIRICAL_SE_INFLATOR",
+    # Ensemble
+    "project_ensemble",
+    "project_ensemble_multi",
+    "macro_anchor_projection",
+    "combine_forecasts",
+    # Multi-anchor
+    "AnchorRate",
+    "combined_anchor_rate",
+    "anchor_as_forecast",
+    "load_calibration",
+    # Sources
+    "AnchorSource",
+    "AnnualRate",
+    "available_sources",
+    # Calibration
+    "HoldOutFold",
+    "run_holdout_calibration",
+    "write_calibration",
 ]

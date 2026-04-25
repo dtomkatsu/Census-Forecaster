@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "census-forecaster"
-version = "0.1.0"
+version = "0.2.0"
 description = "Forecast current-period values from older ACS estimates and BLS series, with calibrated uncertainty."
 readme = "README.md"
 license = {text = "MIT"}
@@ -40,6 +40,9 @@ Issues = "https://github.com/dtomkatsu/Census-Forecaster/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"census_forecaster" = ["data/anchors/*.json", "data/anchors/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
