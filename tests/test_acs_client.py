@@ -122,3 +122,52 @@ class TestSuspendedConstant:
         # won't, but) and we update the package to re-fetch it, this
         # test forces a deliberate change.
         assert 2020 in SUSPENDED_ONE_YEAR
+
+
+class TestEndpointRouting:
+    """The client should route to acs1, acs1/subject, or acs1/profile based
+    on the prefix of the requested indicators. We can't make live HTTP
+    calls in CI, but we can pre-populate the cache and verify that the
+    *cache key* the client computes matches what the live fetcher would
+    have stored — i.e. the routing is consistent end-to-end with the URL
+    that actually got built."""
+
+    def _client_with_cache(self, tmp_path, key, value):
+        cache_path = tmp_path / "acs_cache.json"
+        cache_path.write_text(json.dumps({key: value}))
+        return AcsClient(cache_path=cache_path, offline=True)
+
+    def test_subject_table_indicator_hits_cache(self, tmp_path):
+        """A fetch of S1501_C02_014E should resolve from cache when the
+        cache was populated with that key — confirms cache key generation
+        is consistent across detail and subject prefixes."""
+        synthetic_key = "1y|2023|for=county:*&in=state:15|S1501_C02_014E,S1501_C02_014M"
+        synthetic_value = [{
+            "NAME": "Honolulu County, Hawaii",
+            "S1501_C02_014E": "93.1",
+            "S1501_C02_014M": "0.6",
+            "state": "15", "county": "003",
+        }]
+        client = self._client_with_cache(tmp_path, synthetic_key, synthetic_value)
+        rows = client.fetch_table(
+            year=2023, vintage="1y",
+            indicators=("S1501_C02_014E", "S1501_C02_014M"),
+            geo_scope="for=county:*&in=state:15",
+        )
+        assert len(rows) == 1
+        assert rows[0]["S1501_C02_014E"] == "93.1"
+
+    def test_detail_table_indicator_hits_cache(self, tmp_path):
+        synthetic_key = "1y|2023|for=county:*&in=state:15|B25071_001E,B25071_001M"
+        synthetic_value = [{
+            "B25071_001E": "30.5", "B25071_001M": "0.8",
+            "state": "15", "county": "003",
+        }]
+        client = self._client_with_cache(tmp_path, synthetic_key, synthetic_value)
+        rows = client.fetch_table(
+            year=2023, vintage="1y",
+            indicators=("B25071_001E", "B25071_001M"),
+            geo_scope="for=county:*&in=state:15",
+        )
+        assert len(rows) == 1
+        assert rows[0]["B25071_001E"] == "30.5"

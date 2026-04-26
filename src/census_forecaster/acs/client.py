@@ -152,6 +152,21 @@ class AcsClient:
             return self._cache[key]
 
         endpoint = "acs1" if vintage == "1y" else "acs5"
+        # Detect endpoint family from indicator prefixes:
+        #   B*  -> detail table (default)
+        #   S*  -> subject table -> /subject suffix
+        #   DP* -> data profile -> /profile suffix
+        # Subject and profile tables are exposed at sub-endpoints by Census;
+        # the variable schema is otherwise the same (estimate / MOE columns
+        # use the standard E / M suffix convention).
+        prefixes = {ind[:2] if ind[:2] == "DP" else ind[:1] for ind in indicators}
+        if "S" in prefixes:
+            endpoint += "/subject"
+        elif "DP" in prefixes:
+            endpoint += "/profile"
+        # Mixed-prefix calls aren't supported (the Census API splits them
+        # across endpoints); the cache key already includes the indicator
+        # tuple so callers fetch each prefix family in its own call.
         get_clause = ",".join(("NAME",) + tuple(indicators))
         url = f"{ACS_BASE}/{year}/acs/{endpoint}?get={get_clause}&{geo_scope}"
         if self.api_key:

@@ -90,13 +90,20 @@ STATE_FIPS: tuple[str, ...] = (
 # 15001 = medium, 15007 = medium, 15009 = small.
 HAWAII_COUNTIES: tuple[str, ...] = ("15001", "15003", "15007", "15009")
 
-# Indicators we calibrate against — the four ACS dollar-denominated
-# series the v0.2 calibration covers.
+# Indicators we calibrate against — v0.2 dollar-denominated series plus
+# v0.3 percentage indicators (educational attainment, poverty rate,
+# rent-burden median).
 INDICATORS: tuple[str, ...] = (
-    "B19013_001E",  # Median household income
-    "B25058_001E",  # Median contract rent
-    "B25064_001E",  # Median gross rent
-    "B25077_001E",  # Median home value
+    # Detail tables (B*)
+    "B19013_001E",   # Median household income
+    "B25058_001E",   # Median contract rent
+    "B25064_001E",   # Median gross rent
+    "B25077_001E",   # Median home value
+    "B25071_001E",   # Median gross rent as % of household income
+    # Subject tables (S*)
+    "S1501_C02_014E",  # % age 25+ with HS or higher
+    "S1501_C02_015E",  # % age 25+ with bachelor's or higher
+    "S1701_C03_001E",  # % below poverty (all people)
 )
 
 # Year range. 2010 is the first year of stable post-redesign 1-year

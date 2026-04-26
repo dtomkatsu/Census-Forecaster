@@ -246,12 +246,22 @@ class TestPanelSchema:
         assert min(PANEL_YEARS) == 2010
         assert max(PANEL_YEARS) == 2024
 
-    def test_indicators_match_v2(self):
-        # The four indicators must match the v2 calibration set so the
-        # marginalised v3-→v2 fallback tables stay coherent.
-        assert set(INDICATORS) == {
-            "B19013_001E", "B25058_001E", "B25064_001E", "B25077_001E",
+    def test_indicators_include_v2_set(self):
+        # The original v2 dollar-denominated indicators must remain in
+        # INDICATORS so the marginalised v3-→v2 fallback tables stay
+        # coherent for legacy consumers.
+        v2_set = {"B19013_001E", "B25058_001E", "B25064_001E", "B25077_001E"}
+        assert v2_set.issubset(set(INDICATORS))
+
+    def test_indicators_include_v3_additions(self):
+        # v0.3 additions: educational attainment, poverty, rent burden.
+        v3_additions = {
+            "S1501_C02_014E",  # HS+
+            "S1501_C02_015E",  # BA+
+            "S1701_C03_001E",  # poverty
+            "B25071_001E",     # median rent as % of HH income
         }
+        assert v3_additions.issubset(set(INDICATORS))
 
     def test_default_targets_total_150(self):
         # The plan calls for ~150 counties. Confirm the defaults still match
