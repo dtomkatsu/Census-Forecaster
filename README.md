@@ -1,5 +1,7 @@
 # Census Forecaster
 
+[![tests](https://github.com/dtomkatsu/Census-Forecaster/actions/workflows/tests.yml/badge.svg)](https://github.com/dtomkatsu/Census-Forecaster/actions/workflows/tests.yml)
+
 Forecast current-period values from older U.S. Census ACS estimates and BLS time series, with calibrated uncertainty.
 
 ## Why
