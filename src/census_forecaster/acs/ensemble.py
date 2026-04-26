@@ -319,46 +319,107 @@ def project_ensemble(
 # Multi-source anchor ensemble
 # -----------------------------------------------------------------------------
 
+# -----------------------------------------------------------------------------
+# v3 calibration lookup helpers
+# -----------------------------------------------------------------------------
+#
+# The v2 path looked up a single (indicator, method) → kappa override in a
+# nested dict at top level of the calibration payload. The v3 path looks up
+# (indicator, method, pop_bucket, h_bucket) → kappa, with a fallback chain
+# (exact → h-marginalised → globally marginalised → v2 key → global default).
+# Both consumers (_apply_se_override, _apply_bias_correction) need the same
+# lookup machinery, so factor it here.
+
+def _v3_strata_lookup(
+    calibration: dict | None,
+    kind: str,
+    floor_value: float,
+):
+    """Build an indexed strata lookup over `calibration["strata_records"][kind]`.
+
+    Returns None when the calibration is v2 (no strata_records key) or
+    when records for `kind` are absent. Caller falls back to v2 path.
+    """
+    if calibration is None:
+        return None
+    sr = calibration.get("strata_records")
+    if not sr:
+        return None
+    raw = sr.get(kind)
+    if not raw:
+        return None
+    from .strata import index_records, record_from_dict, DEFAULT_N_THRESHOLD
+    records = [record_from_dict(d) for d in raw]
+    return index_records(
+        records=records,
+        n_threshold=DEFAULT_N_THRESHOLD,
+        floor_value=floor_value,
+    )
+
+
 def _apply_se_override(
     fp: ForecastPoint,
     indicator: str,
     method_key: str,
     calibration: dict | None,
+    pop_bucket: str | None = None,
+    h_bucket: str | None = None,
 ) -> ForecastPoint:
-    """Re-scale a ForecastPoint's *total* SE by the calibrated override factor.
+    """Re-scale a ForecastPoint's *total* SE by the calibrated κ.
 
-    The override is the new EMPIRICAL_SE_INFLATOR value derived from
-    observed CI coverage; the *ratio* (override / global_inflator) is
-    the linear factor we must multiply se_total by to bring coverage
-    into the [85%, 95%] target band.
+    Looks up the appropriate κ via the v3 strata fallback chain when the
+    calibration carries v3 records; otherwise uses the v2 single-key
+    lookup `calibration["se_inflator_override_by_indicator_method"]`.
 
-    Implementation note: we scale `se_total` directly, then back out
-    `se_forecast` so the (sample, forecast) decomposition still
-    quadrature-sums to the new total. If the target SE would drop
-    below the irreducible sample SE (would imply negative forecast
-    variance), we clamp at se_sample — an honest floor since the ACS
-    MOE itself caps how tight any 90% CI can legitimately get.
+    The override is the *absolute* κ value (matching the global
+    `EMPIRICAL_SE_INFLATOR=1.30` baked into projection.py); the linear
+    factor we multiply `se_total` by is `override / EMPIRICAL_SE_INFLATOR`.
+    If the target SE would drop below the irreducible sample SE (negative
+    forecast variance), we clamp at se_sample — an honest floor since the
+    ACS MOE itself caps how tight any 90% CI can legitimately get.
+
+    Backwards compatible: if `pop_bucket` and `h_bucket` are None and the
+    calibration is v2, behaves exactly as the pre-v3 implementation.
     """
     if calibration is None or fp is None:
         return fp
-    override = (
-        calibration.get("se_inflator_override_by_indicator_method", {})
-        .get(indicator, {})
-        .get(method_key)
-    )
+
+    from .projection import EMPIRICAL_SE_INFLATOR as _SE_INF
+
+    override: float | None = None
+    source_label = ""
+
+    # v3 strata lookup if available
+    se_lookup = _v3_strata_lookup(calibration, "se_inflator", floor_value=_SE_INF)
+    if se_lookup is not None:
+        rec, src = se_lookup(indicator, method_key, pop_bucket, h_bucket)
+        if src != "floor":
+            override = rec.value
+            source_label = f"strata={src}"
+
+    # v2 fallback (also used when v3 strata lookup fell through to floor)
+    if override is None:
+        override = (
+            calibration.get("se_inflator_override_by_indicator_method", {})
+            .get(indicator, {})
+            .get(method_key)
+        )
+        if override is not None:
+            source_label = "v2"
+
     if override is None or not math.isfinite(override) or override <= 0:
         return fp
-    from .projection import EMPIRICAL_SE_INFLATOR as _SE_INF
+
     factor = override / _SE_INF
     new_se_total = max(fp.se_total * factor, fp.se_sample)
     forecast_var = max(new_se_total ** 2 - fp.se_sample ** 2, 0.0)
     new_se_forecast = math.sqrt(forecast_var)
     ci_lo, ci_hi = ci_from_se(fp.point, new_se_total)
     notes = fp.notes
-    if notes:
-        notes = f"{notes}; se_override={override:.3f}"
-    else:
-        notes = f"se_override={override:.3f}"
+    suffix = f"se_override={override:.3f}"
+    if source_label:
+        suffix += f"({source_label})"
+    notes = f"{notes}; {suffix}" if notes else suffix
     return ForecastPoint(
         point=fp.point,
         se_total=new_se_total,
@@ -366,6 +427,67 @@ def _apply_se_override(
         se_forecast=new_se_forecast,
         ci90_low=ci_lo,
         ci90_high=ci_hi,
+        method=fp.method,
+        target_year=fp.target_year,
+        geoid=fp.geoid,
+        indicator=fp.indicator,
+        horizon=fp.horizon,
+        notes=notes,
+    )
+
+
+def _apply_bias_correction(
+    fp: ForecastPoint,
+    indicator: str,
+    method_key: str,
+    calibration: dict | None,
+    pop_bucket: str | None = None,
+    h_bucket: str | None = None,
+) -> ForecastPoint:
+    """Apply geometric bias correction to a ForecastPoint.
+
+    Looks up the bias `b = mean(log(point/actual))` for this cell from
+    the v3 strata records and applies `point_corrected = point / exp(b)`.
+    All SE components and CI bounds rescale by the same factor so the CI
+    width tracks the corrected level (in log space, a level shift is
+    multiplicative on dollar-space SEs).
+
+    No-op when:
+    * calibration is v2 (no `strata_records["bias"]` key)
+    * cell falls below n_threshold (lookup returns floor with value=0)
+    * bias is exactly 0 (numerical no-op)
+
+    The order of application matters: callers should run this **before**
+    `_apply_se_override`. The SE override was calibrated on
+    bias-corrected residuals, so applying κ to a still-biased point
+    would double-count the level miscalibration in the CI.
+    """
+    if calibration is None or fp is None:
+        return fp
+    bias_lookup = _v3_strata_lookup(calibration, "bias", floor_value=0.0)
+    if bias_lookup is None:
+        return fp
+    rec, src = bias_lookup(indicator, method_key, pop_bucket, h_bucket)
+    b = rec.value
+    if b == 0.0 or not math.isfinite(b):
+        return fp
+    factor = math.exp(-b)
+    new_point = fp.point * factor
+    new_se_total = fp.se_total * factor
+    new_se_sample = fp.se_sample * factor
+    new_se_forecast = fp.se_forecast * factor
+    new_ci_low = fp.ci90_low * factor
+    new_ci_high = fp.ci90_high * factor
+    notes = fp.notes
+    suffix = f"bias_corr={b * 100:+.2f}%(strata={src})"
+    notes = f"{notes}; {suffix}" if notes else suffix
+    return ForecastPoint(
+        point=new_point,
+        se_total=new_se_total,
+        se_sample=new_se_sample,
+        se_forecast=new_se_forecast,
+        ci90_low=new_ci_low,
+        ci90_high=new_ci_high,
         method=fp.method,
         target_year=fp.target_year,
         geoid=fp.geoid,
@@ -406,6 +528,28 @@ def _calibrated_macro_weight(
     return max(floor, min(ceiling, w))
 
 
+def _resolve_pop_bucket(
+    geoid: str,
+    populations: dict[str, int] | None,
+) -> str | None:
+    """Look up a county's 2020 population bucket.
+
+    Population dict can be passed in explicitly, or this function will
+    lazily load the bundled `county_population_2020.json` if available.
+    Returns None when the county has no known population (the v3 lookup
+    chain treats this as "skip exact, go to global marginalised").
+    """
+    from .strata import classify_pop
+    if populations is None:
+        try:
+            from ..scripts.load_calibration_panel import load_populations as _lp
+            populations = _lp()
+        except Exception:  # PanelMissingError or any I/O error
+            return None
+    pop = populations.get(geoid) if populations else None
+    return classify_pop(pop)
+
+
 def project_ensemble_multi(
     series_observations: Sequence[AcsObservation],
     target_year: int,
@@ -413,6 +557,7 @@ def project_ensemble_multi(
     calibration: dict | None = None,
     correlation_rho_inner: float = 0.7,
     correlation_rho_anchor: float = 0.5,
+    populations: dict[str, int] | None = None,
 ) -> "ForecastPoint | None":
     """Multi-source anchor ensemble.
 
@@ -420,6 +565,25 @@ def project_ensemble_multi(
     to the indicator) via `anchors.combined_anchor_rate`, projects
     `latest` forward at the multi-source rate, and combines with the
     trend ensemble at the calibrated optimal weight.
+
+    v3 calibration support
+    ----------------------
+    When the calibration payload is schema_version=3 (carries
+    `strata_records`), each component (trend_ensemble, multi_anchor) is
+    individually:
+
+    1. **Bias-corrected** via the geometric multiplier
+       `point' = point / exp(b)` looked up by
+       (indicator, method, pop_bucket, h_bucket) in the v3 bias records.
+    2. **SE-rescaled** via the per-cell κ from the v3 SE records.
+
+    Order matters: bias correction is applied first, then SE override.
+    The SE override was calibrated on bias-corrected residuals; reversing
+    the order would double-count the level miscalibration in the CI.
+
+    Components are corrected *pre-blend* because the bias and κ records
+    are keyed by component method (`trend_ensemble`, `multi_anchor`),
+    not by the blended `ensemble_multi_anchor` label.
 
     Parameters
     ----------
@@ -429,21 +593,37 @@ def project_ensemble_multi(
         this lower simulates a back-test in which only data visible
         on or before `end_year` is used.
     calibration : dict, optional
-        Pre-computed RMSE table from `scripts/calibrate_anchors.py`.
-        Determines per-source anchor weights *and* the macro/trend
-        blend weight. If absent, falls back to equal anchor weights
+        Pre-computed calibration payload from
+        `scripts/calibrate_anchors.py`. Determines per-source anchor
+        weights, macro/trend blend weight, SE inflators, and (v3 only)
+        bias corrections. If absent, falls back to equal anchor weights
         and the legacy 0.30 macro weight.
+    populations : dict[str, int], optional
+        County 2020 populations (geoid → pop). Used to classify the
+        target county into a population bucket for v3 stratified
+        lookups. If None, the bundled
+        `data/calibration_panel/county_population_2020.json` is loaded
+        lazily if available; otherwise pop_bucket is None and the v3
+        lookup chain falls through to globally marginalised cells.
     """
     # Local import to avoid a circular dependency between ensemble and anchors.
     from .anchors import combined_anchor_rate, anchor_as_forecast, load_calibration
+    from .strata import classify_horizon
 
     if not series_observations:
         return None
     indicator = series_observations[-1].indicator
+    geoid = series_observations[-1].geoid
     if end_year is None:
         end_year = int(round(effective_year(series_observations[-1])))
     if calibration is None:
         calibration = load_calibration()
+
+    # v3 strata classifications. Both may be None — the lookup chain
+    # handles that gracefully by skipping to the global marginalisation.
+    horizon_years = target_year - end_year
+    h_bucket = classify_horizon(horizon_years) if horizon_years > 0 else None
+    pop_bucket = _resolve_pop_bucket(geoid, populations)
 
     # Trend ensemble first.
     components: list[ForecastPoint] = []
@@ -459,7 +639,15 @@ def project_ensemble_multi(
         if components else None
     )
     if inner is not None:
-        inner = _apply_se_override(inner, indicator, "trend_ensemble", calibration)
+        # v3: bias correction first, then SE override (correct order)
+        inner = _apply_bias_correction(
+            inner, indicator, "trend_ensemble", calibration,
+            pop_bucket=pop_bucket, h_bucket=h_bucket,
+        )
+        inner = _apply_se_override(
+            inner, indicator, "trend_ensemble", calibration,
+            pop_bucket=pop_bucket, h_bucket=h_bucket,
+        )
 
     # Multi-source macro anchor. `combined_anchor_rate` expects the
     # `rmse_by_indicator_source` slice — pass it explicitly so the full
@@ -469,6 +657,7 @@ def project_ensemble_multi(
         indicator=indicator,
         end_year=end_year,
         calibration=per_source_calib,
+        calibration_horizon=max(int(round(horizon_years)), 1),
     )
     anchor_fp: ForecastPoint | None = None
     if anchor_rate is not None:
@@ -477,7 +666,15 @@ def project_ensemble_multi(
             target_year=target_year,
             anchor_rate=anchor_rate,
         )
-        anchor_fp = _apply_se_override(anchor_fp, indicator, "multi_anchor", calibration)
+        # Same order: bias first, then SE override.
+        anchor_fp = _apply_bias_correction(
+            anchor_fp, indicator, "multi_anchor", calibration,
+            pop_bucket=pop_bucket, h_bucket=h_bucket,
+        )
+        anchor_fp = _apply_se_override(
+            anchor_fp, indicator, "multi_anchor", calibration,
+            pop_bucket=pop_bucket, h_bucket=h_bucket,
+        )
 
     if inner is None and anchor_fp is None:
         return None
