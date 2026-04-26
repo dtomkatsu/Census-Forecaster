@@ -42,7 +42,12 @@ Issues = "https://github.com/dtomkatsu/Census-Forecaster/issues"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"census_forecaster" = ["data/anchors/*.json", "data/anchors/*.md"]
+"census_forecaster" = [
+    "data/anchors/*.json",
+    "data/anchors/*.md",
+    "data/calibration_panel/*.json",
+    "data/calibration_panel/*.md",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
