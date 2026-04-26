@@ -150,9 +150,20 @@ class TestCombinedAnchorRate:
 
     def test_calibration_redistributes_weights(self):
         # Two runs with and without calibration; weights should shift.
-        rate_eq = combined_anchor_rate(indicator="B19013_001E", end_year=2024)
+        # Use an explicit `sources=` filter so adding more BEA anchors
+        # in the registry doesn't break this test's invariant — it is
+        # specifically about the calibration RMSE → SE → weight pipeline.
+        from census_forecaster.acs.sources import load_source
+        sources = [
+            load_source(n) for n in
+            ["cpi_honolulu_allitems", "pce_deflator", "qcew_hawaii_wages"]
+        ]
+        rate_eq = combined_anchor_rate(
+            indicator="B19013_001E", end_year=2024, sources=sources,
+        )
         rate_cal = combined_anchor_rate(
             indicator="B19013_001E", end_year=2024,
+            sources=sources,
             calibration={
                 "B19013_001E": {
                     "cpi_honolulu_allitems": 0.20,  # heavily penalised
@@ -163,7 +174,6 @@ class TestCombinedAnchorRate:
         )
         assert rate_eq is not None
         assert rate_cal is not None
-        # Find weights for qcew_hawaii_wages.
         def w_of(rate, name):
             for n, _r, _se, w in rate.components:
                 if n == name:
@@ -172,12 +182,19 @@ class TestCombinedAnchorRate:
         assert w_of(rate_cal, "qcew_hawaii_wages") > w_of(rate_eq, "qcew_hawaii_wages")
 
     def test_se_combines_with_correlation(self):
-        rate = combined_anchor_rate(indicator="B19013_001E", end_year=2024)
+        # Filter to a small predictable source set so the SE invariants
+        # below are meaningful regardless of registry growth.
+        from census_forecaster.acs.sources import load_source
+        sources = [
+            load_source(n) for n in
+            ["cpi_honolulu_allitems", "pce_deflator", "qcew_hawaii_wages"]
+        ]
+        rate = combined_anchor_rate(
+            indicator="B19013_001E", end_year=2024, sources=sources,
+        )
         assert rate is not None
-        # Combined SE should be smaller than the smallest individual SE
-        # (diversification benefit) but not by more than sqrt(n)
-        # — indicator that the rho correlation is not zero (which would
-        # collapse the SE more than is honest).
+        # Combined SE should be smaller than the largest individual SE
+        # (diversification benefit) but bounded by the correlation rho.
         comp_ses = [se for _n, _r, se, _w in rate.components]
         assert rate.se_log_rate <= max(comp_ses) + 1e-9
         # With ρ=0.6 the combined SE should be > 60% of the avg SE.

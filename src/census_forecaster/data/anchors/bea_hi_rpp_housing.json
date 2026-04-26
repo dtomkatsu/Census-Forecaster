@@ -1,0 +1,32 @@
+{
+  "frequency": "annual",
+  "last_refresh": "2026-04",
+  "limitations": [
+    "RPP services-rents component combines actual and imputed rents; differs from BLS's CPI rent (actual rents only) and HUD FMR (small-area assessed rents).",
+    "State-level aggregation smooths intra-state variation (Honolulu vs. neighbor islands).",
+    "Subject to revisions."
+  ],
+  "series_id": "BEA Regional SARPP LineCode=3, State of Hawaii (15000)",
+  "source": "BEA",
+  "title": "Regional Price Parities: Services \u2014 Rents, State of Hawaii (annual, U.S. average = 100)",
+  "units": "index, U.S. average = 100",
+  "values_by_year": {
+    "2008": 146.805,
+    "2009": 145.89,
+    "2010": 143.051,
+    "2011": 142.953,
+    "2012": 137.589,
+    "2013": 153.495,
+    "2014": 146.484,
+    "2015": 153.726,
+    "2016": 139.348,
+    "2017": 149.674,
+    "2018": 143.002,
+    "2019": 142.64,
+    "2020": 136.43,
+    "2021": 140.322,
+    "2022": 132.25,
+    "2023": 128.69,
+    "2024": 125.304
+  }
+}

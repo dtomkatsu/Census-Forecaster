@@ -223,6 +223,20 @@ _REGISTRY_SPEC = [
     # FHFA HPI Hawaii — anchors home-value.
     ("fred_hi_hpi.json", 0,  # Q4 release within Q1 of year+1
      ("B25077_001E",), 0.005),
+    # ----- BEA anchors (added v0.3) -----
+    # BEA per-capita personal income, Hawaii state. Year-Y data is
+    # finalised in the April Y+1 release; treat as 1-year-lagged so the
+    # back-test honours the no-peeking discipline.
+    ("bea_hi_percapita_income.json", 1,
+     ("B19013_001E", "S1701_C03_001E"), 0.006),
+    # BEA Regional Price Parity, Honolulu metro all-items. Annual
+    # release ~May of year+1.
+    ("bea_honolulu_rpp_all.json", 1,
+     ("B19013_001E",), 0.005),
+    # BEA Regional Price Parity, Hawaii state services-rents. Anchors
+    # rent indicators alongside CPI Honolulu rent and HUD FMR.
+    ("bea_hi_rpp_housing.json", 1,
+     ("B25058_001E", "B25064_001E"), 0.006),
 ]
 
 
