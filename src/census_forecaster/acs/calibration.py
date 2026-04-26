@@ -656,47 +656,17 @@ def _bisect_se_factor(
 ) -> tuple[float, float]:
     """Find a multiplicative SE factor that brings coverage into band.
 
-    Uses straight bisection on `_coverage_at_factor`, which is monotonic
-    in `factor` (larger factor → wider CIs → higher coverage). Returns
-    `(factor, achieved_coverage)`. If the initial coverage is already in
-    band, returns `(1.0, cov0)` unchanged. If no factor in [0.1, 5.0]
-    produces in-band coverage, returns the bisection midpoint with its
-    achieved coverage — caller can decide whether to accept.
+    Wraps `bisect_for_target_coverage` (in `calibration_common.py`) with
+    this module's dollar-space `_coverage_at_factor`. The shared
+    bisection algorithm is reused by the BLS calibration generator
+    against its log-space coverage function.
     """
-    cov0 = _coverage_at_factor(residuals, 1.0)
-    if not math.isfinite(cov0):
-        return (1.0, cov0)
-    if target_low <= cov0 <= target_high:
-        return (1.0, cov0)
-
-    # Set search interval based on whether we need to widen or narrow.
-    if cov0 < target_low:
-        lo, hi = 1.0, 5.0  # widen up to 5×
-    else:
-        lo, hi = 0.1, 1.0  # narrow down to 10× tighter
-
-    # Verify the search interval actually brackets the band; if not,
-    # return the closer endpoint.
-    cov_lo = _coverage_at_factor(residuals, lo)
-    cov_hi = _coverage_at_factor(residuals, hi)
-    if cov_lo > target_high:
-        return (lo, cov_lo)
-    if cov_hi < target_low:
-        return (hi, cov_hi)
-
-    for _ in range(max_iter):
-        mid = (lo + hi) / 2.0
-        cov = _coverage_at_factor(residuals, mid)
-        if target_low <= cov <= target_high:
-            return (round(mid, 4), cov)
-        if cov < target_low:
-            lo = mid
-        else:
-            hi = mid
-        if hi - lo < tol:
-            break
-    final = (lo + hi) / 2.0
-    return (round(final, 4), _coverage_at_factor(residuals, final))
+    from .calibration_common import bisect_for_target_coverage
+    return bisect_for_target_coverage(
+        coverage_fn=lambda f: _coverage_at_factor(residuals, f),
+        target_low=target_low, target_high=target_high,
+        max_iter=max_iter, tol=tol,
+    )
 
 
 def _group_residuals(

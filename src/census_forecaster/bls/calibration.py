@@ -224,40 +224,16 @@ def _bisect_se_factor(
 ) -> tuple[float, float]:
     """Bisection on the SE multiplicative factor to land coverage in band.
 
-    Returns (factor, achieved_coverage). Behaves identically to the ACS
-    bisection but uses the log-space `_coverage_at_factor` above.
+    Wraps the shared `bisect_for_target_coverage` algorithm with this
+    module's log-space `_coverage_at_factor` as the coverage function.
+    Returns (factor, achieved_coverage).
     """
-    cov0 = _coverage_at_factor(residuals, 1.0)
-    if not math.isfinite(cov0):
-        return (1.0, cov0)
-    if target_low <= cov0 <= target_high:
-        return (1.0, cov0)
-
-    if cov0 < target_low:
-        lo, hi = 1.0, 5.0
-    else:
-        lo, hi = 0.1, 1.0
-
-    cov_lo = _coverage_at_factor(residuals, lo)
-    cov_hi = _coverage_at_factor(residuals, hi)
-    if cov_lo > target_high:
-        return (lo, cov_lo)
-    if cov_hi < target_low:
-        return (hi, cov_hi)
-
-    for _ in range(max_iter):
-        mid = (lo + hi) / 2.0
-        cov = _coverage_at_factor(residuals, mid)
-        if target_low <= cov <= target_high:
-            return (round(mid, 4), cov)
-        if cov < target_low:
-            lo = mid
-        else:
-            hi = mid
-        if hi - lo < tol:
-            break
-    final = (lo + hi) / 2.0
-    return (round(final, 4), _coverage_at_factor(residuals, final))
+    from ..acs.calibration_common import bisect_for_target_coverage
+    return bisect_for_target_coverage(
+        coverage_fn=lambda f: _coverage_at_factor(residuals, f),
+        target_low=target_low, target_high=target_high,
+        max_iter=max_iter, tol=tol,
+    )
 
 
 # ---------------------------------------------------------------------------
