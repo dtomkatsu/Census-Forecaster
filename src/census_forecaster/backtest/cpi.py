@@ -712,19 +712,117 @@ def build_cells(variant: str = "recency",
     return cells
 
 
+def _run_stratified_v3(asof: str) -> int:
+    """v3 stratified BLS calibration entry point.
+
+    Loads the bundled multi-MSA panel from `data/bls_panel/cpi_panel.json`,
+    runs `run_stratified_bls_calibration`, writes the result to
+    `data/anchors/bls_calibration.json`, and emits a per-stratum
+    Markdown summary into the backtest results directory.
+
+    Returns 0 on success, non-zero on failure.
+    """
+    from pathlib import Path
+    from ..bls.calibration import run_stratified_bls_calibration, write_bls_calibration
+
+    pkg_root = Path(__file__).resolve().parent.parent
+    panel_path = pkg_root / "data" / "bls_panel" / "cpi_panel.json"
+    if not panel_path.exists():
+        print(
+            f"ERROR: bundled panel not found at {panel_path}. Run "
+            "`BLS_API_KEY=<key> python -m census_forecaster.scripts.refresh_bls_panel` "
+            "first.", file=sys.stderr,
+        )
+        return 2
+
+    with open(panel_path) as f:
+        panel = json.load(f)
+    cpi_data = panel["series"]
+
+    print(f"Running v3 stratified BLS calibration on {len(cpi_data)} series …")
+    payload = run_stratified_bls_calibration(
+        cpi_data=cpi_data,
+        horizons_months=(2, 4, 6, 8, 12),
+        n_threshold=20,
+    )
+    print(
+        f"  {len(payload['fold_residuals'])} folds across "
+        f"{len(payload['strata_records']['se_inflator'])} strata cells"
+    )
+
+    out_path = pkg_root / "data" / "anchors" / "bls_calibration.json"
+    write_bls_calibration(payload, out_path)
+    print(f"Wrote {out_path}")
+
+    # Per-stratum diagnostic Markdown
+    md_lines = [
+        f"# BLS v3 stratified calibration — {asof}\n\n",
+        f"**Schema:** v{payload['schema_version']}\n",
+        f"**Run date:** {payload['run_date']}\n",
+        f"**Horizons (months):** {payload['horizons_months']}\n",
+        f"**Total folds:** {len(payload['fold_residuals'])}\n",
+        f"**Strata cells:** {len(payload['strata_records']['se_inflator'])}\n\n",
+        "## SE inflators with non-trivial κ (n ≥ 20, |κ−1| > 0.1)\n\n",
+        "| Series | h_bucket | vol_regime | κ | n | cov_pre → cov_post |\n",
+        "|---|---|---|---:|---:|---|\n",
+    ]
+    notable = [
+        r for r in payload["strata_records"]["se_inflator"]
+        if abs(r["value"] - 1.0) > 0.1
+        and r["n_folds"] >= 20
+        and r["pop_bucket"] != "*"
+    ]
+    notable.sort(key=lambda r: (r["pop_bucket"], r["h_bucket"]))
+    for r in notable:
+        h, vol = r["h_bucket"].split("|", 1)
+        cov_pre = r["extra"].get("coverage_pre", 0.0)
+        cov_post = r["extra"].get("coverage_post", 0.0)
+        md_lines.append(
+            f"| {r['pop_bucket']} | {h} | {vol} | {r['value']:.3f} | "
+            f"{r['n_folds']} | {cov_pre*100:.0f}% → {cov_post*100:.0f}% |\n"
+        )
+    md_lines.append("\n## Bias corrections (applied b ≠ 0, n ≥ 20)\n\n")
+    md_lines.append("| Series | h_bucket | vol_regime | b (log) | b (pct) | n |\n")
+    md_lines.append("|---|---|---|---:|---:|---:|\n")
+    bias_records = sorted(
+        [r for r in payload["strata_records"]["bias"]
+         if r["value"] != 0.0 and r["n_folds"] >= 20 and r["pop_bucket"] != "*"],
+        key=lambda r: (r["pop_bucket"], r["h_bucket"]),
+    )
+    for r in bias_records:
+        h, vol = r["h_bucket"].split("|", 1)
+        pct = (math.exp(r["value"]) - 1) * 100
+        md_lines.append(
+            f"| {r['pop_bucket']} | {h} | {vol} | {r['value']:+.4f} | "
+            f"{pct:+.2f}% | {r['n_folds']} |\n"
+        )
+
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    md_path = RESULTS_DIR / f"bls_v3_calibration_{asof}.md"
+    md_path.write_text("".join(md_lines))
+    print(f"Wrote {md_path}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--no-cache", action="store_true",
                     help="Force refetch of BLS series; otherwise use backtests/cache/cpi/.")
     ap.add_argument("--calibrate", action="store_true",
-                    help="Sweep _PROJ_SE_INFLATOR κ to target CI90 coverage 0.90.")
+                    help="Sweep _PROJ_SE_INFLATOR κ to target CI90 coverage 0.90 (v2 legacy).")
+    ap.add_argument("--stratify", action="store_true",
+                    help=("Run v3 stratified BLS calibration on the bundled multi-MSA "
+                          "panel and write data/anchors/bls_calibration.json."))
     ap.add_argument("--variant", choices=["recency", "gap-weighted", "compare"],
                     default="recency",
                     help="Smoother variant to use. 'compare' runs both and reports delta.")
     ap.add_argument("--asof", default=date.today().isoformat(),
                     help="Date stamp for the report filename. Default: today.")
     args = ap.parse_args()
+
+    if args.stratify:
+        return _run_stratified_v3(args.asof)
 
     use_cache = not args.no_cache
 

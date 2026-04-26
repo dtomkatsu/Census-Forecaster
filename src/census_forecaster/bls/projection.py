@@ -296,32 +296,90 @@ def project_forward(points: list[dict], target_date: date) -> float:
     return project_forward_full(points, target_date).value
 
 
+def _resolve_vol_regime(
+    points: list[dict],
+    threshold: float | None,
+    window_months: int = 24,
+) -> str | None:
+    """Compute vol_regime classification from a CPI series at the *most
+    recent* observation window.
+
+    Used by `compute_cpi_ratio` when the caller doesn't pass an explicit
+    `vol_regime` — we look at the rolling 24-month return SD ending at
+    the latest print and compare it to the per-series median threshold
+    that the calibration generator persisted in `vol_regime_thresholds`.
+
+    Returns None if the series is too short or if no threshold is supplied.
+    """
+    if threshold is None or len(points) < 3:
+        return None
+    ordered = sorted(points, key=lambda p: (p["year"], int(p["period"][1:])))
+    latest_y = ordered[-1]["year"]
+    latest_m = int(ordered[-1]["period"][1:])
+    cutoff_y = latest_y - (window_months // 12)
+    rates: list[float] = []
+    for i in range(1, len(ordered)):
+        prev = ordered[i - 1]
+        curr = ordered[i]
+        prev_y = prev["year"]
+        prev_m = int(prev["period"][1:])
+        curr_y = curr["year"]
+        curr_m = int(curr["period"][1:])
+        if (curr_y, curr_m) > (cutoff_y, latest_m):
+            months = (curr_y - prev_y) * 12 + (curr_m - prev_m)
+            if months > 0 and prev["value"] > 0 and curr["value"] > 0:
+                try:
+                    r = math.log(curr["value"] / prev["value"]) / months
+                except ValueError:
+                    continue
+                if math.isfinite(r):
+                    rates.append(r)
+    if len(rates) < 3:
+        return None
+    import statistics as _stats
+    sd = _stats.pstdev(rates)
+    if not math.isfinite(sd):
+        return None
+    return "low" if sd <= threshold else "high"
+
+
 def compute_cpi_ratio(
     cpi_data: dict,
     series_id: str,
     baseline_date: date,
     target_date: date,
+    *,
+    calibration: dict | None = None,
+    vol_regime: str | None = None,
 ) -> dict:
     """Compute CPI ratio (target / baseline) for a series.
 
-    Returns a dict with full diagnostic surface:
+    With v3 calibration support: when `calibration` is provided (loaded
+    via `census_forecaster.bls.calibration.load_bls_calibration`), looks
+    up per-(series, h_bucket, vol_regime) κ and bias from the strata
+    records and applies them post-projection. Without `calibration`,
+    falls back to the legacy global `_PROJ_SE_INFLATOR=1.50` baked into
+    `project_forward_full` — back-compatible with v2 callers.
 
-        ratio              float    — target_cpi / baseline_cpi (1.0 if unavailable)
-        is_projected       bool     — target is past the latest observation
+    Returns a dict with full diagnostic surface (legacy fields plus v3):
+
+        ratio              float    — target_cpi / baseline_cpi
+        is_projected       bool
         method             str      — 'exact' | 'interpolated' | 'projected' | 'unavailable'
-        latest_observed    str|None — ISO "YYYY-MM" of the latest print
-        target_period      str      — ISO of the target date
+        latest_observed    str|None
+        target_period      str
         cap_fired          bool|None
-        monthly_rate       float|None — capped monthly compound rate used
-        implied_annual_rate float|None — (1 + monthly_rate)^12 − 1
-        forecast_se        float|None — log-space SE on the ratio
+        monthly_rate       float|None
+        implied_annual_rate float|None
+        forecast_se        float|None — log-space SE *after* v3 κ rescale
         ratio_ci90_low     float|None
         ratio_ci90_high    float|None
         horizon_months     int|None
-
-    The projection-only fields are None unless `method == 'projected'`,
-    so existing callers only reading the headline `ratio` / `method`
-    fields are unaffected.
+        # v3 fields (None when calibration is absent):
+        kappa_used         float|None — absolute κ applied
+        kappa_source       str|None   — 'exact' | 'vol_marg' | 'h_vol_marg' | 'global' | 'floor'
+        bias_used          float|None — log-space bias applied (`b`)
+        bias_source        str|None   — same labels as kappa_source
 
     When `cap_fired` is True, the upper CI is widened to at least the
     uncapped projection's implied ratio — honest about the truncation.
@@ -347,6 +405,10 @@ def compute_cpi_ratio(
         "ratio_ci90_low":      None,
         "ratio_ci90_high":     None,
         "horizon_months":      None,
+        "kappa_used":          None,
+        "kappa_source":        None,
+        "bias_used":           None,
+        "bias_source":         None,
     }
 
     baseline_cpi, _b_method, _b_proj = _value_at(cpi_data, series_id, points, latest, baseline_date)
@@ -361,15 +423,59 @@ def compute_cpi_ratio(
     result["is_projected"] = (t_method == "projected")
 
     if t_proj is not None:
+        # Apply v3 calibration (bias first, then κ rescale on SE) when present.
+        kappa_used: float | None = None
+        kappa_source: str | None = None
+        bias_used: float | None = None
+        bias_source: str | None = None
+        if calibration is not None:
+            from .calibration import (
+                h_bucket_for_months, vol_regime_for_value,
+                resolve_kappa_and_bias,
+            )
+            h_bucket = h_bucket_for_months(t_proj.horizon_months)
+            if vol_regime is None:
+                threshold = (
+                    calibration.get("vol_regime_thresholds", {})
+                    .get(series_id)
+                )
+                vol_regime = _resolve_vol_regime(points, threshold) or "*"
+            kappa_used, bias_used, kappa_source, bias_source = resolve_kappa_and_bias(
+                calibration=calibration,
+                series_id=series_id,
+                h_bucket=h_bucket,
+                vol_regime=vol_regime,
+                kappa_floor=1.0,   # post-Phase-C internal default
+                bias_floor=0.0,
+            )
+
+        # Bias correction shifts ratio multiplicatively in log space.
+        if bias_used is not None and bias_used != 0.0 and math.isfinite(bias_used):
+            ratio = ratio / math.exp(bias_used)
+            result["ratio"] = ratio
+
         annual_rate = (1.0 + t_proj.monthly_rate) ** 12 - 1.0
-        se_log_ratio = t_proj.forecast_se_log
+
+        # SE rescale: project_forward_full has already applied
+        # _PROJ_SE_INFLATOR=1.50, so the rescale factor to go from
+        # legacy κ=1.50 to the v3 κ is (κ_v3 / 1.50). When no v3
+        # calibration is supplied, factor=1 and SE is left unchanged.
+        if kappa_used is not None:
+            rescale = kappa_used / _PROJ_SE_INFLATOR
+        else:
+            rescale = 1.0
+        se_log_ratio = t_proj.forecast_se_log * rescale
+
         if se_log_ratio > 0:
             ci_lo = ratio * math.exp(-_Z_90 * se_log_ratio)
             ci_hi = ratio * math.exp(+_Z_90 * se_log_ratio)
         else:
             ci_lo = ci_hi = ratio
         if t_proj.cap_fired and t_proj.point_uncapped > t_proj.value:
-            ci_hi = max(ci_hi, t_proj.point_uncapped / baseline_cpi)
+            uncapped_ratio = t_proj.point_uncapped / baseline_cpi
+            if bias_used is not None and bias_used != 0.0 and math.isfinite(bias_used):
+                uncapped_ratio = uncapped_ratio / math.exp(bias_used)
+            ci_hi = max(ci_hi, uncapped_ratio)
 
         result["cap_fired"]           = t_proj.cap_fired
         result["monthly_rate"]        = t_proj.monthly_rate
@@ -378,6 +484,10 @@ def compute_cpi_ratio(
         result["ratio_ci90_low"]      = ci_lo
         result["ratio_ci90_high"]     = ci_hi
         result["horizon_months"]      = t_proj.horizon_months
+        result["kappa_used"]          = kappa_used
+        result["kappa_source"]        = kappa_source
+        result["bias_used"]           = bias_used
+        result["bias_source"]         = bias_source
 
     return result
 

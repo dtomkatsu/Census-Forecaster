@@ -5,12 +5,18 @@ Modules
 * `client` — public-API BLS fetcher + period helpers (find_nearest_periods,
   expected_latest_period_bimonthly, fetch_if_stale, ...).
 * `projection` — recency-weighted, damped, capped CPI forward-projection
-  with closed-form 90% prediction intervals, calibrated to ~90% empirical
-  coverage on a Honolulu CPI panel.
+  with closed-form 90% prediction intervals.
+* `calibration` — v3 stratified calibration generator. Stratifies κ and
+  geometric bias by `(series_id, h_bucket, vol_regime)` over a multi-MSA
+  panel. Output JSON drives the v3 lookup in `compute_cpi_ratio`.
+* `panel` — multi-MSA panel definition (top 10 MSAs + national + Honolulu
+  × 5 CPI series each).
 
-The projection module's `_PROJ_SE_INFLATOR=1.50` was calibrated on a
-5-series × 63-anchor × 3-horizon walk-forward. Re-derive for your own
-region with `census_forecaster.backtest.cpi.calibrate_inflator`.
+When the bundled `data/anchors/bls_calibration.json` is present at
+import time, `compute_cpi_ratio(... calibration=load_bls_calibration())`
+returns ratios with stratified κ and bias correction applied; otherwise
+it falls back to the legacy global `_PROJ_SE_INFLATOR=1.50` for
+backward compatibility.
 """
 from .client import (
     BLS_API_URL,
@@ -39,6 +45,29 @@ from .projection import (
     PROJ_DAMPING,
     PROJ_MONTHLY_CAP,
 )
+from .calibration import (
+    BlsFoldResidual,
+    DEFAULT_BIAS_CLAMP_LOG,
+    H_BUCKETS_BLS,
+    VOL_REGIMES,
+    h_bucket_for_months,
+    vol_regime_for_value,
+    run_stratified_bls_calibration,
+    write_bls_calibration,
+    load_bls_calibration,
+    lookup_bls_strata,
+    resolve_kappa_and_bias,
+)
+from .panel import (
+    BlsArea,
+    BlsSeriesKind,
+    BLS_PANEL_AREAS,
+    BLS_PANEL_SERIES,
+    all_panel_series_ids,
+    panel_series_for_area,
+    panel_series_for_kind,
+    parse_series_id,
+)
 
 __all__ = [
     # Client
@@ -66,4 +95,25 @@ __all__ = [
     "compute_cpi_ratio",
     "PROJ_DAMPING",
     "PROJ_MONTHLY_CAP",
+    # Calibration (v3)
+    "BlsFoldResidual",
+    "DEFAULT_BIAS_CLAMP_LOG",
+    "H_BUCKETS_BLS",
+    "VOL_REGIMES",
+    "h_bucket_for_months",
+    "vol_regime_for_value",
+    "run_stratified_bls_calibration",
+    "write_bls_calibration",
+    "load_bls_calibration",
+    "lookup_bls_strata",
+    "resolve_kappa_and_bias",
+    # Panel
+    "BlsArea",
+    "BlsSeriesKind",
+    "BLS_PANEL_AREAS",
+    "BLS_PANEL_SERIES",
+    "all_panel_series_ids",
+    "panel_series_for_area",
+    "panel_series_for_kind",
+    "parse_series_id",
 ]
