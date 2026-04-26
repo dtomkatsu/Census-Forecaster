@@ -114,10 +114,10 @@
       ],
       "label": "U.S. City Average \u2014 all_items",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUUR0000SAF11": {
       "first": [
@@ -126,10 +126,10 @@
       ],
       "label": "U.S. City Average \u2014 food_at_home",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUUR0000SAH1": {
       "first": [
@@ -138,10 +138,10 @@
       ],
       "label": "U.S. City Average \u2014 housing",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUUR0000SEHA": {
       "first": [
@@ -150,10 +150,10 @@
       ],
       "label": "U.S. City Average \u2014 rent",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUUR0000SETB01": {
       "first": [
@@ -162,10 +162,10 @@
       ],
       "label": "U.S. City Average \u2014 gasoline",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 192
+      "n_points": 195
     },
     "CUURS11ASA0": {
       "first": [
@@ -174,10 +174,10 @@
       ],
       "label": "Boston-Cambridge-Newton, MA-NH \u2014 all_items",
       "last": [
-        2025,
-        "M11"
+        2026,
+        "M03"
       ],
-      "n_points": 96
+      "n_points": 98
     },
     "CUURS11ASAF11": {
       "first": [
@@ -186,10 +186,10 @@
       ],
       "label": "Boston-Cambridge-Newton, MA-NH \u2014 food_at_home",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS11ASAH1": {
       "first": [
@@ -198,10 +198,10 @@
       ],
       "label": "Boston-Cambridge-Newton, MA-NH \u2014 housing",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS11ASEHA": {
       "first": [
@@ -210,10 +210,10 @@
       ],
       "label": "Boston-Cambridge-Newton, MA-NH \u2014 rent",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS11ASETB01": {
       "first": [
@@ -222,10 +222,10 @@
       ],
       "label": "Boston-Cambridge-Newton, MA-NH \u2014 gasoline",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 192
+      "n_points": 195
     },
     "CUURS12ASA0": {
       "first": [
@@ -234,10 +234,10 @@
       ],
       "label": "New York-Newark-Jersey City, NY-NJ-PA \u2014 all_items",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS12ASAF11": {
       "first": [
@@ -246,10 +246,10 @@
       ],
       "label": "New York-Newark-Jersey City, NY-NJ-PA \u2014 food_at_home",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS12ASAH1": {
       "first": [
@@ -258,10 +258,10 @@
       ],
       "label": "New York-Newark-Jersey City, NY-NJ-PA \u2014 housing",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS12ASEHA": {
       "first": [
@@ -270,10 +270,10 @@
       ],
       "label": "New York-Newark-Jersey City, NY-NJ-PA \u2014 rent",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS12ASETB01": {
       "first": [
@@ -282,10 +282,10 @@
       ],
       "label": "New York-Newark-Jersey City, NY-NJ-PA \u2014 gasoline",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 192
+      "n_points": 195
     },
     "CUURS23ASA0": {
       "first": [
@@ -294,10 +294,10 @@
       ],
       "label": "Chicago-Naperville-Elgin, IL-IN-WI \u2014 all_items",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS23ASAF11": {
       "first": [
@@ -306,10 +306,10 @@
       ],
       "label": "Chicago-Naperville-Elgin, IL-IN-WI \u2014 food_at_home",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS23ASAH1": {
       "first": [
@@ -318,10 +318,10 @@
       ],
       "label": "Chicago-Naperville-Elgin, IL-IN-WI \u2014 housing",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS23ASEHA": {
       "first": [
@@ -330,10 +330,10 @@
       ],
       "label": "Chicago-Naperville-Elgin, IL-IN-WI \u2014 rent",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS23ASETB01": {
       "first": [
@@ -342,10 +342,10 @@
       ],
       "label": "Chicago-Naperville-Elgin, IL-IN-WI \u2014 gasoline",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 192
+      "n_points": 195
     },
     "CUURS24ASA0": {
       "first": [
@@ -354,10 +354,10 @@
       ],
       "label": "Minneapolis-St. Paul-Bloomington, MN-WI \u2014 all_items",
       "last": [
-        2025,
-        "M11"
+        2026,
+        "M03"
       ],
-      "n_points": 49
+      "n_points": 51
     },
     "CUURS24ASAF11": {
       "first": [
@@ -366,10 +366,10 @@
       ],
       "label": "Minneapolis-St. Paul-Bloomington, MN-WI \u2014 food_at_home",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 96
+      "n_points": 99
     },
     "CUURS24ASAH1": {
       "first": [
@@ -378,10 +378,10 @@
       ],
       "label": "Minneapolis-St. Paul-Bloomington, MN-WI \u2014 housing",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 96
+      "n_points": 99
     },
     "CUURS24ASEHA": {
       "first": [
@@ -390,10 +390,10 @@
       ],
       "label": "Minneapolis-St. Paul-Bloomington, MN-WI \u2014 rent",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 96
+      "n_points": 99
     },
     "CUURS24ASETB01": {
       "first": [
@@ -402,10 +402,10 @@
       ],
       "label": "Minneapolis-St. Paul-Bloomington, MN-WI \u2014 gasoline",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 97
+      "n_points": 100
     },
     "CUURS35ASA0": {
       "first": [
@@ -414,10 +414,10 @@
       ],
       "label": "Washington-Arlington-Alexandria, DC-VA-MD-WV \u2014 all_items",
       "last": [
-        2025,
-        "M11"
+        2026,
+        "M03"
       ],
-      "n_points": 96
+      "n_points": 98
     },
     "CUURS35ASAF11": {
       "first": [
@@ -426,10 +426,10 @@
       ],
       "label": "Washington-Arlington-Alexandria, DC-VA-MD-WV \u2014 food_at_home",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS35ASAH1": {
       "first": [
@@ -438,10 +438,10 @@
       ],
       "label": "Washington-Arlington-Alexandria, DC-VA-MD-WV \u2014 housing",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS35ASEHA": {
       "first": [
@@ -450,10 +450,10 @@
       ],
       "label": "Washington-Arlington-Alexandria, DC-VA-MD-WV \u2014 rent",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS35ASETB01": {
       "first": [
@@ -462,10 +462,10 @@
       ],
       "label": "Washington-Arlington-Alexandria, DC-VA-MD-WV \u2014 gasoline",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 192
+      "n_points": 195
     },
     "CUURS37ASA0": {
       "first": [
@@ -474,10 +474,10 @@
       ],
       "label": "Miami-Fort Lauderdale-West Palm Beach, FL \u2014 all_items",
       "last": [
-        2025,
-        "M11"
+        2026,
+        "M03"
       ],
-      "n_points": 96
+      "n_points": 98
     },
     "CUURS37ASAF11": {
       "first": [
@@ -486,10 +486,10 @@
       ],
       "label": "Miami-Fort Lauderdale-West Palm Beach, FL \u2014 food_at_home",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS37ASAH1": {
       "first": [
@@ -498,10 +498,10 @@
       ],
       "label": "Miami-Fort Lauderdale-West Palm Beach, FL \u2014 housing",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS37ASEHA": {
       "first": [
@@ -510,10 +510,10 @@
       ],
       "label": "Miami-Fort Lauderdale-West Palm Beach, FL \u2014 rent",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS37ASETB01": {
       "first": [
@@ -522,10 +522,10 @@
       ],
       "label": "Miami-Fort Lauderdale-West Palm Beach, FL \u2014 gasoline",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 192
+      "n_points": 195
     },
     "CUURS48ASA0": {
       "first": [
@@ -534,10 +534,10 @@
       ],
       "label": "Dallas-Fort Worth-Arlington, TX \u2014 all_items",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M02"
       ],
-      "n_points": 48
+      "n_points": 49
     },
     "CUURS48ASAF11": {
       "first": [
@@ -546,10 +546,10 @@
       ],
       "label": "Dallas-Fort Worth-Arlington, TX \u2014 food_at_home",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M01"
       ],
-      "n_points": 96
+      "n_points": 97
     },
     "CUURS48ASAH1": {
       "first": [
@@ -558,10 +558,10 @@
       ],
       "label": "Dallas-Fort Worth-Arlington, TX \u2014 housing",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 96
+      "n_points": 99
     },
     "CUURS48ASEHA": {
       "first": [
@@ -570,10 +570,10 @@
       ],
       "label": "Dallas-Fort Worth-Arlington, TX \u2014 rent",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 96
+      "n_points": 99
     },
     "CUURS48ASETB01": {
       "first": [
@@ -582,10 +582,10 @@
       ],
       "label": "Dallas-Fort Worth-Arlington, TX \u2014 gasoline",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 97
+      "n_points": 100
     },
     "CUURS48BSA0": {
       "first": [
@@ -594,10 +594,10 @@
       ],
       "label": "Houston-The Woodlands-Sugar Land, TX \u2014 all_items",
       "last": [
-        2025,
-        "M11"
+        2026,
+        "M03"
       ],
-      "n_points": 49
+      "n_points": 51
     },
     "CUURS48BSAF11": {
       "first": [
@@ -606,10 +606,10 @@
       ],
       "label": "Houston-The Woodlands-Sugar Land, TX \u2014 food_at_home",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 96
+      "n_points": 99
     },
     "CUURS48BSAH1": {
       "first": [
@@ -618,10 +618,10 @@
       ],
       "label": "Houston-The Woodlands-Sugar Land, TX \u2014 housing",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 96
+      "n_points": 99
     },
     "CUURS48BSEHA": {
       "first": [
@@ -630,10 +630,10 @@
       ],
       "label": "Houston-The Woodlands-Sugar Land, TX \u2014 rent",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 96
+      "n_points": 99
     },
     "CUURS48BSETB01": {
       "first": [
@@ -642,10 +642,10 @@
       ],
       "label": "Houston-The Woodlands-Sugar Land, TX \u2014 gasoline",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 97
+      "n_points": 100
     },
     "CUURS49ASA0": {
       "first": [
@@ -654,10 +654,10 @@
       ],
       "label": "Urban Honolulu, HI \u2014 all_items",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS49ASAF11": {
       "first": [
@@ -666,10 +666,10 @@
       ],
       "label": "Urban Honolulu, HI \u2014 food_at_home",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS49ASAH1": {
       "first": [
@@ -678,10 +678,10 @@
       ],
       "label": "Urban Honolulu, HI \u2014 housing",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS49ASEHA": {
       "first": [
@@ -690,10 +690,10 @@
       ],
       "label": "Urban Honolulu, HI \u2014 rent",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS49ASETB01": {
       "first": [
@@ -702,10 +702,10 @@
       ],
       "label": "Urban Honolulu, HI \u2014 gasoline",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 192
+      "n_points": 195
     },
     "CUURS49BSA0": {
       "first": [
@@ -714,10 +714,10 @@
       ],
       "label": "Los Angeles-Long Beach-Anaheim, CA \u2014 all_items",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M02"
       ],
-      "n_points": 95
+      "n_points": 96
     },
     "CUURS49BSAF11": {
       "first": [
@@ -726,10 +726,10 @@
       ],
       "label": "Los Angeles-Long Beach-Anaheim, CA \u2014 food_at_home",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS49BSAH1": {
       "first": [
@@ -738,10 +738,10 @@
       ],
       "label": "Los Angeles-Long Beach-Anaheim, CA \u2014 housing",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS49BSEHA": {
       "first": [
@@ -750,10 +750,10 @@
       ],
       "label": "Los Angeles-Long Beach-Anaheim, CA \u2014 rent",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 191
+      "n_points": 194
     },
     "CUURS49BSETB01": {
       "first": [
@@ -762,15 +762,15 @@
       ],
       "label": "Los Angeles-Long Beach-Anaheim, CA \u2014 gasoline",
       "last": [
-        2025,
-        "M12"
+        2026,
+        "M03"
       ],
-      "n_points": 192
+      "n_points": 195
     }
   },
   "version": 1,
   "year_range": [
     2010,
-    2025
+    2026
   ]
 }
