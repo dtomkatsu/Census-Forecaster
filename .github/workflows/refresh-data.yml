@@ -1,0 +1,114 @@
+name: refresh-data
+
+# Auto-refresh the bundled BLS panel + BEA anchors + calibration JSONs.
+# Runs monthly on the 5th (after BLS / BEA monthly releases settle) plus
+# on-demand via workflow_dispatch. If any data file actually changes, the
+# workflow auto-commits the refresh with `[skip ci]` to avoid recursive
+# triggering of the test workflow.
+#
+# API keys are stored as GitHub Secrets:
+#   BLS_API_KEY  — https://www.bls.gov/developers/api_signature_v2.htm
+#   BEA_API_KEY  — https://apps.bea.gov/api/signup/
+#
+# The workflow is idempotent: running it twice in a row produces no diff.
+
+on:
+  schedule:
+    # 06:00 UTC on the 5th of each month — well after the BLS midmonth
+    # CPI release (typically the 10th-15th, but we re-run early to catch
+    # the previous month's revision window) and BEA Regional releases.
+    - cron: '0 6 5 * *'
+  workflow_dispatch:
+
+# Prevent overlapping runs from corrupting the bundled data files mid-write.
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needs to push the auto-commit back to main
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Use a PAT or default GITHUB_TOKEN for the push later.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+
+      - name: Refresh BLS multi-MSA panel
+        env:
+          BLS_API_KEY: ${{ secrets.BLS_API_KEY }}
+        run: |
+          if [ -z "${BLS_API_KEY}" ]; then
+            echo "::warning::BLS_API_KEY not set; skipping BLS panel refresh"
+          else
+            python -m census_forecaster.scripts.refresh_bls_panel \
+              --start-year 2010
+          fi
+
+      - name: Refresh BEA anchors
+        env:
+          BEA_API_KEY: ${{ secrets.BEA_API_KEY }}
+        run: |
+          if [ -z "${BEA_API_KEY}" ]; then
+            echo "::warning::BEA_API_KEY not set; skipping BEA refresh"
+          else
+            python -m census_forecaster.scripts.refresh_bea_anchors --verify
+          fi
+
+      - name: Regenerate BLS v3 calibration
+        run: |
+          # Only regenerate if the BLS panel exists. If neither key is
+          # set, the calibration step would crash on a missing panel.
+          if [ -f src/census_forecaster/data/bls_panel/cpi_panel.json ]; then
+            python -m census_forecaster.backtest.cpi --stratify
+          else
+            echo "::warning::BLS panel not present; skipping calibration"
+          fi
+
+      - name: Run tests against refreshed data
+        run: pytest tests/ -v --tb=short
+
+      - name: Commit + push if data changed
+        run: |
+          git config user.name 'census-forecaster-refresh-bot'
+          git config user.email 'noreply@anthropic.com'
+
+          # Only commit data and report files; never accidentally pick
+          # up source-code edits that someone might have made between
+          # checkout and now (shouldn't happen, but defense in depth).
+          git add \
+            src/census_forecaster/data/bls_panel/ \
+            src/census_forecaster/data/anchors/ \
+            backtests/results/
+
+          if git diff --staged --quiet; then
+            echo "[refresh] no data changes; nothing to commit"
+            exit 0
+          fi
+
+          REFRESH_DATE=$(date -u +'%Y-%m-%d')
+          git commit -m "chore(data): monthly refresh ${REFRESH_DATE} [skip ci]
+
+Auto-refresh from monthly cron run.
+
+* BLS multi-MSA panel re-fetched from the BLS public API
+* BEA anchors re-fetched from the BEA Regional API
+* BLS v3 calibration regenerated against the new panel
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
+          git push

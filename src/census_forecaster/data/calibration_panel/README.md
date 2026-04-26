@@ -84,3 +84,28 @@ generator. This means cells in the `long` horizon bucket have
 systematically fewer folds than `short` cells in any vintage that spans
 2020. Track per-cell `n_folds` carefully when interpreting calibration
 output.
+
+## CI auto-refresh
+
+A GitHub Actions workflow (`.github/workflows/refresh-data.yml`) runs
+on the 5th of each month and auto-commits the regenerated bundled
+data plus the v3 calibration JSON. The workflow needs three repository
+secrets:
+
+| Secret | Source | Purpose |
+|---|---|---|
+| `CENSUS_API_KEY` | https://api.census.gov/data/key_signup.html | ACS panel rebuild (rare; only when v1.5 multi-state expansion runs) |
+| `BLS_API_KEY` | https://www.bls.gov/developers/api_signature_v2.htm | Multi-MSA CPI panel + v3 BLS calibration |
+| `BEA_API_KEY` | https://apps.bea.gov/api/signup/ | Three BEA anchor JSONs (Hawaii personal income, Honolulu metro RPP, Hawaii state RPP housing) |
+
+Set them via:
+
+```bash
+gh secret set BLS_API_KEY --body "<key>"
+gh secret set BEA_API_KEY --body "<key>"
+gh secret set CENSUS_API_KEY --body "<key>"
+```
+
+Manual runs: `gh workflow run refresh-data.yml`. The workflow exits
+cleanly without committing if no data files changed since the last
+refresh — running it back-to-back is a no-op.

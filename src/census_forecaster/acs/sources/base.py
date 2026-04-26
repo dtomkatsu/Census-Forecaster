@@ -84,6 +84,13 @@ class AnchorSource:
     ) -> "AnchorSource":
         with open(path) as f:
             data = json.load(f)
+        # Stale-data warning: if `last_refresh` (YYYY-MM) is more than 6
+        # months old, surface it in stderr. Doesn't error — bundled data
+        # is still usable; the warning prompts the maintainer to run
+        # `python -m census_forecaster.scripts.refresh_bea_anchors`
+        # (for BEA-sourced files) when convenient. The CI auto-refresh
+        # workflow eliminates this in normal operation.
+        cls._maybe_warn_stale(path.stem, data.get("last_refresh"))
         return cls(
             name=path.stem,
             path=path,
@@ -92,6 +99,30 @@ class AnchorSource:
             rate_se_floor=rate_se_floor,
             _data=data,
         )
+
+    @staticmethod
+    def _maybe_warn_stale(name: str, last_refresh: str | None) -> None:
+        """Emit a stderr warning if `last_refresh` is older than 6 months."""
+        if not last_refresh or not isinstance(last_refresh, str):
+            return
+        try:
+            year_str, month_str = last_refresh.split("-", 1)
+            year = int(year_str)
+            month = int(month_str)
+        except ValueError:
+            return
+        # Compute calendar months between last_refresh and "now"
+        from datetime import date
+        today = date.today()
+        delta_months = (today.year - year) * 12 + (today.month - month)
+        if delta_months > 6:
+            import sys as _sys
+            print(
+                f"[anchor:{name}] last_refresh {last_refresh} is "
+                f"{delta_months} months old (>6); consider running the "
+                f"refresh script to pick up newer data.",
+                file=_sys.stderr,
+            )
 
     @property
     def metadata(self) -> dict:
