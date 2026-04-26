@@ -172,6 +172,97 @@ the manifest exposes counts at all granularities.
 
 ---
 
+---
+
+## v3 stratified calibration — BLS side (April 2026)
+
+The BLS CPI projection layer received the same stratification treatment
+as ACS, with three structural differences reflecting the different
+data geometry.
+
+### 1. Three-axis stratification
+
+ACS uses (indicator, method, pop_bucket, h_bucket). BLS uses
+**(series_id, h_bucket, vol_regime)**:
+
+* `series_id` — the BLS series (e.g. `CUURS49ASA0`, `CUUR0000SEHA`).
+* `h_bucket` — `short` for h ∈ {1–5} months, `long` for h ∈ {6+} months.
+* `vol_regime` — `low` if the rolling 24-month return SD ≤ per-series
+  median; `high` otherwise.
+
+The volatility regime axis captures the 2021–2023 inflation spike vs
+the 2010s calm period. Rent CPI's median 24-month SD is ~0.001/mo;
+gasoline's is ~0.05/mo (50× larger). A single κ over both regimes
+either over-pads the calm or under-pads the spike.
+
+### 2. Log-space CI rescaling
+
+ACS rescales SE in dollar space (`new_half = factor × old_half`). BLS
+rescales SE in **log space** because the projection is log-space
+multiplicative:
+
+```
+CI_new = point × exp(±Z · factor · SE_log)
+```
+
+This matters for the bisection: changing `factor` produces a
+**multiplicative** widening/narrowing of the CI, not additive. The
+shared bisection algorithm in `acs/calibration_common.py` is
+parameterised over a `coverage_fn(factor)` so both modules use the same
+search procedure.
+
+### 3. Multi-MSA panel
+
+The v2 calibration ran on 5 Honolulu series. v3 runs on **55 series**:
+11 areas (national + Honolulu + 9 top-population MSAs) × 5 CPI
+subindexes (all-items, food-at-home, rent, housing, gasoline). The
+panel is bundled at `data/bls_panel/cpi_panel.json` (~750 KB) and
+refreshed via `python -m census_forecaster.scripts.refresh_bls_panel`
+with a `BLS_API_KEY`.
+
+Empirical κ values from the v3 calibration on this panel:
+
+| Cell | Approx. κ |
+|---|---:|
+| Rent, short horizon, low vol | 1.5 |
+| Rent, long horizon, low vol | 3.0 |
+| All-items, long, low | 2.0–3.0 |
+| Housing, long, high vol | 4.0 |
+| Gasoline, short | 1.5–2.0 |
+| Gasoline, long | 2.0 |
+
+The legacy global κ=1.50 was severely under-padding long-horizon CIs
+(true κ at h=long is 2.0–4.0 across most series) and modestly
+over-padding short-horizon rent (κ at h=short for rent is 1.5).
+
+### 4. BEA anchor integration
+
+The macro-anchor pool gained three BEA Regional series in v3:
+
+| File | BEA Identifier | Anchors |
+|---|---|---|
+| `bea_hi_percapita_income.json` | SAINC1 LineCode=3, GeoFips=15000 | B19013, S1701 |
+| `bea_honolulu_rpp_all.json` | MARPP LineCode=1, GeoFips=46520 | B19013 |
+| `bea_hi_rpp_housing.json` | SARPP LineCode=3, GeoFips=15000 | B25058, B25064 |
+
+After registration, `B19013_001E` has 5 anchor sources (was 3); rent
+indicators have 3 (was 2); poverty rate (`S1701_C03_001E`) has its
+first anchor (was 0).
+
+On the Hawaii calibration, BEA per-capita personal income gets the
+**highest weight** in the income anchor ensemble (~25%), beating QCEW
+wages (~23%), the Cleveland Fed-style CPI all-items (~19%), the PCE
+deflator (~19%), and Honolulu metro RPP (~13%).
+
+### Auto-refresh
+
+A monthly GitHub Actions workflow (`.github/workflows/refresh-data.yml`)
+re-fetches the BLS panel, BEA anchors, and regenerates the v3 BLS
+calibration. The workflow auto-commits the data refresh with `[skip ci]`
+so the test workflow doesn't recurse on data-only changes.
+
+---
+
 ## Backwards compatibility
 
 A v2 calibration payload (no `strata_records` key) loads and runs
