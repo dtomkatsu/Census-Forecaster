@@ -47,8 +47,23 @@ from .sources import (
 )
 from .calibration import (
     HoldOutFold,
+    FoldResidual,
     run_holdout_calibration,
+    run_stratified_calibration,
     write_calibration,
+    DEFAULT_BIAS_CLAMP_LOG,
+)
+from .strata import (
+    PopBucket,
+    HBucket,
+    StrataRecord,
+    DEFAULT_N_THRESHOLD,
+    classify_pop,
+    classify_horizon,
+    index_records,
+    record_to_dict,
+    record_from_dict,
+    WILDCARD,
 )
 
 __all__ = [
@@ -82,6 +97,20 @@ __all__ = [
     "available_sources",
     # Calibration
     "HoldOutFold",
+    "FoldResidual",
     "run_holdout_calibration",
+    "run_stratified_calibration",
     "write_calibration",
+    "DEFAULT_BIAS_CLAMP_LOG",
+    # Strata (v3)
+    "PopBucket",
+    "HBucket",
+    "StrataRecord",
+    "DEFAULT_N_THRESHOLD",
+    "classify_pop",
+    "classify_horizon",
+    "index_records",
+    "record_to_dict",
+    "record_from_dict",
+    "WILDCARD",
 ]

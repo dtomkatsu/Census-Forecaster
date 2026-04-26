@@ -536,14 +536,642 @@ def _normal_inv_cdf(p: float) -> float:
 def write_calibration(
     payload: dict, path: Path
 ) -> None:
-    """Persist calibration JSON. Drops `folds_*` arrays from the on-disk
-    summary file (those go into the back-test report); keeps the small
-    RMSE / coverage / override tables that the projection loads at runtime.
+    """Persist calibration JSON. Drops `folds_*` and `fold_residuals` arrays
+    from the on-disk summary file (those go into the back-test report);
+    keeps the small RMSE / coverage / override / strata tables that the
+    projection loads at runtime.
     """
-    summary = {
-        k: v for k, v in payload.items()
-        if k not in ("folds_pass1", "folds_pass2")
-    }
+    DROPPED_KEYS = {"folds_pass1", "folds_pass2", "fold_residuals"}
+    summary = {k: v for k, v in payload.items() if k not in DROPPED_KEYS}
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
         json.dump(summary, f, indent=2, sort_keys=True)
+
+
+# =============================================================================
+# v3 stratified calibration
+# =============================================================================
+#
+# The v3 layer extends v2 along three axes:
+#
+# 1. Multi-horizon: holdouts run at h ∈ {1, 2, 3, 4, 5} instead of fixed h=2.
+# 2. Population stratification: each county is classified into a 4-level
+#    population bucket from its 2020 ACS B01003_001E and the calibration
+#    is computed per-cell.
+# 3. Geometric bias correction: per-cell `b = mean(log(point/actual))`,
+#    clamped to ±10%, gated at n ≥ n_threshold, applied as
+#    `point_corrected = point_raw / exp(b)`.
+#
+# The v3 generator caches per-fold residuals so the SE-override bisection
+# can run on cached residuals instead of re-projecting the full panel each
+# iteration. This is ~100× faster on the multi-state, multi-horizon panel.
+
+# Default ±10% multiplicative bias clamp, expressed in log space so the
+# math composes cleanly with log-space projection. log(1.10) ≈ 0.0953.
+DEFAULT_BIAS_CLAMP_LOG: float = math.log(1.10)
+
+
+@dataclass(frozen=True)
+class FoldResidual:
+    """One cached projection-vs-truth pairing for a single (geoid, indicator,
+    method, anchor, horizon) fold.
+
+    Cached so that the bias-correction and SE-override passes can operate
+    in-memory: applying a multiplicative factor to `se_total` (or shifting
+    the level by a bias multiplier) and recomputing coverage on the cached
+    list is O(folds), versus the v2 approach of re-projecting the entire
+    panel inside the override iteration which was O(folds × verify_passes).
+    """
+    indicator: str
+    method: str
+    geoid: str
+    anchor_year: int
+    horizon: int
+    pop_bucket: str  # WILDCARD if county population unknown
+    h_bucket: str
+    actual: float
+    point: float
+    se_total: float
+    se_sample: float
+    se_forecast: float
+    ci90_low: float
+    ci90_high: float
+
+
+def _apply_bias_to_residual(r: FoldResidual, b: float) -> FoldResidual:
+    """Geometric bias correction.
+
+    Multiplies the point and CI bounds by `exp(-b)`; SE components scale
+    by the same factor (since SE in log space is invariant under level
+    shifts, but in dollar space `σ_y = σ_logy · y`, so dollar-space SE
+    rescales proportionally with the level shift).
+    """
+    if b == 0.0:
+        return r
+    factor = math.exp(-b)
+    return FoldResidual(
+        indicator=r.indicator,
+        method=r.method,
+        geoid=r.geoid,
+        anchor_year=r.anchor_year,
+        horizon=r.horizon,
+        pop_bucket=r.pop_bucket,
+        h_bucket=r.h_bucket,
+        actual=r.actual,
+        point=r.point * factor,
+        se_total=r.se_total * factor,
+        se_sample=r.se_sample * factor,
+        se_forecast=r.se_forecast * factor,
+        ci90_low=r.ci90_low * factor,
+        ci90_high=r.ci90_high * factor,
+    )
+
+
+def _coverage_at_factor(residuals: Sequence[FoldResidual], factor: float) -> float:
+    """Empirical CI90 coverage if SE were rescaled by `factor`.
+
+    The new CI is `point ± factor · (point − ci90_low)`. Since the input
+    CI is symmetric (built via `ci_from_se` with `Z=1.645`), this rescales
+    the half-width directly without needing to re-evaluate the Gaussian
+    quantile. Returns NaN on empty input — caller decides what to do.
+    """
+    if not residuals:
+        return float("nan")
+    n_in = 0
+    for r in residuals:
+        half = factor * (r.point - r.ci90_low)
+        new_low = r.point - half
+        new_high = r.point + half
+        if new_low <= r.actual <= new_high:
+            n_in += 1
+    return n_in / len(residuals)
+
+
+def _bisect_se_factor(
+    residuals: Sequence[FoldResidual],
+    target_low: float = COVERAGE_LOWER_BOUND,
+    target_high: float = COVERAGE_UPPER_BOUND,
+    max_iter: int = 30,
+    tol: float = 5e-3,
+) -> tuple[float, float]:
+    """Find a multiplicative SE factor that brings coverage into band.
+
+    Uses straight bisection on `_coverage_at_factor`, which is monotonic
+    in `factor` (larger factor → wider CIs → higher coverage). Returns
+    `(factor, achieved_coverage)`. If the initial coverage is already in
+    band, returns `(1.0, cov0)` unchanged. If no factor in [0.1, 5.0]
+    produces in-band coverage, returns the bisection midpoint with its
+    achieved coverage — caller can decide whether to accept.
+    """
+    cov0 = _coverage_at_factor(residuals, 1.0)
+    if not math.isfinite(cov0):
+        return (1.0, cov0)
+    if target_low <= cov0 <= target_high:
+        return (1.0, cov0)
+
+    # Set search interval based on whether we need to widen or narrow.
+    if cov0 < target_low:
+        lo, hi = 1.0, 5.0  # widen up to 5×
+    else:
+        lo, hi = 0.1, 1.0  # narrow down to 10× tighter
+
+    # Verify the search interval actually brackets the band; if not,
+    # return the closer endpoint.
+    cov_lo = _coverage_at_factor(residuals, lo)
+    cov_hi = _coverage_at_factor(residuals, hi)
+    if cov_lo > target_high:
+        return (lo, cov_lo)
+    if cov_hi < target_low:
+        return (hi, cov_hi)
+
+    for _ in range(max_iter):
+        mid = (lo + hi) / 2.0
+        cov = _coverage_at_factor(residuals, mid)
+        if target_low <= cov <= target_high:
+            return (round(mid, 4), cov)
+        if cov < target_low:
+            lo = mid
+        else:
+            hi = mid
+        if hi - lo < tol:
+            break
+    final = (lo + hi) / 2.0
+    return (round(final, 4), _coverage_at_factor(residuals, final))
+
+
+def _group_residuals(
+    residuals: Sequence[FoldResidual],
+) -> dict[tuple[str, str, str, str], list[FoldResidual]]:
+    """Group residuals into (indicator, method, pop_bucket, h_bucket) cells."""
+    groups: dict[tuple[str, str, str, str], list[FoldResidual]] = {}
+    for r in residuals:
+        key = (r.indicator, r.method, r.pop_bucket, r.h_bucket)
+        groups.setdefault(key, []).append(r)
+    return groups
+
+
+def _marginalise_residuals(
+    residuals: Sequence[FoldResidual],
+    over: str,
+) -> dict[tuple, list[FoldResidual]]:
+    """Re-group residuals after marginalising out one or more dimensions.
+
+    `over` is one of: "h" (collapse h_bucket), "pop_h" (collapse both).
+    The resulting dict has tuple keys `(indicator, method, pop_or_*, h_or_*)`.
+    """
+    out: dict[tuple, list[FoldResidual]] = {}
+    if over == "h":
+        for r in residuals:
+            key = (r.indicator, r.method, r.pop_bucket, "*")
+            out.setdefault(key, []).append(r)
+    elif over == "pop_h":
+        for r in residuals:
+            key = (r.indicator, r.method, "*", "*")
+            out.setdefault(key, []).append(r)
+    else:
+        raise ValueError(f"unknown marginalisation: {over!r}")
+    return out
+
+
+def _estimate_bias_records(
+    residuals: Sequence[FoldResidual],
+    n_threshold: int,
+    bias_clamp_log: float,
+) -> list:
+    """Compute geometric bias `b = mean(log(point/actual))` per cell.
+
+    Emits records at three granularities:
+    1. Exact (indicator, method, pop, h) cells.
+    2. h-marginalised (indicator, method, pop, "*") cells.
+    3. Globally marginalised (indicator, method, "*", "*") cells.
+
+    Only cells with n ≥ n_threshold receive a non-zero applied bias; lower-n
+    cells are still emitted with `value=0.0` so the round-trip is lossless
+    and downstream consumers can see *why* no correction fired.
+
+    The applied bias is clamped to `[-bias_clamp_log, +bias_clamp_log]`;
+    `extra["b_raw"]` records the unclamped value and `extra["clamped"]`
+    flags whether the clamp fired.
+    """
+    from .strata import StrataRecord, WILDCARD
+
+    def _cell_record(key: tuple, items: Sequence[FoldResidual]) -> StrataRecord:
+        ind, method, pop, hb = key
+        log_ratios: list[float] = []
+        for r in items:
+            if r.actual <= 0 or r.point <= 0:
+                continue
+            try:
+                lr = math.log(r.point / r.actual)
+            except ValueError:
+                continue
+            if math.isfinite(lr):
+                log_ratios.append(lr)
+        n = len(log_ratios)
+        if n == 0:
+            b_raw = 0.0
+        else:
+            b_raw = sum(log_ratios) / n
+        # Apply n-threshold gate, then clamp.
+        if n < n_threshold:
+            b_applied = 0.0
+            clamped = 0.0
+        else:
+            b_applied = max(-bias_clamp_log, min(bias_clamp_log, b_raw))
+            clamped = 1.0 if abs(b_applied - b_raw) > 1e-12 else 0.0
+        return StrataRecord(
+            indicator=ind,
+            method=method,
+            pop_bucket=pop,
+            h_bucket=hb,
+            value=b_applied,
+            n_folds=n,
+            extra={"b_raw": b_raw, "clamped": clamped},
+        )
+
+    records = []
+    for key, items in _group_residuals(residuals).items():
+        records.append(_cell_record(key, items))
+    for key, items in _marginalise_residuals(residuals, "h").items():
+        records.append(_cell_record(key, items))
+    for key, items in _marginalise_residuals(residuals, "pop_h").items():
+        records.append(_cell_record(key, items))
+    return records
+
+
+def _build_bias_lookup(
+    bias_records: Sequence,
+    n_threshold: int,
+) -> "Callable[[str, str, str, str], float]":
+    """Build a fallback lookup over bias records → applied bias `b`.
+
+    Mirrors the strata fallback chain (exact → h-marginalised → global)
+    but the floor here is `b=0.0` (no correction).
+    """
+    from .strata import index_records
+
+    lookup = index_records(
+        records=bias_records,
+        n_threshold=n_threshold,
+        floor_value=0.0,
+    )
+
+    def _b(indicator: str, method: str, pop_bucket: str, h_bucket: str) -> float:
+        rec, _src = lookup(indicator, method, pop_bucket, h_bucket)
+        return rec.value
+
+    return _b
+
+
+def _bisect_per_cell_records(
+    residuals: Sequence[FoldResidual],
+    n_threshold: int,
+    base_inflator: float,
+) -> tuple[list, list, list]:
+    """Run per-cell SE bisection, returning (se_records, cov_pre, cov_post).
+
+    `base_inflator` is the global EMPIRICAL_SE_INFLATOR (=1.30). The
+    bisection finds a *multiplicative* factor; the absolute κ stored on
+    disk is `factor × base_inflator`. Cells with n < n_threshold get
+    factor=1.0 (the floor lookup will fall through to a more-aggregated
+    cell at projection time).
+
+    Coverage records are emitted at the same granularities as bias
+    records — exact, h-marginalised, and globally marginalised — so the
+    fallback chain is consistent across all calibrated quantities.
+    """
+    from .strata import StrataRecord
+
+    def _cells(group_fn) -> dict[tuple, list[FoldResidual]]:
+        return group_fn(residuals)
+
+    def _records_for_groups(
+        groups: dict[tuple, list[FoldResidual]],
+    ) -> tuple[list, list, list]:
+        se_recs: list = []
+        cov_pre_recs: list = []
+        cov_post_recs: list = []
+        for key, items in groups.items():
+            ind, method, pop, hb = key
+            n = len(items)
+            cov_pre = _coverage_at_factor(items, 1.0)
+            if n < n_threshold or not math.isfinite(cov_pre):
+                # Skip bisection; emit factor=1.0 = base_inflator
+                factor, cov_post = 1.0, cov_pre
+            else:
+                factor, cov_post = _bisect_se_factor(items)
+            absolute_kappa = factor * base_inflator
+            se_recs.append(StrataRecord(
+                indicator=ind, method=method, pop_bucket=pop, h_bucket=hb,
+                value=absolute_kappa, n_folds=n,
+                extra={
+                    "factor": factor,
+                    "coverage_pre": cov_pre,
+                    "coverage_post": cov_post,
+                },
+            ))
+            cov_pre_recs.append(StrataRecord(
+                indicator=ind, method=method, pop_bucket=pop, h_bucket=hb,
+                value=cov_pre, n_folds=n,
+            ))
+            cov_post_recs.append(StrataRecord(
+                indicator=ind, method=method, pop_bucket=pop, h_bucket=hb,
+                value=cov_post, n_folds=n,
+            ))
+        return se_recs, cov_pre_recs, cov_post_recs
+
+    # Exact cells
+    se_x, cov_pre_x, cov_post_x = _records_for_groups(_group_residuals(residuals))
+    # h-marginalised
+    se_hm, cov_pre_hm, cov_post_hm = _records_for_groups(_marginalise_residuals(residuals, "h"))
+    # Globally marginalised
+    se_g, cov_pre_g, cov_post_g = _records_for_groups(_marginalise_residuals(residuals, "pop_h"))
+    return (
+        se_x + se_hm + se_g,
+        cov_pre_x + cov_pre_hm + cov_pre_g,
+        cov_post_x + cov_post_hm + cov_post_g,
+    )
+
+
+def _rmse_records_from_residuals(
+    residuals: Sequence[FoldResidual],
+    n_threshold: int,
+) -> list:
+    """Per-cell RMSE-pct records at all three granularities.
+
+    RMSE is computed on the *bias-corrected* residuals if the caller
+    passed those in; otherwise on raw residuals. This routine doesn't
+    distinguish — it just operates on whatever residuals it gets.
+    """
+    from .strata import StrataRecord
+
+    def _rmse(items: Sequence[FoldResidual]) -> float:
+        sq = []
+        for r in items:
+            if r.actual <= 0:
+                continue
+            sq.append(((r.point - r.actual) / r.actual) ** 2)
+        if not sq:
+            return float("nan")
+        return math.sqrt(sum(sq) / len(sq))
+
+    def _records_for(groups: dict[tuple, list[FoldResidual]]) -> list:
+        out: list = []
+        for key, items in groups.items():
+            ind, method, pop, hb = key
+            out.append(StrataRecord(
+                indicator=ind, method=method, pop_bucket=pop, h_bucket=hb,
+                value=_rmse(items), n_folds=len(items),
+            ))
+        return out
+
+    return (
+        _records_for(_group_residuals(residuals))
+        + _records_for(_marginalise_residuals(residuals, "h"))
+        + _records_for(_marginalise_residuals(residuals, "pop_h"))
+    )
+
+
+def _marginalised_v2_table(
+    records: Sequence,
+    *,
+    use_h_marg: bool = True,
+) -> dict[str, dict[str, float]]:
+    """Build a v2-shaped {indicator: {method: float}} table from strata records.
+
+    Picks the globally marginalised ("*", "*") cell when present, falling
+    back to the h-marginalised then exact "small" cell as needed. This is
+    the table consumed by v2-only consumers that don't know about strata.
+
+    The marginalised cell is computed once by the calibration generator
+    (over all populations and horizons in the panel) so this function
+    only needs to look it up — no aggregation required.
+    """
+    from .strata import WILDCARD
+    out: dict[str, dict[str, float]] = {}
+    for r in records:
+        if r.pop_bucket == WILDCARD and r.h_bucket == WILDCARD:
+            out.setdefault(r.indicator, {})[r.method] = r.value
+    return out
+
+
+def _marginalised_v2_se_overrides(
+    se_records: Sequence,
+    base_inflator: float,
+    *,
+    epsilon: float = 1e-3,
+) -> dict[str, dict[str, float]]:
+    """Build the v2 sparse override table from v3 SE records.
+
+    Only emits entries where the globally marginalised κ differs from
+    `base_inflator` by more than `epsilon` — preserves the v2 semantic
+    that overrides are sparse and only listed when meaningful.
+    """
+    from .strata import WILDCARD
+    out: dict[str, dict[str, float]] = {}
+    for r in se_records:
+        if r.pop_bucket != WILDCARD or r.h_bucket != WILDCARD:
+            continue
+        if abs(r.value - base_inflator) > epsilon:
+            out.setdefault(r.indicator, {})[r.method] = r.value
+    return out
+
+
+# -----------------------------------------------------------------------------
+# Public v3 calibration entry point
+# -----------------------------------------------------------------------------
+
+def run_stratified_calibration(
+    series_by_key: dict[tuple[str, str], Sequence[AcsObservation]],
+    anchor_years: Sequence[int],
+    horizons: Sequence[int] = (1, 2, 3, 4, 5),
+    populations: Optional[dict[str, int]] = None,
+    n_threshold: int = 20,
+    bias_clamp_log: float = DEFAULT_BIAS_CLAMP_LOG,
+) -> dict:
+    """v3 stratified hold-out calibration.
+
+    Multi-horizon, population-stratified, geometric-bias-corrected. Caches
+    per-fold residuals so SE-override bisection and bias estimation operate
+    in-memory; runs roughly 100× faster than the v2 verify-pass approach
+    on the multi-state, 5-horizon panel.
+
+    Parameters
+    ----------
+    series_by_key : {(geoid, indicator) → [AcsObservation, …]}
+        Full historical series; the function truncates internally per
+        anchor.
+    anchor_years : sequence of integer anchor years.
+    horizons : sequence of forecast horizons in years (default 1..5).
+    populations : optional {geoid → 2020 population}. Used to classify
+        each county into a population bucket. If None, every county
+        falls into the wildcard pop bucket (effectively a 1-pop-bucket
+        configuration that still benefits from horizon stratification).
+    n_threshold : minimum folds required for a cell to receive a
+        non-default calibration. Below threshold, the cell's records
+        are emitted with floor values (κ = base_inflator, b = 0).
+    bias_clamp_log : magnitude of the symmetric clamp on the bias term
+        in log space. Default `log(1.10)` ≈ ±10% multiplicative.
+
+    Returns
+    -------
+    dict — schema_version=3 payload with both strata records and
+    marginalised v2-style tables for backwards compatibility.
+    """
+    from .strata import classify_pop, classify_horizon, WILDCARD, record_to_dict
+
+    populations = populations or {}
+    anchor_list = list(anchor_years)
+    horizon_list = list(horizons)
+
+    # ---- Pass 1: per-source RMSE (h-marginalised; reused from v2 path) ----
+    folds_pass1: list[HoldOutFold] = []
+    for (geoid, indicator), full in series_by_key.items():
+        full_sorted = sorted(full, key=lambda o: (effective_year(o), o.vintage))
+        for anchor in anchor_list:
+            for h in horizon_list:
+                target_year = anchor + h
+                actual_obs = next(
+                    (o for o in full_sorted
+                     if effective_year(o) == target_year and o.vintage == "1y"),
+                    None,
+                )
+                if actual_obs is None or actual_obs.estimate <= 0:
+                    continue
+                train = _truncate(full_sorted, anchor)
+                if not train:
+                    continue
+                for src in available_sources(indicator):
+                    fp = _per_source_anchor_forecast(
+                        train, target_year, anchor, indicator, src.name
+                    )
+                    if fp is None:
+                        continue
+                    folds_pass1.append(HoldOutFold(
+                        indicator=indicator, geoid=geoid,
+                        anchor_year=anchor, target_year=target_year, horizon=h,
+                        method=f"source:{src.name}",
+                        actual=actual_obs.estimate, projected=fp.point,
+                        ci90_low=fp.ci90_low, ci90_high=fp.ci90_high,
+                    ))
+    rmse_by_indicator_source: dict[str, dict] = {}
+    for f in folds_pass1:
+        if f.actual <= 0:
+            continue
+        ind = f.indicator
+        src = f.method.split(":", 1)[1]
+        rmse_by_indicator_source.setdefault(ind, {}).setdefault(src, [])  # type: ignore[arg-type]
+        rmse_by_indicator_source[ind][src].append(  # type: ignore[union-attr]
+            ((f.projected - f.actual) / f.actual) ** 2
+        )
+    for ind in list(rmse_by_indicator_source.keys()):
+        for src, sq_errs in list(rmse_by_indicator_source[ind].items()):  # type: ignore[union-attr]
+            if not sq_errs:
+                del rmse_by_indicator_source[ind][src]
+                continue
+            rmse_by_indicator_source[ind][src] = math.sqrt(sum(sq_errs) / len(sq_errs))
+
+    # ---- Pass 2: produce FoldResidual cache for both methods ----
+    fold_residuals: list[FoldResidual] = []
+    for (geoid, indicator), full in series_by_key.items():
+        full_sorted = sorted(full, key=lambda o: (effective_year(o), o.vintage))
+        pop_bucket = classify_pop(populations.get(geoid)) or WILDCARD
+        for anchor in anchor_list:
+            for h in horizon_list:
+                target_year = anchor + h
+                actual_obs = next(
+                    (o for o in full_sorted
+                     if effective_year(o) == target_year and o.vintage == "1y"),
+                    None,
+                )
+                if actual_obs is None or actual_obs.estimate <= 0:
+                    continue
+                train = _truncate(full_sorted, anchor)
+                if not train:
+                    continue
+                h_bucket = classify_horizon(h) or WILDCARD
+
+                tr = _project_trend_only(train, target_year)
+                if tr is not None:
+                    fold_residuals.append(FoldResidual(
+                        indicator=indicator, method="trend_ensemble",
+                        geoid=geoid, anchor_year=anchor, horizon=h,
+                        pop_bucket=pop_bucket, h_bucket=h_bucket,
+                        actual=actual_obs.estimate,
+                        point=tr.point, se_total=tr.se_total,
+                        se_sample=tr.se_sample, se_forecast=tr.se_forecast,
+                        ci90_low=tr.ci90_low, ci90_high=tr.ci90_high,
+                    ))
+                an = _project_anchor_only(
+                    train, target_year, anchor, indicator,
+                    per_source_rmse=rmse_by_indicator_source,
+                )
+                if an is not None:
+                    fold_residuals.append(FoldResidual(
+                        indicator=indicator, method="multi_anchor",
+                        geoid=geoid, anchor_year=anchor, horizon=h,
+                        pop_bucket=pop_bucket, h_bucket=h_bucket,
+                        actual=actual_obs.estimate,
+                        point=an.point, se_total=an.se_total,
+                        se_sample=an.se_sample, se_forecast=an.se_forecast,
+                        ci90_low=an.ci90_low, ci90_high=an.ci90_high,
+                    ))
+
+    # ---- Pass A: bias estimation per cell (with marginalisation) ----
+    bias_records = _estimate_bias_records(fold_residuals, n_threshold, bias_clamp_log)
+
+    # ---- Pass A.5: apply bias to fold residuals in memory ----
+    bias_lookup = _build_bias_lookup(bias_records, n_threshold)
+    bias_corrected: list[FoldResidual] = []
+    for r in fold_residuals:
+        b = bias_lookup(r.indicator, r.method, r.pop_bucket, r.h_bucket)
+        bias_corrected.append(_apply_bias_to_residual(r, b))
+
+    # ---- Pass B: per-cell SE override on bias-corrected residuals ----
+    se_records, cov_pre_records, cov_post_records = _bisect_per_cell_records(
+        bias_corrected, n_threshold, base_inflator=EMPIRICAL_SE_INFLATOR,
+    )
+
+    # ---- Pass C: per-cell RMSE on bias-corrected residuals ----
+    rmse_records = _rmse_records_from_residuals(bias_corrected, n_threshold)
+
+    # ---- Build marginalised v2-style tables for back-compat ----
+    rmse_v2 = _marginalised_v2_table(rmse_records)
+    cov_pre_v2 = _marginalised_v2_table(cov_pre_records)
+    cov_post_v2 = _marginalised_v2_table(cov_post_records)
+    se_override_v2 = _marginalised_v2_se_overrides(se_records, EMPIRICAL_SE_INFLATOR)
+
+    return {
+        "schema_version": 3,
+        "run_date": date.today().isoformat(),
+        "anchor_years": anchor_list,
+        "horizons": horizon_list,
+        # Pass 1 (h-marginalised): per-source RMSE
+        "rmse_by_indicator_source": rmse_by_indicator_source,
+        # v3 strata records
+        "strata_records": {
+            "rmse": [record_to_dict(r) for r in rmse_records],
+            "coverage_pre": [record_to_dict(r) for r in cov_pre_records],
+            "coverage_post": [record_to_dict(r) for r in cov_post_records],
+            "se_inflator": [record_to_dict(r) for r in se_records],
+            "bias": [record_to_dict(r) for r in bias_records],
+        },
+        # Marginalised v2-style tables for back-compat
+        "rmse_by_indicator_method": rmse_v2,
+        "ci90_coverage_by_indicator_method": cov_pre_v2,
+        "ci90_coverage_post_override": cov_post_v2,
+        "se_inflator_override_by_indicator_method": se_override_v2,
+        # Diagnostic dump (stripped at write time by `write_calibration`)
+        "fold_residuals": [
+            {
+                "indicator": r.indicator, "method": r.method, "geoid": r.geoid,
+                "anchor_year": r.anchor_year, "horizon": r.horizon,
+                "pop_bucket": r.pop_bucket, "h_bucket": r.h_bucket,
+                "actual": r.actual, "point": r.point,
+                "se_total": r.se_total, "ci90_low": r.ci90_low, "ci90_high": r.ci90_high,
+                "in_ci": int(r.ci90_low <= r.actual <= r.ci90_high),
+            }
+            for r in fold_residuals
+        ],
+        "folds_pass1": [_fold_to_dict(f) for f in folds_pass1],
+    }
