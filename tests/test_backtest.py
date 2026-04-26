@@ -132,3 +132,72 @@ class TestRunBacktest:
         for m in summaries.values():
             assert m.n == 0
             assert math.isnan(m.mean_abs_pct_error)
+
+
+class TestMultiHorizonBacktest:
+    """Phase 5: backtest harness supports a list of horizons."""
+
+    def _build_panel(self):
+        panel = {}
+        for geoid in ("15003", "15001"):
+            obs = [
+                AcsObservation(
+                    estimate=100 * (1.025 ** i), moe=500,
+                    year=y, vintage="1y",
+                    geoid=geoid, indicator="B19013_001E",
+                )
+                for i, y in enumerate(range(2010, 2025))
+            ]
+            panel[(geoid, "B19013_001E")] = obs
+        return panel
+
+    def test_horizons_kwarg_pools_folds(self):
+        panel = self._build_panel()
+        # With horizons=[1, 2, 3], each anchor produces up to 3× the folds
+        s_single = run_backtest(panel, anchors=[2015, 2017, 2019], horizon=2)
+        s_multi = run_backtest(panel, anchors=[2015, 2017, 2019], horizons=[1, 2, 3])
+        # ensemble should run on both; multi pools more rows
+        assert s_multi["ensemble"].n > s_single["ensemble"].n
+
+    def test_summarise_by_horizon_splits_correctly(self):
+        from census_forecaster.backtest.acs import summarise_by_horizon
+        panel = self._build_panel()
+        s = run_backtest(panel, anchors=[2015, 2017, 2019], horizons=[1, 2, 3])
+        rolls = summarise_by_horizon(s["ensemble"].rows, "ensemble")
+        # All three horizons should be present
+        assert set(rolls.keys()) == {1, 2, 3}
+        # Per-horizon row counts should sum to total
+        total = sum(r.n for r in rolls.values())
+        assert total == s["ensemble"].n
+
+    def test_summarise_by_strata_classifies_buckets(self):
+        from census_forecaster.backtest.acs import summarise_by_strata
+        panel = self._build_panel()
+        # Toy populations: 15003 -> xlarge (1.0M), 15001 -> medium (168K)
+        pops = {"15003": 1_009_506, "15001": 168_307}
+        s = run_backtest(panel, anchors=[2015, 2017, 2019], horizons=[1, 2, 3])
+        rolls = summarise_by_strata(s["ensemble"].rows, populations=pops)
+        # Should have entries for both pop buckets × both horizon buckets
+        bucket_keys = set(rolls.keys())
+        assert ("xlarge", "short") in bucket_keys
+        assert ("medium", "short") in bucket_keys
+        # h=1,2 → "short"; h=3 → "long"
+        assert any(b == "long" for _, b in bucket_keys)
+
+    def test_horizon_back_compat_default(self):
+        """Old callers passing only `horizon=N` still work unchanged."""
+        panel = self._build_panel()
+        s_old = run_backtest(panel, anchors=[2018, 2020], horizon=2)
+        # Should work, produce one h=2 fold per (anchor, geoid)
+        assert s_old["ensemble"].n > 0
+        # All rows should have horizon=2
+        assert all(r.horizon == 2 for r in s_old["ensemble"].rows)
+
+    def test_unknown_geoid_falls_into_unknown_bucket(self):
+        from census_forecaster.backtest.acs import summarise_by_strata
+        panel = self._build_panel()
+        s = run_backtest(panel, anchors=[2018, 2020], horizons=[2])
+        # Empty population dict → all rows go to "unknown" bucket
+        rolls = summarise_by_strata(s["ensemble"].rows, populations={})
+        for (pop_b, h_b), summary in rolls.items():
+            assert pop_b == "unknown"

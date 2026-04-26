@@ -223,10 +223,43 @@ def truncate_to_anchor(
     return [o for o in series_observations if effective_year(o) <= anchor_year]
 
 
+def _summarise_rows(name: str, rows: list[BacktestRow]) -> BacktestSummary:
+    """Compute the rollup metrics for a list of BacktestRows."""
+    if not rows:
+        return BacktestSummary(
+            method=name, n=0,
+            mean_abs_pct_error=math.nan,
+            median_abs_pct_error=math.nan,
+            rmse_pct=math.nan, bias_pct=math.nan,
+            ci90_coverage=math.nan, rows=[],
+        )
+    pct_errs = [(r.projected - r.actual) / r.actual for r in rows]
+    abs_pct = [abs(e) for e in pct_errs]
+    mape = statistics.mean(abs_pct)
+    med_ape = statistics.median(abs_pct)
+    rmse_pct = math.sqrt(statistics.mean(e * e for e in pct_errs))
+    bias = statistics.mean(pct_errs)
+    within_ci = [
+        1.0 if (r.ci90_low <= r.actual <= r.ci90_high) else 0.0
+        for r in rows
+    ]
+    coverage = statistics.mean(within_ci)
+    return BacktestSummary(
+        method=name, n=len(rows),
+        mean_abs_pct_error=mape,
+        median_abs_pct_error=med_ape,
+        rmse_pct=rmse_pct,
+        bias_pct=bias,
+        ci90_coverage=coverage,
+        rows=rows,
+    )
+
+
 def run_backtest(
     series_by_key: dict[tuple[str, str], Sequence[AcsObservation]],
     anchors: Sequence[int],
-    horizon: int = 2,
+    horizon: int | None = None,
+    horizons: Sequence[int] | None = None,
     methods: dict[str, ProjectorFn] | None = None,
 ) -> dict[str, BacktestSummary]:
     """Run walk-forward back-test across all (geoid, indicator) series.
@@ -237,15 +270,27 @@ def run_backtest(
         Each value is the *full* historical series; the back-test
         truncates internally per-anchor.
     anchors : list of integer anchor years.
-    horizon : forecast horizon in years (default 2 — matches the
-        production goal of projecting 2024 → 2026).
+    horizon : forecast horizon in years (back-compat, single value).
+        Default 2 if neither `horizon` nor `horizons` is provided.
+    horizons : sequence of horizons to evaluate. Either this OR
+        `horizon` may be provided; if both are given, `horizons` wins.
+        When multiple horizons are evaluated, all (anchor, h) folds
+        are pooled into the per-method summary; per-horizon sub-rolls
+        are available via `summarise_by_horizon` on the returned rows.
     methods : projector dict; defaults to `DEFAULT_METHODS`.
 
     Returns
     -------
     dict[method_name → BacktestSummary]
+    Each summary's `rows` field carries per-fold detail; downstream
+    code can stratify by `row.horizon`, `row.indicator`, etc. as
+    needed (see `summarise_by_horizon`).
     """
     methods = methods or DEFAULT_METHODS
+    if horizons is None:
+        horizons_list: list[int] = [horizon if horizon is not None else 2]
+    else:
+        horizons_list = list(horizons)
     rows_by_method: dict[str, list[BacktestRow]] = {m: [] for m in methods}
 
     for (geoid, indicator), full_series in series_by_key.items():
@@ -254,61 +299,71 @@ def run_backtest(
             train = truncate_to_anchor(full_sorted, anchor)
             if not train:
                 continue
-            target_year = anchor + horizon
-            actual_obs = next(
-                (o for o in full_sorted if effective_year(o) == target_year and o.vintage == "1y"),
-                None,
-            )
-            if actual_obs is None or actual_obs.estimate <= 0:
-                continue
-            for name, fn in methods.items():
-                fp = fn(train, target_year)
-                if fp is None:
+            for h in horizons_list:
+                target_year = anchor + h
+                actual_obs = next(
+                    (o for o in full_sorted
+                     if effective_year(o) == target_year and o.vintage == "1y"),
+                    None,
+                )
+                if actual_obs is None or actual_obs.estimate <= 0:
                     continue
-                rows_by_method[name].append(BacktestRow(
-                    geoid=geoid,
-                    indicator=indicator,
-                    anchor_year=anchor,
-                    target_year=target_year,
-                    horizon=horizon,
-                    method=name,
-                    actual=actual_obs.estimate,
-                    projected=fp.point,
-                    ci90_low=fp.ci90_low,
-                    ci90_high=fp.ci90_high,
-                    sample_se=fp.se_sample,
-                    forecast_se=fp.se_forecast,
-                ))
+                for name, fn in methods.items():
+                    fp = fn(train, target_year)
+                    if fp is None:
+                        continue
+                    rows_by_method[name].append(BacktestRow(
+                        geoid=geoid,
+                        indicator=indicator,
+                        anchor_year=anchor,
+                        target_year=target_year,
+                        horizon=h,
+                        method=name,
+                        actual=actual_obs.estimate,
+                        projected=fp.point,
+                        ci90_low=fp.ci90_low,
+                        ci90_high=fp.ci90_high,
+                        sample_se=fp.se_sample,
+                        forecast_se=fp.se_forecast,
+                    ))
 
-    summaries: dict[str, BacktestSummary] = {}
-    for name, rows in rows_by_method.items():
-        if not rows:
-            summaries[name] = BacktestSummary(
-                method=name, n=0,
-                mean_abs_pct_error=math.nan,
-                median_abs_pct_error=math.nan,
-                rmse_pct=math.nan, bias_pct=math.nan,
-                ci90_coverage=math.nan, rows=[],
-            )
-            continue
-        pct_errs = [(r.projected - r.actual) / r.actual for r in rows]
-        abs_pct = [abs(e) for e in pct_errs]
-        mape = statistics.mean(abs_pct)
-        med_ape = statistics.median(abs_pct)
-        rmse_pct = math.sqrt(statistics.mean(e * e for e in pct_errs))
-        bias = statistics.mean(pct_errs)
-        within_ci = [
-            1.0 if (r.ci90_low <= r.actual <= r.ci90_high) else 0.0
-            for r in rows
-        ]
-        coverage = statistics.mean(within_ci)
-        summaries[name] = BacktestSummary(
-            method=name, n=len(rows),
-            mean_abs_pct_error=mape,
-            median_abs_pct_error=med_ape,
-            rmse_pct=rmse_pct,
-            bias_pct=bias,
-            ci90_coverage=coverage,
-            rows=rows,
-        )
-    return summaries
+    return {name: _summarise_rows(name, rows) for name, rows in rows_by_method.items()}
+
+
+def summarise_by_horizon(
+    rows: Sequence[BacktestRow], method_name: str = "",
+) -> dict[int, BacktestSummary]:
+    """Sub-rollups of a single method's rows by horizon.
+
+    Useful for inspecting how MAPE / coverage varies with forecast
+    horizon — the v3 calibration's whole motivation.
+    """
+    by_h: dict[int, list[BacktestRow]] = {}
+    for r in rows:
+        by_h.setdefault(r.horizon, []).append(r)
+    return {h: _summarise_rows(f"{method_name}@h={h}", rs) for h, rs in by_h.items()}
+
+
+def summarise_by_strata(
+    rows: Sequence[BacktestRow],
+    populations: dict[str, int] | None = None,
+    method_name: str = "",
+) -> dict[tuple[str, str], BacktestSummary]:
+    """Sub-rollups by (pop_bucket, h_bucket) — full v3 stratification.
+
+    Requires a population lookup so each row's geoid can be classified.
+    Rows whose geoid has no population entry land in pop_bucket=`unknown`.
+    """
+    from ..acs.strata import classify_pop, classify_horizon
+
+    by_strata: dict[tuple[str, str], list[BacktestRow]] = {}
+    pops = populations or {}
+    for r in rows:
+        pop = pops.get(r.geoid)
+        pop_bucket = classify_pop(pop) or "unknown"
+        h_bucket = classify_horizon(r.horizon) or "unknown"
+        by_strata.setdefault((pop_bucket, h_bucket), []).append(r)
+    return {
+        key: _summarise_rows(f"{method_name}/{key[0]}/{key[1]}", rs)
+        for key, rs in by_strata.items()
+    }
