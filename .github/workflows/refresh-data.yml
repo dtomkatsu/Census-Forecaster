@@ -102,13 +102,19 @@ jobs:
           fi
 
           REFRESH_DATE=$(date -u +'%Y-%m-%d')
-          git commit -m "chore(data): monthly refresh ${REFRESH_DATE} [skip ci]
+          # All lines of the commit message must remain indented to the
+          # block-scalar level so YAML treats them as part of the `run:`
+          # script. Inside the bash string, the leading whitespace is
+          # stripped by the shell since git only cares about the first
+          # `\n` to separate subject from body.
+          MSG="chore(data): monthly refresh ${REFRESH_DATE} [skip ci]
 
-Auto-refresh from monthly cron run.
+          Auto-refresh from monthly cron run.
 
-* BLS multi-MSA panel re-fetched from the BLS public API
-* BEA anchors re-fetched from the BEA Regional API
-* BLS v3 calibration regenerated against the new panel
+          - BLS multi-MSA panel re-fetched from the BLS public API
+          - BEA anchors re-fetched from the BEA Regional API
+          - BLS v3 calibration regenerated against the new panel
 
-Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
+          Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
+          git commit -m "$MSG"
           git push
