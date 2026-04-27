@@ -33,6 +33,10 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
 ]
+ml = [
+    "scikit-learn>=1.1",
+    "numpy>=1.21",
+]
 
 [project.urls]
 Homepage = "https://github.com/dtomkatsu/Census-Forecaster"
