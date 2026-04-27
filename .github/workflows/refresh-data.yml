@@ -56,7 +56,7 @@ jobs:
           if [ -z "${BLS_API_KEY}" ]; then
             echo "::warning::BLS_API_KEY not set; skipping BLS panel refresh"
           else
-            python -m census_forecaster.scripts.refresh_bls_panel \
+            python3 -m census_forecaster.scripts.refresh_bls_panel \
               --start-year 2010
           fi
 
@@ -67,7 +67,7 @@ jobs:
           if [ -z "${BEA_API_KEY}" ]; then
             echo "::warning::BEA_API_KEY not set; skipping BEA refresh"
           else
-            python -m census_forecaster.scripts.refresh_bea_anchors --verify
+            python3 -m census_forecaster.scripts.refresh_bea_anchors --verify
           fi
 
       - name: Regenerate BLS v3 calibration
@@ -75,13 +75,26 @@ jobs:
           # Only regenerate if the BLS panel exists. If neither key is
           # set, the calibration step would crash on a missing panel.
           if [ -f src/census_forecaster/data/bls_panel/cpi_panel.json ]; then
-            python -m census_forecaster.backtest.cpi --stratify
+            python3 -m census_forecaster.backtest.cpi --stratify
           else
-            echo "::warning::BLS panel not present; skipping calibration"
+            echo "::warning::BLS panel not present; skipping BLS calibration"
+          fi
+
+      - name: Regenerate ACS v3 calibration
+        run: |
+          # Regenerate ACS calibration.json from the bundled multi-state panel.
+          # The panel (acs_panel.json + county_population_2020.json) is committed
+          # to the repo, so this step needs no API key. If the panel files are
+          # absent (e.g. first-ever checkout before anyone ran build_calibration_panel),
+          # the script exits cleanly with a warning rather than failing the workflow.
+          if [ -f src/census_forecaster/data/calibration_panel/acs_panel.json ]; then
+            python3 -m census_forecaster.scripts.run_acs_calibration
+          else
+            echo "::warning::ACS calibration panel not present; skipping ACS calibration"
           fi
 
       - name: Run tests against refreshed data
-        run: pytest tests/ -v --tb=short
+        run: python3 -m pytest tests/ -v --tb=short
 
       - name: Commit + push if data changed
         run: |
@@ -94,6 +107,7 @@ jobs:
           git add \
             src/census_forecaster/data/bls_panel/ \
             src/census_forecaster/data/anchors/ \
+            src/census_forecaster/data/calibration_panel/ \
             backtests/results/
 
           if git diff --staged --quiet; then

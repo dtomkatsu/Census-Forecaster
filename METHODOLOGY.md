@@ -159,6 +159,86 @@ is roughly 100× faster than the v2 approach. The bisection runs in
 milliseconds per cell; total calibration runtime is dominated by the
 initial Pass-2 fold construction, not by the iterative override search.
 
+### 8. Multi-state calibration panel (April 2026)
+
+The v3 ACS calibration now runs on a **147-county, 8-indicator, 15-year
+panel** rather than the original 4-county Hawaii fixture.
+
+**Panel composition (seed=42, frozen):**
+
+| Bucket | Selection | Count |
+|---|---|---|
+| `xlarge` (≥ 1M) | Top 50 US counties by 2020 population, deterministic | 50 |
+| `medium` (50K–200K) | Random sample, seed-stable | 50 |
+| `small` (<50K) | Random sample, seed-stable | 50 |
+| Hawaii always-include | 15001 / 15003 / 15007 / 15009 | 4 (overlap with above) |
+
+Total: 147 distinct counties across 35 states. The `large` bucket (200K–1M)
+is not sampled separately — it receives counties that naturally land there
+(Honolulu 15003, plus any xlarge-overflow).
+
+**Indicators (v3 adds 4 to the original 4):**
+
+| Code | Description | Table type |
+|---|---|---|
+| `B19013_001E` | Median household income | Detail (B*) |
+| `B25058_001E` | Median contract rent | Detail |
+| `B25064_001E` | Median gross rent | Detail |
+| `B25077_001E` | Median home value | Detail |
+| `B25071_001E` | Median gross rent as % of household income | Detail |
+| `S1501_C02_014E` | % age 25+ with HS diploma or higher | Subject (S*) |
+| `S1501_C02_015E` | % age 25+ with bachelor's or higher | Subject |
+| `S1701_C03_001E` | % below poverty (all people) | Subject |
+
+Subject-table indicators use the `/acs/acs1/subject` Census API endpoint.
+The `AcsClient` routes automatically based on the `S`-prefix.
+
+**Observed κ values from the multi-state calibration (anchors 2014–2022):**
+
+| Indicator / method | κ range across cells |
+|---|---|
+| Income (`B19013`) / trend_ensemble | 1.01–1.30 |
+| Income (`B19013`) / multi_anchor | 0.35–1.30 |
+| Rent (`B25058`, `B25064`) / trend_ensemble | **1.30–2.60** |
+| Rent (`B25058`, `B25064`) / multi_anchor | 0.42–1.30 |
+| Home value (`B25077`) / trend_ensemble | 1.30–1.95 |
+| HS+ % / trend_ensemble | 0.72–1.30 |
+| BA+ % / trend_ensemble | 0.72–1.30 |
+| Poverty % / trend_ensemble | 1.01–1.95 |
+
+Key patterns:
+- **Rent is the most uncertain series** — trend_ensemble κ up to 2.60 on
+  long-horizon, small-county cells (heterogeneous rent dynamics nationwide).
+- **Multi-anchor CIs are inherently conservative** — bisection correctly
+  deflates κ below 1.0 for income/rent/home-value multi_anchor cells.
+  The model's blended uncertainty already exceeds actual error.
+- **Educational attainment is stable** — κ < 1 on some cells; near-zero
+  bias; series is well-specified by the trend model alone.
+
+**Observed bias values (post-clamp, expressed as % level shift):**
+
+| Indicator | Typical bias | Interpretation |
+|---|---|---|
+| Dollar series (income, rent, value) | −7% to −9% | Model under-projected the 2020–2022 inflation surge |
+| Poverty rate / multi_anchor | +6% to +10% | Model over-predicted poverty reduction from income growth |
+| Education attainment | −0.5% to +4% | Essentially unbiased |
+
+The negative bias on dollar series is systematic: the pre-2023 anchor
+sources (CPI, QCEW, PCE) didn't anticipate the post-COVID inflation spike,
+so the ensemble consistently projected below actual. Bias correction shifts
+all dollar forecasts up ~7–9%, reducing the systematic over-optimism.
+
+**Rebuilding the panel:**
+
+```bash
+CENSUS_API_KEY=<key> python3 -m census_forecaster.scripts.build_calibration_panel
+python3 -m census_forecaster.scripts.run_acs_calibration
+```
+
+The panel build issues ~3,050 Census API calls (~5–10 minutes with a key).
+The calibration regeneration reads the bundled panel and needs no key
+(~30 seconds). Both are idempotent.
+
 ### 7. 2020 1-year ACS hole
 
 The 2020 1-year ACS was suspended due to COVID-19 data quality issues.
@@ -257,9 +337,12 @@ deflator (~19%), and Honolulu metro RPP (~13%).
 ### Auto-refresh
 
 A monthly GitHub Actions workflow (`.github/workflows/refresh-data.yml`)
-re-fetches the BLS panel, BEA anchors, and regenerates the v3 BLS
-calibration. The workflow auto-commits the data refresh with `[skip ci]`
-so the test workflow doesn't recurse on data-only changes.
+re-fetches the BLS panel, BEA anchors, and regenerates both the BLS v3
+and ACS v3 calibrations. The workflow auto-commits with `[skip ci]`
+so the test workflow doesn't recurse on data-only changes. The ACS
+calibration regeneration reads the already-bundled panel and needs no
+`CENSUS_API_KEY` — only the BLS/BEA refresh steps need their respective
+secrets.
 
 ---
 
