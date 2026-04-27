@@ -167,3 +167,79 @@ class TestProjectEnsemble:
         fp = project_ensemble(obs, target_year=2026)
         assert "damped_log_trend" in fp.notes
         assert "ar1_log_diff" in fp.notes
+
+
+# -----------------------------------------------------------------------------
+# Tests for project_ensemble_multi with use_ml=True
+# -----------------------------------------------------------------------------
+
+class TestEnsembleMultiWithMl:
+    """Verify that the optional ml_trend third member integrates cleanly."""
+
+    def _toy_panel(self, n_counties=60, n_years=12):
+        series = {}
+        pops = {}
+        for c in range(n_counties):
+            geoid = f"15{c:03d}"
+            pops[geoid] = 50_000 + c * 20_000
+            for ind_idx, ind in enumerate(("B19013_001E", "B25058_001E")):
+                obs_list = []
+                base = 50_000.0 + ind_idx * 5_000 + c * 200
+                for y in range(2010, 2010 + n_years):
+                    val = base * (1.02 ** (y - 2010)) * (1.0 + 0.001 * c)
+                    obs_list.append(_obs(y, val))
+                # Re-stamp geoid/indicator on obs (the helper used (year, est))
+                obs_list = [
+                    type(o)(estimate=o.estimate, moe=o.moe, year=o.year,
+                           vintage=o.vintage, geoid=geoid, indicator=ind)
+                    for o in obs_list
+                ]
+                series[(geoid, ind)] = obs_list
+        return series, pops
+
+    def test_use_ml_false_is_default_and_noop(self):
+        """Default use_ml=False must produce identical numerics to the legacy path."""
+        from census_forecaster.acs.ensemble import project_ensemble_multi
+        series, pops = self._toy_panel()
+        obs = [o for o in series[("15030", "B19013_001E")] if o.year <= 2020]
+
+        fp_default = project_ensemble_multi(obs, target_year=2022, populations=pops)
+        fp_explicit = project_ensemble_multi(obs, target_year=2022, populations=pops, use_ml=False)
+        assert fp_default is not None
+        assert fp_explicit is not None
+        assert fp_default.point == pytest.approx(fp_explicit.point)
+        assert fp_default.se_total == pytest.approx(fp_explicit.se_total)
+
+    def test_use_ml_true_inserts_third_member(self):
+        from census_forecaster.acs.ensemble import project_ensemble_multi
+        from census_forecaster.acs.ml_features import build_panel_index
+        series, pops = self._toy_panel()
+        obs = [o for o in series[("15030", "B19013_001E")] if o.year <= 2020]
+        panel = build_panel_index(series)
+        cache = {}
+
+        fp = project_ensemble_multi(
+            obs, target_year=2022, populations=pops,
+            use_ml=True, ml_series_by_key=series, ml_populations=pops,
+            ml_model_cache=cache, ml_panel=panel,
+        )
+        assert fp is not None
+        # ml_trend should appear in the ensemble notes
+        assert "ml_trend" in fp.notes
+        # Cache populated by exactly one model fit at this cutoff
+        assert ("B19013_001E", 2020) in cache
+        # CI brackets the point
+        assert fp.ci90_low <= fp.point <= fp.ci90_high
+
+    def test_use_ml_true_falls_back_when_panel_missing(self):
+        """When ml_series_by_key is None and use_ml=True, fall back gracefully."""
+        from census_forecaster.acs.ensemble import project_ensemble_multi
+        series, pops = self._toy_panel()
+        obs = [o for o in series[("15030", "B19013_001E")] if o.year <= 2020]
+        # use_ml=True but no panel handed in → no ML, but still produces a result
+        fp = project_ensemble_multi(
+            obs, target_year=2022, populations=pops,
+            use_ml=True, ml_series_by_key=None, ml_populations=None,
+        )
+        assert fp is not None  # falls back to trend+anchor only
+        assert "ml_trend" not in fp.notes

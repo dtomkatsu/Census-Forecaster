@@ -550,6 +550,60 @@ def _resolve_pop_bucket(
     return classify_pop(pop)
 
 
+def _combine_two_with_rho(
+    a: ForecastPoint,
+    b: ForecastPoint,
+    target_year: int,
+    method_label: str,
+    rho: float,
+) -> ForecastPoint | None:
+    """Inverse-variance combine two ForecastPoints at a given correlation.
+
+    Generalises ``combine_forecasts`` for the (trend_ensemble, ml_trend)
+    pair, where the appropriate ρ is the inner-correlation (default 0.7
+    since both consume the same series). Used internally by
+    ``project_ensemble_multi`` when ``use_ml=True``.
+    """
+    if a.geoid != b.geoid or a.indicator != b.indicator:
+        return None
+    inv_a = 1.0 / (a.se_total ** 2) if (math.isfinite(a.se_total) and a.se_total > 0) else 0.0
+    inv_b = 1.0 / (b.se_total ** 2) if (math.isfinite(b.se_total) and b.se_total > 0) else 0.0
+    total = inv_a + inv_b
+    if total <= 0:
+        # Degenerate: equal weights.
+        wa, wb = 0.5, 0.5
+    else:
+        wa, wb = inv_a / total, inv_b / total
+    point = wa * a.point + wb * b.point
+    var = (
+        (wa * a.se_total) ** 2
+        + (wb * b.se_total) ** 2
+        + 2.0 * rho * wa * wb * a.se_total * b.se_total
+    )
+    se_total = math.sqrt(var) if var > 0 else 0.0
+    se_sample = math.sqrt((wa * a.se_sample) ** 2 + (wb * b.se_sample) ** 2)
+    se_forecast = math.sqrt((wa * a.se_forecast) ** 2 + (wb * b.se_forecast) ** 2)
+    ci_lo, ci_hi = ci_from_se(point, se_total)
+    notes = (
+        f"{method_label}({a.method}={wa:.2f}, {b.method}={wb:.2f}, rho={rho:.2f}); "
+        f"{a.method}: {a.notes or ''}; {b.method}: {b.notes or ''}"
+    )
+    return ForecastPoint(
+        point=point,
+        se_total=se_total,
+        se_sample=se_sample,
+        se_forecast=se_forecast,
+        ci90_low=ci_lo,
+        ci90_high=ci_hi,
+        method=method_label,
+        target_year=target_year,
+        geoid=a.geoid,
+        indicator=a.indicator,
+        horizon=max(a.horizon, b.horizon),
+        notes=notes,
+    )
+
+
 def project_ensemble_multi(
     series_observations: Sequence[AcsObservation],
     target_year: int,
@@ -558,6 +612,11 @@ def project_ensemble_multi(
     correlation_rho_inner: float = 0.7,
     correlation_rho_anchor: float = 0.5,
     populations: dict[str, int] | None = None,
+    use_ml: bool = False,
+    ml_series_by_key: dict[tuple[str, str], Sequence[AcsObservation]] | None = None,
+    ml_populations: dict[str, int] | None = None,
+    ml_model_cache: dict | None = None,
+    ml_panel=None,
 ) -> "ForecastPoint | None":
     """Multi-source anchor ensemble.
 
@@ -605,6 +664,22 @@ def project_ensemble_multi(
         `data/calibration_panel/county_population_2020.json` is loaded
         lazily if available; otherwise pop_bucket is None and the v3
         lookup chain falls through to globally marginalised cells.
+    use_ml : bool, default False
+        Include the cross-county ``ml_trend`` member in the ensemble.
+        Requires ``ml_series_by_key`` and ``ml_populations`` to be
+        non-None; sklearn must be importable. Falls back gracefully
+        (ml_fp = None) when those preconditions don't hold.
+    ml_series_by_key, ml_populations : the calibration panel + 2020
+        population lookup needed by the HGB trainer. Pass the same dicts
+        across many forecasts so the model cache (below) is effective.
+    ml_model_cache : dict, optional
+        Mutable cache keyed by (indicator, cutoff_year) → TrainedMlModel.
+        Pass the same dict across many forecasts at the same cutoff to
+        amortise training cost (~2s per indicator × 16 indicators).
+    ml_panel : PanelIndex, optional
+        Pre-built panel index (output of ``ml_features.build_panel_index``).
+        Pass it explicitly when projecting many counties at the same
+        cutoff to avoid rebuilding it for each forecast.
     """
     # Local import to avoid a circular dependency between ensemble and anchors.
     from .anchors import combined_anchor_rate, anchor_as_forecast, load_calibration
@@ -648,6 +723,52 @@ def project_ensemble_multi(
             inner, indicator, "trend_ensemble", calibration,
             pop_bucket=pop_bucket, h_bucket=h_bucket,
         )
+
+    # ML trend (third member). Optional — controlled by `use_ml`. We build
+    # a cross-county HGB forecast and combine it with the classical trend
+    # ensemble at correlation `correlation_rho_inner` (both are
+    # target-side models that share the same (geoid, indicator) input
+    # series, hence high correlation).
+    ml_fp: ForecastPoint | None = None
+    if use_ml and ml_series_by_key is not None and ml_populations is not None:
+        try:
+            from .ml_trend import project_ml_trend_one_shot, METHOD_NAME as _ML_METHOD
+            ml_fp = project_ml_trend_one_shot(
+                series_by_key=ml_series_by_key,
+                populations=ml_populations,
+                series_observations=series_observations,
+                target_year=target_year,
+                cutoff_year=end_year,
+                model_cache=ml_model_cache,
+                panel=ml_panel,
+            )
+        except Exception:  # pragma: no cover — graceful degradation
+            ml_fp = None
+        if ml_fp is not None:
+            ml_fp = _apply_bias_correction(
+                ml_fp, indicator, _ML_METHOD, calibration,
+                pop_bucket=pop_bucket, h_bucket=h_bucket,
+            )
+            ml_fp = _apply_se_override(
+                ml_fp, indicator, _ML_METHOD, calibration,
+                pop_bucket=pop_bucket, h_bucket=h_bucket,
+            )
+
+    # If we have both classical trend AND ML, fuse them into a single
+    # target-side ensemble before the macro blend. Inverse-variance
+    # combination with ρ=correlation_rho_inner (default 0.7) since both
+    # consume the same underlying ACS series.
+    if inner is not None and ml_fp is not None:
+        target_inner = _combine_two_with_rho(
+            inner, ml_fp, target_year,
+            method_label="target_ensemble",
+            rho=correlation_rho_inner,
+        )
+        if target_inner is not None:
+            inner = target_inner
+    elif ml_fp is not None and inner is None:
+        # No classical trend (e.g. <2 obs), use ML alone as the inner.
+        inner = ml_fp
 
     # Multi-source macro anchor. `combined_anchor_rate` expects the
     # `rmse_by_indicator_source` slice — pass it explicitly so the full

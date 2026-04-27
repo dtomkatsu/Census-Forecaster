@@ -65,6 +65,22 @@ from .strata import (
     record_from_dict,
     WILDCARD,
 )
+from .ml_features import (
+    PanelIndex,
+    FeatureSpec,
+    TrainingMatrix,
+    build_panel_index,
+    make_feature_spec,
+    make_training_rows,
+    make_inference_row,
+)
+from .ml_trend import (
+    METHOD_NAME as ML_METHOD_NAME,
+    TrainedMlModel,
+    train_ml_model,
+    project_ml_trend,
+    project_ml_trend_one_shot,
+)
 
 __all__ = [
     # Client
@@ -113,4 +129,17 @@ __all__ = [
     "record_to_dict",
     "record_from_dict",
     "WILDCARD",
+    # ML trend (third ensemble member)
+    "PanelIndex",
+    "FeatureSpec",
+    "TrainingMatrix",
+    "build_panel_index",
+    "make_feature_spec",
+    "make_training_rows",
+    "make_inference_row",
+    "ML_METHOD_NAME",
+    "TrainedMlModel",
+    "train_ml_model",
+    "project_ml_trend",
+    "project_ml_trend_one_shot",
 ]

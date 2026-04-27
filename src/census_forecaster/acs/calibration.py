@@ -958,6 +958,7 @@ def run_stratified_calibration(
     populations: Optional[dict[str, int]] = None,
     n_threshold: int = 20,
     bias_clamp_log: float = DEFAULT_BIAS_CLAMP_LOG,
+    include_ml: bool = False,
 ) -> dict:
     """v3 stratified hold-out calibration.
 
@@ -1086,6 +1087,75 @@ def run_stratified_calibration(
                         se_sample=an.se_sample, se_forecast=an.se_forecast,
                         ci90_low=an.ci90_low, ci90_high=an.ci90_high,
                     ))
+
+    # ---- Pass 2b (optional): ml_trend FoldResidual cache ----
+    # Trains one HGB model per (indicator, cutoff=anchor) — ~16 indicators
+    # × ~9 anchor years = 144 fits @ ~2s each ≈ 5min. Reuses each model
+    # across all (geoid, h) folds at the same cutoff so prediction is
+    # cheap (~150 predict() calls per cutoff). Restructured loop ordering
+    # is intentional — per-anchor model fitting must happen ONCE per
+    # anchor, not once per (geoid, h) combination.
+    if include_ml:
+        from .ml_features import build_panel_index as _build_panel_index
+        from .ml_trend import (
+            train_ml_model as _train_ml_model,
+            project_ml_trend as _project_ml_trend,
+            METHOD_NAME as _ML_METHOD,
+        )
+
+        ml_panel = _build_panel_index(series_by_key)
+        # Group (geoid, indicator) by indicator so we can iterate
+        # indicator-major, anchor-major, then geoid for each.
+        by_indicator: dict[str, list[tuple[str, list[AcsObservation]]]] = {}
+        for (geoid, indicator), full in series_by_key.items():
+            full_sorted = sorted(full, key=lambda o: (effective_year(o), o.vintage))
+            by_indicator.setdefault(indicator, []).append((geoid, full_sorted))
+
+        for indicator, county_list in by_indicator.items():
+            for anchor in anchor_list:
+                model = _train_ml_model(
+                    series_by_key=series_by_key,
+                    populations=populations,
+                    indicator=indicator,
+                    cutoff_year=anchor,
+                    horizons=horizon_list,
+                    panel=ml_panel,
+                )
+                if model is None:
+                    continue
+                for geoid, full_sorted in county_list:
+                    pop_bucket = classify_pop(populations.get(geoid)) or WILDCARD
+                    train = _truncate(full_sorted, anchor)
+                    if not train:
+                        continue
+                    for h in horizon_list:
+                        target_year = anchor + h
+                        actual_obs = next(
+                            (o for o in full_sorted
+                             if effective_year(o) == target_year and o.vintage == "1y"),
+                            None,
+                        )
+                        if actual_obs is None or actual_obs.estimate <= 0:
+                            continue
+                        h_bucket = classify_horizon(h) or WILDCARD
+                        ml_fp = _project_ml_trend(
+                            series_observations=train,
+                            target_year=target_year,
+                            model=model,
+                            panel=ml_panel,
+                            populations=populations,
+                        )
+                        if ml_fp is None:
+                            continue
+                        fold_residuals.append(FoldResidual(
+                            indicator=indicator, method=_ML_METHOD,
+                            geoid=geoid, anchor_year=anchor, horizon=h,
+                            pop_bucket=pop_bucket, h_bucket=h_bucket,
+                            actual=actual_obs.estimate,
+                            point=ml_fp.point, se_total=ml_fp.se_total,
+                            se_sample=ml_fp.se_sample, se_forecast=ml_fp.se_forecast,
+                            ci90_low=ml_fp.ci90_low, ci90_high=ml_fp.ci90_high,
+                        ))
 
     # ---- Pass A: bias estimation per cell (with marginalisation) ----
     bias_records = _estimate_bias_records(fold_residuals, n_threshold, bias_clamp_log)

@@ -375,6 +375,140 @@ secrets.
 
 ---
 
+## Cross-county ML trend (experimental, April 2026)
+
+The ACS forecaster ships an optional third ensemble member —
+`ml_trend` — alongside the classical `trend_ensemble` (damped log trend
++ AR(1)) and the multi-source `multi_anchor`. It is **opt-in** via
+`project_ensemble_multi(..., use_ml=True, ml_series_by_key=...,
+ml_populations=...)` and is not on the default projection path.
+
+### Why ML, why now
+
+The classical trend models operate on a single (geoid, indicator) series
+in isolation. With the multi-state calibration panel (147 counties × 16
+indicators × 15 years = 19,638 observations) we now have enough cross-
+county and cross-indicator structure for a tree-based learner to add
+signal the per-series models cannot see — county-size effects, regional
+patterns, and cross-indicator dependencies (e.g. rent ↔ wages,
+unemployment ↔ educational attainment).
+
+### Architecture
+
+`ml_trend` is sklearn's `HistGradientBoostingRegressor` (histogram-based
+gradient boosting, same algorithmic family as LightGBM but bundled in
+sklearn so no libomp/OpenMP runtime dependency). One model is trained
+per `(indicator, cutoff_year)`; cutoff_year defaults to the most recent
+observed year. Features per row:
+
+* Lagged target levels in log space at anchor, anchor-1, anchor-2.
+* YoY log-growth diffs and 3-yr trailing mean diff.
+* County metadata: log 2020 population, pop-bucket one-hot, state FIPS.
+* **Cross-indicator panel**: same county's log values for every *other*
+  indicator at the anchor year (15 columns). This is the genuinely new
+  signal not exposed to the classical models or the macro anchor.
+* Horizon as a feature (h ∈ 1..5) so a single model serves all horizons
+  per indicator.
+
+Target: `log(y[target_year] / y[anchor_year])` — log-growth from anchor.
+Walk-forward training filter: `target_year ≤ cutoff_year` strictly,
+matching the back-test discipline used elsewhere in this package.
+
+### Ensemble integration
+
+When `use_ml=True`, the combiner uses a two-stage Bates-Granger:
+
+1. **Inner (target-side)**: `trend_ensemble` + `ml_trend` at ρ=0.7 (both
+   consume the same series so high correlation is appropriate).
+2. **Outer (target vs macro)**: inner + `multi_anchor` at ρ=0.5,
+   blended at the calibrated `_calibrated_macro_weight` per indicator.
+
+Each member is bias-corrected and SE-overridden via the v3 stratified
+κ table before combination — the same pre-blend correction order used
+for the existing two-member ensemble.
+
+### Walk-forward ablation (April 2026 panel)
+
+Run on the bundled 147-county / 16-indicator panel, anchors 2014-2022,
+horizons 1-5. Both calibrations apply v3 bias + κ corrections to each
+member before combining; the ensemble metrics below are
+production-equivalent.
+
+| Indicator | RMSE Δ | Cov90 (no-ml → with-ml) |
+|---|---:|:---:|
+| B19013_001E (median income) | -5.0% | 88.9% → 88.9% |
+| B25058_001E (median rent, contract) | -5.8% | 86.2% → 85.0% |
+| B25064_001E (gross rent) | -5.7% | 87.4% → 86.3% |
+| B25077_001E (median home value) | -4.7% | 88.7% → 87.5% |
+| B20002_001E (worker earnings) | -10.7% | 89.1% → 88.3% |
+| B01002_001E (median age) | -16.3% | 91.0% → 88.6% |
+| S1501 (BA+, HS+) | -25.5% / -17.1% | 91% → 88-90% |
+| S1701 (poverty rate) | -5.3% | 86.3% → 85.6% |
+| homeownership_rate | -18.1% | 88.7% → 87.4% |
+| in_migration_rate | -20.9% | 92.8% → 90.4% |
+| pct_professional, pct_service | -16% / -12% | 91-92% → 89-90% |
+| vacancy_rate | -10.6% | 92.2% → 88.0% |
+
+Point accuracy improves on every indicator (5-25% RMSE drop). The
+stand-alone `ml_trend` method has CI90 coverage of 89-94% on all 16
+indicators — the model itself is well-calibrated.
+
+### Why opt-in (not default)
+
+After v3 calibration the ensemble-level CI90 coverage with ml_trend is
+85-90% on every indicator, with one indicator (B25058) at exactly 85.0%
+(below the lower bound by less than 1 fold out of 2,984). The classical
+ensemble's coverage is uniformly 86-93% — slightly more conservative.
+The conservative call is to ship the ML member as opt-in until we have
+either:
+
+1. A "ensemble_with_ml"-level κ stratum in the v3 calibration (so the
+   joint CI gets its own bisection-on-coverage rather than relying on
+   the per-method κ to compose well under inverse-variance combination), or
+2. A cross-correlation parameter sweep showing ρ values that put the
+   ensemble coverage uniformly inside [85%, 95%].
+
+Both are mechanical follow-ups; the ML implementation itself is
+production-ready and tested.
+
+### How to enable
+
+```python
+from census_forecaster.acs import project_ensemble_multi, build_panel_index
+from census_forecaster.scripts.load_calibration_panel import load_panel
+
+series, populations, _ = load_panel()
+panel = build_panel_index(series)
+ml_cache: dict = {}  # reuse across many forecasts at same cutoff
+
+fp = project_ensemble_multi(
+    series_observations=obs_for_one_county_indicator,
+    target_year=2026,
+    populations=populations,
+    use_ml=True,
+    ml_series_by_key=series,
+    ml_populations=populations,
+    ml_model_cache=ml_cache,
+    ml_panel=panel,
+)
+```
+
+The training cost is ~2 seconds per `(indicator, cutoff_year)` model
+fit; the cache amortises that across many forecasts at the same cutoff.
+
+### Reproducing the ablation
+
+```bash
+python -m census_forecaster.scripts.compare_ml_ablation --output report.md
+```
+
+Runs the v3 calibration twice (with `include_ml=True` and `False`),
+applies v3 corrections to each method's residuals, synthesises the
+two-stage ensemble, and writes a per-indicator comparison table. Total
+runtime: ~6-8 minutes (the ML half adds ~5 min of HGB training).
+
+---
+
 ## Backwards compatibility
 
 A v2 calibration payload (no `strata_records` key) loads and runs
