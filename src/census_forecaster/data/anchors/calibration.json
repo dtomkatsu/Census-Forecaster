@@ -52,6 +52,15 @@
     "homeownership_rate": {
       "trend_ensemble": 0.8874706079946255
     },
+    "in_migration_rate": {
+      "trend_ensemble": 0.8748317631224765
+    },
+    "pct_professional": {
+      "trend_ensemble": 0.8861402914266351
+    },
+    "pct_service_occupations": {
+      "trend_ensemble": 0.8593697051846831
+    },
     "vacancy_rate": {
       "trend_ensemble": 0.8458179375209943
     }
@@ -97,6 +106,15 @@
     },
     "homeownership_rate": {
       "trend_ensemble": 0.8874706079946255
+    },
+    "in_migration_rate": {
+      "trend_ensemble": 0.8748317631224765
+    },
+    "pct_professional": {
+      "trend_ensemble": 0.8861402914266351
+    },
+    "pct_service_occupations": {
+      "trend_ensemble": 0.8593697051846831
     },
     "vacancy_rate": {
       "trend_ensemble": 0.928115552569701
@@ -150,6 +168,15 @@
     },
     "homeownership_rate": {
       "trend_ensemble": 0.05294636047330988
+    },
+    "in_migration_rate": {
+      "trend_ensemble": 0.2846609405433477
+    },
+    "pct_professional": {
+      "trend_ensemble": 0.08807816320718644
+    },
+    "pct_service_occupations": {
+      "trend_ensemble": 0.15352588969052505
     },
     "vacancy_rate": {
       "trend_ensemble": 0.30042918006866837
@@ -1510,6 +1537,222 @@
       },
       {
         "extra": {
+          "b_raw": 0.0526712255393075,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 648,
+        "pop_bucket": "medium",
+        "value": 0.0526712255393075
+      },
+      {
+        "extra": {
+          "b_raw": 0.1468048484546549,
+          "clamped": 1.0
+        },
+        "h_bucket": "long",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 726,
+        "pop_bucket": "medium",
+        "value": 0.09531017980432493
+      },
+      {
+        "extra": {
+          "b_raw": 0.01760625847775963,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.01760625847775963
+      },
+      {
+        "extra": {
+          "b_raw": 0.03752047467608677,
+          "clamped": 0.0
+        },
+        "h_bucket": "long",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.03752047467608677
+      },
+      {
+        "extra": {
+          "b_raw": 0.024644978087469863,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.024644978087469863
+      },
+      {
+        "extra": {
+          "b_raw": 0.05516705511562406,
+          "clamped": 0.0
+        },
+        "h_bucket": "long",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.05516705511562406
+      },
+      {
+        "extra": {
+          "b_raw": -0.023369066088476314,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 639,
+        "pop_bucket": "medium",
+        "value": -0.023369066088476314
+      },
+      {
+        "extra": {
+          "b_raw": -0.06727274082422068,
+          "clamped": 0.0
+        },
+        "h_bucket": "long",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 714,
+        "pop_bucket": "medium",
+        "value": -0.06727274082422068
+      },
+      {
+        "extra": {
+          "b_raw": -0.014484161037869956,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": -0.014484161037869956
+      },
+      {
+        "extra": {
+          "b_raw": -0.04661888879423838,
+          "clamped": 0.0
+        },
+        "h_bucket": "long",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": -0.04661888879423838
+      },
+      {
+        "extra": {
+          "b_raw": -0.007928760576197017,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": -0.007928760576197017
+      },
+      {
+        "extra": {
+          "b_raw": -0.053676213491567454,
+          "clamped": 0.0
+        },
+        "h_bucket": "long",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": -0.053676213491567454
+      },
+      {
+        "extra": {
+          "b_raw": 0.016145482963065432,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 639,
+        "pop_bucket": "medium",
+        "value": 0.016145482963065432
+      },
+      {
+        "extra": {
+          "b_raw": 0.056744696353379934,
+          "clamped": 0.0
+        },
+        "h_bucket": "long",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 714,
+        "pop_bucket": "medium",
+        "value": 0.056744696353379934
+      },
+      {
+        "extra": {
+          "b_raw": 0.014446327364182674,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.014446327364182674
+      },
+      {
+        "extra": {
+          "b_raw": 0.05368056860639995,
+          "clamped": 0.0
+        },
+        "h_bucket": "long",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.05368056860639995
+      },
+      {
+        "extra": {
+          "b_raw": -0.00997184374246075,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": -0.00997184374246075
+      },
+      {
+        "extra": {
+          "b_raw": 0.02330344756365752,
+          "clamped": 0.0
+        },
+        "h_bucket": "long",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.02330344756365752
+      },
+      {
+        "extra": {
           "b_raw": -0.05385927062271696,
           "clamped": 0.0
         },
@@ -2158,6 +2401,114 @@
       },
       {
         "extra": {
+          "b_raw": 0.10240995205789717,
+          "clamped": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1374,
+        "pop_bucket": "medium",
+        "value": 0.09531017980432493
+      },
+      {
+        "extra": {
+          "b_raw": 0.028149078818050465,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.028149078818050465
+      },
+      {
+        "extra": {
+          "b_raw": 0.040803724749433855,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.040803724749433855
+      },
+      {
+        "extra": {
+          "b_raw": -0.04653774588250549,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 1353,
+        "pop_bucket": "medium",
+        "value": -0.04653774588250549
+      },
+      {
+        "extra": {
+          "b_raw": -0.03149666396771207,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": -0.03149666396771207
+      },
+      {
+        "extra": {
+          "b_raw": -0.032148000354922546,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": -0.032148000354922546
+      },
+      {
+        "extra": {
+          "b_raw": 0.03757034501826466,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 1353,
+        "pop_bucket": "medium",
+        "value": 0.03757034501826466
+      },
+      {
+        "extra": {
+          "b_raw": 0.03521739625712123,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.03521739625712123
+      },
+      {
+        "extra": {
+          "b_raw": 0.007644486949013627,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.007644486949013627
+      },
+      {
+        "extra": {
           "b_raw": -0.05009114513432302,
           "clamped": 0.0
         },
@@ -2371,6 +2722,42 @@
         "n_folds": 2977,
         "pop_bucket": "*",
         "value": 0.04806590946818555
+      },
+      {
+        "extra": {
+          "b_raw": 0.06277053095630196,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 2972,
+        "pop_bucket": "*",
+        "value": 0.06277053095630196
+      },
+      {
+        "extra": {
+          "b_raw": -0.03840783804600614,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 2951,
+        "pop_bucket": "*",
+        "value": -0.03840783804600614
+      },
+      {
+        "extra": {
+          "b_raw": 0.03566083300428346,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 2951,
+        "pop_bucket": "*",
+        "value": 0.03566083300428346
       }
     ],
     "coverage_post": [
@@ -3239,6 +3626,150 @@
         "value": 0.9444444444444444
       },
       {
+        "h_bucket": "short",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 648,
+        "pop_bucket": "medium",
+        "value": 0.9012345679012346
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 726,
+        "pop_bucket": "medium",
+        "value": 0.9256198347107438
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.9375
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.9481481481481482
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.875
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.8888888888888888
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 639,
+        "pop_bucket": "medium",
+        "value": 0.92018779342723
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 714,
+        "pop_bucket": "medium",
+        "value": 0.9215686274509803
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.8513888888888889
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.9382716049382716
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.90625
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.9444444444444444
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 639,
+        "pop_bucket": "medium",
+        "value": 0.892018779342723
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 714,
+        "pop_bucket": "medium",
+        "value": 0.938375350140056
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.9166666666666666
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.9358024691358025
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.90625
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.9444444444444444
+      },
+      {
         "h_bucket": "*",
         "indicator": "B19013_001E",
         "method": "trend_ensemble",
@@ -3672,6 +4203,78 @@
       },
       {
         "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1374,
+        "pop_bucket": "medium",
+        "value": 0.9141193595342066
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.9235294117647059
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.8529411764705882
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 1353,
+        "pop_bucket": "medium",
+        "value": 0.9379157427937915
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.9326797385620915
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.8823529411764706
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 1353,
+        "pop_bucket": "medium",
+        "value": 0.9164818920916482
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.9267973856209151
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.9264705882352942
+      },
+      {
+        "h_bucket": "*",
         "indicator": "B19013_001E",
         "method": "trend_ensemble",
         "n_folds": 2977,
@@ -3813,6 +4416,30 @@
         "n_folds": 2977,
         "pop_bucket": "*",
         "value": 0.928115552569701
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 2972,
+        "pop_bucket": "*",
+        "value": 0.8748317631224765
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 2951,
+        "pop_bucket": "*",
+        "value": 0.8861402914266351
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 2951,
+        "pop_bucket": "*",
+        "value": 0.8593697051846831
       }
     ],
     "coverage_pre": [
@@ -4681,6 +5308,150 @@
         "value": 0.5833333333333334
       },
       {
+        "h_bucket": "short",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 648,
+        "pop_bucket": "medium",
+        "value": 0.9012345679012346
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 726,
+        "pop_bucket": "medium",
+        "value": 0.9256198347107438
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.8458333333333333
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.825925925925926
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.96875
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.9722222222222222
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 639,
+        "pop_bucket": "medium",
+        "value": 0.92018779342723
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 714,
+        "pop_bucket": "medium",
+        "value": 0.9537815126050421
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.8513888888888889
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.8395061728395061
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.8125
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.75
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 639,
+        "pop_bucket": "medium",
+        "value": 0.892018779342723
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 714,
+        "pop_bucket": "medium",
+        "value": 0.938375350140056
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.7888888888888889
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.8209876543209876
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.90625
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.9444444444444444
+      },
+      {
         "h_bucket": "*",
         "indicator": "B19013_001E",
         "method": "trend_ensemble",
@@ -5114,6 +5885,78 @@
       },
       {
         "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1374,
+        "pop_bucket": "medium",
+        "value": 0.9141193595342066
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.8352941176470589
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.9705882352941176
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 1353,
+        "pop_bucket": "medium",
+        "value": 0.9379157427937915
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.8450980392156863
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.7794117647058824
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 1353,
+        "pop_bucket": "medium",
+        "value": 0.9164818920916482
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.8058823529411765
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.9264705882352942
+      },
+      {
+        "h_bucket": "*",
         "indicator": "B19013_001E",
         "method": "trend_ensemble",
         "n_folds": 2977,
@@ -5255,6 +6098,30 @@
         "n_folds": 2977,
         "pop_bucket": "*",
         "value": 0.8458179375209943
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 2972,
+        "pop_bucket": "*",
+        "value": 0.8748317631224765
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 2951,
+        "pop_bucket": "*",
+        "value": 0.8861402914266351
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 2951,
+        "pop_bucket": "*",
+        "value": 0.8593697051846831
       }
     ],
     "rmse": [
@@ -6123,6 +6990,150 @@
         "value": 0.1827843942250564
       },
       {
+        "h_bucket": "short",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 648,
+        "pop_bucket": "medium",
+        "value": 0.3185479059825851
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 726,
+        "pop_bucket": "medium",
+        "value": 0.45579664735455216
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.09616163726038489
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.14021732933836054
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.15792351767209992
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.15492800884325983
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 639,
+        "pop_bucket": "medium",
+        "value": 0.11042030480938711
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 714,
+        "pop_bucket": "medium",
+        "value": 0.1303111004763893
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.034351255766314474
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.04706785560881668
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.06371107104405042
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.0752180540232665
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 639,
+        "pop_bucket": "medium",
+        "value": 0.18557842247958034
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 714,
+        "pop_bucket": "medium",
+        "value": 0.22591047922203714
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.07343350012024841
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.08825887991275526
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.11628204891933402
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.11602910029170109
+      },
+      {
         "h_bucket": "*",
         "indicator": "B19013_001E",
         "method": "trend_ensemble",
@@ -6556,6 +7567,78 @@
       },
       {
         "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1374,
+        "pop_bucket": "medium",
+        "value": 0.3970243006231486
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.12149184888315931
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.15634480950181034
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 1353,
+        "pop_bucket": "medium",
+        "value": 0.12132406114082289
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.04157100054428056
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.07003889904401597
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 1353,
+        "pop_bucket": "medium",
+        "value": 0.20783991664918972
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.08161837324523398
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.11614820356098339
+      },
+      {
+        "h_bucket": "*",
         "indicator": "B19013_001E",
         "method": "trend_ensemble",
         "n_folds": 2977,
@@ -6697,6 +7780,30 @@
         "n_folds": 2977,
         "pop_bucket": "*",
         "value": 0.30042918006866837
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 2972,
+        "pop_bucket": "*",
+        "value": 0.2846609405433477
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 2951,
+        "pop_bucket": "*",
+        "value": 0.08807816320718644
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 2951,
+        "pop_bucket": "*",
+        "value": 0.15352588969052505
       }
     ],
     "se_inflator": [
@@ -8106,6 +9213,240 @@
       },
       {
         "extra": {
+          "coverage_post": 0.9012345679012346,
+          "coverage_pre": 0.9012345679012346,
+          "factor": 1.0
+        },
+        "h_bucket": "short",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 648,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9256198347107438,
+          "coverage_pre": 0.9256198347107438,
+          "factor": 1.0
+        },
+        "h_bucket": "long",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 726,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9375,
+          "coverage_pre": 0.8458333333333333,
+          "factor": 1.5
+        },
+        "h_bucket": "short",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 1.9500000000000002
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9481481481481482,
+          "coverage_pre": 0.825925925925926,
+          "factor": 2.0
+        },
+        "h_bucket": "long",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 2.6
+      },
+      {
+        "extra": {
+          "coverage_post": 0.875,
+          "coverage_pre": 0.96875,
+          "factor": 0.775
+        },
+        "h_bucket": "short",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 1.0075
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8888888888888888,
+          "coverage_pre": 0.9722222222222222,
+          "factor": 0.55
+        },
+        "h_bucket": "long",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.7150000000000001
+      },
+      {
+        "extra": {
+          "coverage_post": 0.92018779342723,
+          "coverage_pre": 0.92018779342723,
+          "factor": 1.0
+        },
+        "h_bucket": "short",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 639,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9215686274509803,
+          "coverage_pre": 0.9537815126050421,
+          "factor": 0.775
+        },
+        "h_bucket": "long",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 714,
+        "pop_bucket": "medium",
+        "value": 1.0075
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8513888888888889,
+          "coverage_pre": 0.8513888888888889,
+          "factor": 1.0
+        },
+        "h_bucket": "short",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9382716049382716,
+          "coverage_pre": 0.8395061728395061,
+          "factor": 1.5
+        },
+        "h_bucket": "long",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 1.9500000000000002
+      },
+      {
+        "extra": {
+          "coverage_post": 0.90625,
+          "coverage_pre": 0.8125,
+          "factor": 1.5
+        },
+        "h_bucket": "short",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 1.9500000000000002
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9444444444444444,
+          "coverage_pre": 0.75,
+          "factor": 2.0
+        },
+        "h_bucket": "long",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 2.6
+      },
+      {
+        "extra": {
+          "coverage_post": 0.892018779342723,
+          "coverage_pre": 0.892018779342723,
+          "factor": 1.0
+        },
+        "h_bucket": "short",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 639,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.938375350140056,
+          "coverage_pre": 0.938375350140056,
+          "factor": 1.0
+        },
+        "h_bucket": "long",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 714,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9166666666666666,
+          "coverage_pre": 0.7888888888888889,
+          "factor": 1.5
+        },
+        "h_bucket": "short",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 1.9500000000000002
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9358024691358025,
+          "coverage_pre": 0.8209876543209876,
+          "factor": 1.5
+        },
+        "h_bucket": "long",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 1.9500000000000002
+      },
+      {
+        "extra": {
+          "coverage_post": 0.90625,
+          "coverage_pre": 0.90625,
+          "factor": 1.0
+        },
+        "h_bucket": "short",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9444444444444444,
+          "coverage_pre": 0.9444444444444444,
+          "factor": 1.0
+        },
+        "h_bucket": "long",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 1.3
+      },
+      {
+        "extra": {
           "coverage_post": 0.9260333575054387,
           "coverage_pre": 0.9260333575054387,
           "factor": 1.0
@@ -8808,6 +10149,123 @@
       },
       {
         "extra": {
+          "coverage_post": 0.9141193595342066,
+          "coverage_pre": 0.9141193595342066,
+          "factor": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1374,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9235294117647059,
+          "coverage_pre": 0.8352941176470589,
+          "factor": 1.5
+        },
+        "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 1.9500000000000002
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8529411764705882,
+          "coverage_pre": 0.9705882352941176,
+          "factor": 0.55
+        },
+        "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.7150000000000001
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9379157427937915,
+          "coverage_pre": 0.9379157427937915,
+          "factor": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 1353,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9326797385620915,
+          "coverage_pre": 0.8450980392156863,
+          "factor": 1.5
+        },
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 1.9500000000000002
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8823529411764706,
+          "coverage_pre": 0.7794117647058824,
+          "factor": 1.5
+        },
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 1.9500000000000002
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9164818920916482,
+          "coverage_pre": 0.9164818920916482,
+          "factor": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 1353,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9267973856209151,
+          "coverage_pre": 0.8058823529411765,
+          "factor": 1.5
+        },
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 1.9500000000000002
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9264705882352942,
+          "coverage_pre": 0.9264705882352942,
+          "factor": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 1.3
+      },
+      {
+        "extra": {
           "coverage_post": 0.9052737655357743,
           "coverage_pre": 0.9052737655357743,
           "factor": 1.0
@@ -9039,6 +10497,45 @@
         "n_folds": 2977,
         "pop_bucket": "*",
         "value": 1.9500000000000002
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8748317631224765,
+          "coverage_pre": 0.8748317631224765,
+          "factor": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "in_migration_rate",
+        "method": "trend_ensemble",
+        "n_folds": 2972,
+        "pop_bucket": "*",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8861402914266351,
+          "coverage_pre": 0.8861402914266351,
+          "factor": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "trend_ensemble",
+        "n_folds": 2951,
+        "pop_bucket": "*",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8593697051846831,
+          "coverage_pre": 0.8593697051846831,
+          "factor": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "pct_service_occupations",
+        "method": "trend_ensemble",
+        "n_folds": 2951,
+        "pop_bucket": "*",
+        "value": 1.3
       }
     ]
   }

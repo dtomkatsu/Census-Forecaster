@@ -112,15 +112,38 @@ DIRECT_INDICATORS: tuple[str, ...] = (
     "B01002_001E",     # Median age (years)
 )
 
-# Derived indicators: (output_name, numerator_code, denominator_code).
-# Both component codes are fetched from the Census API; the ratio is
-# computed post-fetch and stored as a synthetic AcsObservation with a
-# virtual indicator name (no real Census code).
-DERIVED_INDICATORS: tuple[tuple[str, str, str], ...] = (
+# Derived indicators: (output_name, numerator_codes, denominator_code).
+# `numerator_codes` is a tuple of one or more Census codes whose values
+# are *summed* to form the numerator; the ratio is then computed per
+# (geoid, year) and stored as a synthetic AcsObservation.
+# Virtual output names don't collide with real Census codes.
+DERIVED_INDICATORS: tuple[tuple[str, tuple[str, ...], str], ...] = (
     # Homeownership rate: owner-occupied / total occupied housing units
-    ("homeownership_rate", "B25003_002E", "B25003_001E"),
+    ("homeownership_rate",
+     ("B25003_002E",),
+     "B25003_001E"),
     # Vacancy rate: vacant units / total housing units
-    ("vacancy_rate",       "B25002_003E", "B25002_001E"),
+    ("vacancy_rate",
+     ("B25002_003E",),
+     "B25002_001E"),
+    # In-migration rate: share of residents who moved in from elsewhere
+    # in the past year (within-state county + inter-state + abroad).
+    # NOTE: ACS measures in-migration (who moved IN), not out-migration
+    # (people who left are no longer in the county's sample frame).
+    # In-migration rate is the more useful housing demand signal anyway.
+    ("in_migration_rate",
+     ("B07003_007E", "B07003_010E", "B07003_013E"),
+     "B07003_001E"),
+    # % employed in management / professional / science / arts occupations
+    # (male C24010_003E + female C24010_039E) / total employed C24010_001E
+    ("pct_professional",
+     ("C24010_003E", "C24010_039E"),
+     "C24010_001E"),
+    # % employed in service occupations
+    # (male C24010_019E + female C24010_055E) / total employed
+    ("pct_service_occupations",
+     ("C24010_019E", "C24010_055E"),
+     "C24010_001E"),
 )
 
 # All indicator names exposed to the rest of the pipeline (API codes +
@@ -302,21 +325,22 @@ def fetch_panel_observations(
 def fetch_derived_observations(
     client: AcsClient,
     selected: dict[str, list[str]],
-    derived_specs: Sequence[tuple[str, str, str]] = DERIVED_INDICATORS,
+    derived_specs: Sequence[tuple[str, tuple[str, ...], str]] = DERIVED_INDICATORS,
     years: Sequence[int] = PANEL_YEARS,
     verbose: bool = True,
 ) -> list[AcsObservation]:
     """Fetch numerator + denominator for each derived indicator; compute ratios.
 
-    Each spec is ``(output_name, numerator_code, denominator_code)``.  Both
-    component codes are fetched state-by-state from the Census API, then the
-    rate is computed per-county per-year and stored as a synthetic
-    ``AcsObservation`` with ``indicator=output_name``.
+    Each spec is ``(output_name, numerator_codes, denominator_code)`` where
+    ``numerator_codes`` is a tuple of one or more Census codes whose values
+    are **summed** to form the numerator. The ratio is computed per-county
+    per-year and stored as a synthetic ``AcsObservation`` with
+    ``indicator=output_name``.
 
-    MOE is set to NaN for derived ratios — propagating MOE through a ratio
-    requires both marginal MOEs and their covariance, which we don't track.
-    The calibration generator treats NaN MOE as "no MOE available" and skips
-    the CV diagnostic, but the observation is otherwise usable.
+    MOE is set to NaN for derived ratios — propagating MOE through a sum/ratio
+    requires marginal MOEs and covariances we don't track. The calibration
+    generator treats NaN MOE as "no MOE available" and skips the CV diagnostic,
+    but the observation is otherwise usable.
     """
     selected_geoids: set[str] = set()
     for gs in selected.values():
@@ -325,13 +349,15 @@ def fetch_derived_observations(
     states_needed = sorted({g[:2] for g in selected_geoids})
 
     out: list[AcsObservation] = []
-    for out_name, num_code, den_code in derived_specs:
-        # Collect numerator and denominator keyed by (geoid, year).
-        num_by_key: dict[tuple[str, int], float] = {}
+    for out_name, num_codes, den_code in derived_specs:
+        # Collect each numerator component and the denominator by (geoid, year).
+        num_parts: dict[str, dict[tuple[str, int], float]] = {c: {} for c in num_codes}
         den_by_key: dict[tuple[str, int], float] = {}
 
+        all_codes = list(num_codes) + [den_code]
         for state_fips in states_needed:
-            for code, store in [(num_code, num_by_key), (den_code, den_by_key)]:
+            for code in all_codes:
+                store = num_parts[code] if code in num_parts else den_by_key
                 obs = client.fetch_series(
                     indicator=code,
                     years=tuple(years),
@@ -340,16 +366,29 @@ def fetch_derived_observations(
                     county_fips=None,
                 )
                 for o in obs:
-                    if o.geoid in selected_geoids and o.estimate > 0:
+                    if o.geoid in selected_geoids and o.estimate >= 0:
                         store[(o.geoid, o.year)] = o.estimate
 
-        # Compute rates and emit synthetic observations.
+        # Sum numerator components, then divide by denominator.
         kept = 0
-        for (geoid, year), num in num_by_key.items():
-            den = den_by_key.get((geoid, year))
+        # Use the first numerator code's keys as the universe.
+        for key in num_parts[num_codes[0]]:
+            # Sum all numerator parts; skip if any component is missing.
+            total_num = 0.0
+            skip = False
+            for c in num_codes:
+                val = num_parts[c].get(key)
+                if val is None:
+                    skip = True
+                    break
+                total_num += val
+            if skip:
+                continue
+            den = den_by_key.get(key)
             if den is None or den <= 0:
                 continue
-            rate = num / den
+            rate = total_num / den
+            geoid, year = key
             out.append(AcsObservation(
                 estimate=rate,
                 moe=float("nan"),
@@ -360,9 +399,10 @@ def fetch_derived_observations(
             ))
             kept += 1
 
+        num_label = "+".join(num_codes)
         if verbose:
             print(
-                f"[derived] {out_name} = {num_code}/{den_code}: "
+                f"[derived] {out_name} = ({num_label})/{den_code}: "
                 f"{kept} observations",
                 file=sys.stderr,
             )

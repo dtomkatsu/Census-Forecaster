@@ -177,7 +177,7 @@ Total: 147 distinct counties across 35 states. The `large` bucket (200K–1M)
 is not sampled separately — it receives counties that naturally land there
 (Honolulu 15003, plus any xlarge-overflow).
 
-**Indicators (v3 adds 4 to the original 4):**
+**Indicators (v0.4 expands to 13):**
 
 | Code | Description | Table type |
 |---|---|---|
@@ -186,25 +186,44 @@ is not sampled separately — it receives counties that naturally land there
 | `B25064_001E` | Median gross rent | Detail |
 | `B25077_001E` | Median home value | Detail |
 | `B25071_001E` | Median gross rent as % of household income | Detail |
+| `B20002_001E` | Median earnings for workers 16+ | Detail |
+| `B01002_001E` | Median age | Detail |
 | `S1501_C02_014E` | % age 25+ with HS diploma or higher | Subject (S*) |
 | `S1501_C02_015E` | % age 25+ with bachelor's or higher | Subject |
 | `S1701_C03_001E` | % below poverty (all people) | Subject |
+| `S2301_C04_001E` | Unemployment rate (%) | Subject |
+| `homeownership_rate` | Owner-occupied / total occupied units | Derived (B25003) |
+| `vacancy_rate` | Vacant / total housing units | Derived (B25002) |
 
 Subject-table indicators use the `/acs/acs1/subject` Census API endpoint.
-The `AcsClient` routes automatically based on the `S`-prefix.
+The `AcsClient` routes automatically based on the `S`-prefix. Derived
+indicators are computed post-fetch as numerator ÷ denominator (see
+`scripts/build_calibration_panel.py::DERIVED_INDICATORS`).
+
+**Note on `S0101_C02_030E` (% population 65+):** This code was tested but
+rejected — the Census S-table schema was restructured around 2016–2018 and
+the column assignment for C02/row 30 changed between vintages, producing
+~35–40% values pre-2019 vs. correct ~18–22% values post-2019. `B01002_001E`
+(median age) is the stable B-table substitute with the same demographic
+signal and no structural break.
 
 **Observed κ values from the multi-state calibration (anchors 2014–2022):**
 
-| Indicator / method | κ range across cells |
-|---|---|
-| Income (`B19013`) / trend_ensemble | 1.01–1.30 |
-| Income (`B19013`) / multi_anchor | 0.35–1.30 |
-| Rent (`B25058`, `B25064`) / trend_ensemble | **1.30–2.60** |
-| Rent (`B25058`, `B25064`) / multi_anchor | 0.42–1.30 |
-| Home value (`B25077`) / trend_ensemble | 1.30–1.95 |
-| HS+ % / trend_ensemble | 0.72–1.30 |
-| BA+ % / trend_ensemble | 0.72–1.30 |
-| Poverty % / trend_ensemble | 1.01–1.95 |
+| Indicator / method | κ range | CI90 coverage |
+|---|---|---|
+| Income (`B19013`) / trend_ensemble | 1.01–1.30 | 90.5% |
+| Income (`B19013`) / multi_anchor | 0.35–1.30 | 97.7% |
+| Worker earnings (`B20002`) / trend_ensemble | — | 90.3% |
+| Rent (`B25058`, `B25064`) / trend_ensemble | **1.30–2.60** | 82–84% |
+| Rent (`B25058`, `B25064`) / multi_anchor | 0.42–1.30 | 98–99% |
+| Home value (`B25077`) / trend_ensemble | 1.30–1.95 | 89.9% |
+| Median age (`B01002`) / trend_ensemble | — | 87.5% |
+| HS+ % / trend_ensemble | 0.72–1.30 | 94.9% |
+| BA+ % / trend_ensemble | 0.72–1.30 | 96.0% |
+| Poverty % / trend_ensemble | 1.01–1.95 | 88.9% |
+| Unemployment (`S2301`) / trend_ensemble | — | **79.7%** |
+| Homeownership rate / trend_ensemble | — | 88.7% |
+| Vacancy rate / trend_ensemble | — | 84.6% |
 
 Key patterns:
 - **Rent is the most uncertain series** — trend_ensemble κ up to 2.60 on
@@ -214,6 +233,16 @@ Key patterns:
   The model's blended uncertainty already exceeds actual error.
 - **Educational attainment is stable** — κ < 1 on some cells; near-zero
   bias; series is well-specified by the trend model alone.
+- **Unemployment is under-covered at 79.7%.** This is a known model
+  misspecification, not a data issue. Unemployment is mean-reverting
+  (3%→15%→3% over a recession cycle) whereas the trend model assumes
+  continuity. Even with the bisected κ applied, the CI *shape* is wrong
+  for recession shocks — no multiplier can make a Gaussian interval capture
+  a sudden spike. For applications that require calibrated unemployment
+  uncertainty, a dedicated mean-reversion model (AR(1) toward a long-run
+  mean) would be appropriate. For the current use case — contextual signal
+  in housing affordability tracking — the point estimate is reliable and
+  the under-coverage is acceptable.
 
 **Observed bias values (post-clamp, expressed as % level shift):**
 

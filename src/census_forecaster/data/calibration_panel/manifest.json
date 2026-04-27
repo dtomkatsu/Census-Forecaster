@@ -1354,8 +1354,8 @@
   },
   "totals": {
     "counties": 147,
-    "indicators": 13,
-    "observations": 15972,
+    "indicators": 16,
+    "observations": 19638,
     "year_range": [
       2010,
       2024

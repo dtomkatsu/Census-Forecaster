@@ -119,20 +119,36 @@ class AcsClient:
         return f"{vintage}|{year}|{geo_scope}|{','.join(sorted(indicators))}"
 
     def _fetch_url(self, url: str) -> list[list]:
+        """Fetch URL with retry-on-timeout. Census API occasionally has
+        slow responses; we retry up to 3 times with exponential backoff
+        before giving up. 204 is a real "no data" response and is not
+        retried."""
         if self.offline:
             raise RuntimeError(f"offline mode: refusing network call to {url}")
-        try:
-            with urllib.request.urlopen(url, timeout=30) as resp:
-                body = resp.read().decode("utf-8")
-        except urllib.error.HTTPError as exc:
-            # 204 = "no data for this combination", which Census uses for
-            # vintages a survey didn't run (e.g. 2020 1-year). Surface as
-            # an empty result rather than an exception so callers can fall
-            # through to the next vintage.
-            if exc.code == 204:
-                return []
-            raise
-        return json.loads(body)
+
+        import time
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                with urllib.request.urlopen(url, timeout=30) as resp:
+                    body = resp.read().decode("utf-8")
+                return json.loads(body)
+            except urllib.error.HTTPError as exc:
+                if exc.code == 204:
+                    return []
+                raise
+            except (TimeoutError, urllib.error.URLError, OSError) as exc:
+                if attempt + 1 == max_attempts:
+                    raise
+                # Exponential backoff: 1s, 2s, 4s
+                sleep_s = 2 ** attempt
+                print(
+                    f"[acs_client] {type(exc).__name__} on attempt {attempt+1}/{max_attempts}, "
+                    f"retrying in {sleep_s}s",
+                    file=sys.stderr,
+                )
+                time.sleep(sleep_s)
+        raise RuntimeError("unreachable")  # pragma: no cover
 
     def fetch_table(
         self,
