@@ -11,9 +11,15 @@
     2022
   ],
   "ci90_coverage_by_indicator_method": {
+    "B01002_001E": {
+      "trend_ensemble": 0.8750419885791065
+    },
     "B19013_001E": {
       "multi_anchor": 0.9765415549597856,
       "trend_ensemble": 0.9052737655357743
+    },
+    "B20002_001E": {
+      "trend_ensemble": 0.9025864964729594
     },
     "B25058_001E": {
       "multi_anchor": 0.9892761394101877,
@@ -39,12 +45,27 @@
     "S1701_C03_001E": {
       "multi_anchor": 0.9886058981233244,
       "trend_ensemble": 0.8888142425260329
+    },
+    "S2301_C04_001E": {
+      "trend_ensemble": 0.7971763085399449
+    },
+    "homeownership_rate": {
+      "trend_ensemble": 0.8874706079946255
+    },
+    "vacancy_rate": {
+      "trend_ensemble": 0.8458179375209943
     }
   },
   "ci90_coverage_post_override": {
+    "B01002_001E": {
+      "trend_ensemble": 0.8750419885791065
+    },
     "B19013_001E": {
       "multi_anchor": 0.8974530831099196,
       "trend_ensemble": 0.9052737655357743
+    },
+    "B20002_001E": {
+      "trend_ensemble": 0.9025864964729594
     },
     "B25058_001E": {
       "multi_anchor": 0.9205764075067024,
@@ -70,6 +91,15 @@
     "S1701_C03_001E": {
       "multi_anchor": 0.9420241286863271,
       "trend_ensemble": 0.8888142425260329
+    },
+    "S2301_C04_001E": {
+      "trend_ensemble": 0.9207988980716253
+    },
+    "homeownership_rate": {
+      "trend_ensemble": 0.8874706079946255
+    },
+    "vacancy_rate": {
+      "trend_ensemble": 0.928115552569701
     }
   },
   "horizons": [
@@ -80,9 +110,15 @@
     5
   ],
   "rmse_by_indicator_method": {
+    "B01002_001E": {
+      "trend_ensemble": 0.022456265737340424
+    },
     "B19013_001E": {
       "multi_anchor": 0.06889514113762249,
       "trend_ensemble": 0.08151923787232228
+    },
+    "B20002_001E": {
+      "trend_ensemble": 0.07814027401391276
     },
     "B25058_001E": {
       "multi_anchor": 0.08594738687473186,
@@ -108,6 +144,15 @@
     "S1701_C03_001E": {
       "multi_anchor": 0.21450076711992594,
       "trend_ensemble": 0.22830339261909485
+    },
+    "S2301_C04_001E": {
+      "trend_ensemble": 0.3820807116683521
+    },
+    "homeownership_rate": {
+      "trend_ensemble": 0.05294636047330988
+    },
+    "vacancy_rate": {
+      "trend_ensemble": 0.30042918006866837
     }
   },
   "rmse_by_indicator_source": {
@@ -157,6 +202,12 @@
     },
     "S1701_C03_001E": {
       "multi_anchor": 0.7150000000000001
+    },
+    "S2301_C04_001E": {
+      "trend_ensemble": 2.6
+    },
+    "vacancy_rate": {
+      "trend_ensemble": 1.9500000000000002
     }
   },
   "strata_records": {
@@ -379,6 +430,30 @@
       },
       {
         "extra": {
+          "b_raw": -0.04267730460223258,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": -0.04267730460223258
+      },
+      {
+        "extra": {
+          "b_raw": -0.10586902095330131,
+          "clamped": 1.0
+        },
+        "h_bucket": "long",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": -0.09531017980432493
+      },
+      {
+        "extra": {
           "b_raw": -0.0024124908112746995,
           "clamped": 0.0
         },
@@ -472,6 +547,54 @@
         "n_folds": 732,
         "pop_bucket": "medium",
         "value": 0.09531017980432493
+      },
+      {
+        "extra": {
+          "b_raw": -0.01322410874477688,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 618,
+        "pop_bucket": "medium",
+        "value": -0.01322410874477688
+      },
+      {
+        "extra": {
+          "b_raw": -0.11210582138683754,
+          "clamped": 1.0
+        },
+        "h_bucket": "long",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 688,
+        "pop_bucket": "medium",
+        "value": -0.09531017980432493
+      },
+      {
+        "extra": {
+          "b_raw": -0.0033661605398041506,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": -0.0033661605398041506
+      },
+      {
+        "extra": {
+          "b_raw": -0.006431382716184053,
+          "clamped": 0.0
+        },
+        "h_bucket": "long",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": -0.006431382716184053
       },
       {
         "extra": {
@@ -691,6 +814,30 @@
       },
       {
         "extra": {
+          "b_raw": -0.03897566262545805,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": -0.03897566262545805
+      },
+      {
+        "extra": {
+          "b_raw": -0.10905970943085526,
+          "clamped": 1.0
+        },
+        "h_bucket": "long",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": -0.09531017980432493
+      },
+      {
+        "extra": {
           "b_raw": -0.0007413093618200958,
           "clamped": 0.0
         },
@@ -784,6 +931,54 @@
         "n_folds": 810,
         "pop_bucket": "xlarge",
         "value": 0.09531017980432493
+      },
+      {
+        "extra": {
+          "b_raw": -0.04374857971274862,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": -0.04374857971274862
+      },
+      {
+        "extra": {
+          "b_raw": -0.22159773263240923,
+          "clamped": 1.0
+        },
+        "h_bucket": "long",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": -0.09531017980432493
+      },
+      {
+        "extra": {
+          "b_raw": -0.00215765890171436,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": -0.00215765890171436
+      },
+      {
+        "extra": {
+          "b_raw": -0.006239619553872022,
+          "clamped": 0.0
+        },
+        "h_bucket": "long",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": -0.006239619553872022
       },
       {
         "extra": {
@@ -1003,6 +1198,30 @@
       },
       {
         "extra": {
+          "b_raw": -0.028728140311804835,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": -0.028728140311804835
+      },
+      {
+        "extra": {
+          "b_raw": -0.07747745952516712,
+          "clamped": 0.0
+        },
+        "h_bucket": "long",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": -0.07747745952516712
+      },
+      {
+        "extra": {
           "b_raw": 0.0043644746820969745,
           "clamped": 0.0
         },
@@ -1093,6 +1312,198 @@
         "h_bucket": "long",
         "indicator": "S1701_C03_001E",
         "method": "multi_anchor",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.09531017980432493
+      },
+      {
+        "extra": {
+          "b_raw": -0.036653829829087055,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": -0.036653829829087055
+      },
+      {
+        "extra": {
+          "b_raw": -0.22542990409234775,
+          "clamped": 1.0
+        },
+        "h_bucket": "long",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": -0.09531017980432493
+      },
+      {
+        "extra": {
+          "b_raw": -0.005160089652285419,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": -0.005160089652285419
+      },
+      {
+        "extra": {
+          "b_raw": -0.015296229912211912,
+          "clamped": 0.0
+        },
+        "h_bucket": "long",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": -0.015296229912211912
+      },
+      {
+        "extra": {
+          "b_raw": -0.00841363956387963,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": -0.00841363956387963
+      },
+      {
+        "extra": {
+          "b_raw": -0.024017502251524967,
+          "clamped": 0.0
+        },
+        "h_bucket": "long",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": -0.024017502251524967
+      },
+      {
+        "extra": {
+          "b_raw": -0.00870290220925382,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": -0.00870290220925382
+      },
+      {
+        "extra": {
+          "b_raw": -0.022792656280825923,
+          "clamped": 0.0
+        },
+        "h_bucket": "long",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": -0.022792656280825923
+      },
+      {
+        "extra": {
+          "b_raw": -0.020432086206233754,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": -0.020432086206233754
+      },
+      {
+        "extra": {
+          "b_raw": -0.06137375799023132,
+          "clamped": 0.0
+        },
+        "h_bucket": "long",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": -0.06137375799023132
+      },
+      {
+        "extra": {
+          "b_raw": 0.03892755603126274,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": 0.03892755603126274
+      },
+      {
+        "extra": {
+          "b_raw": 0.11775657705664554,
+          "clamped": 1.0
+        },
+        "h_bucket": "long",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": 0.09531017980432493
+      },
+      {
+        "extra": {
+          "b_raw": -1.5846243292287003e-05,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": -1.5846243292287003e-05
+      },
+      {
+        "extra": {
+          "b_raw": 0.03085811132435817,
+          "clamped": 0.0
+        },
+        "h_bucket": "long",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.03085811132435817
+      },
+      {
+        "extra": {
+          "b_raw": 0.04779683991770551,
+          "clamped": 0.0
+        },
+        "h_bucket": "short",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.04779683991770551
+      },
+      {
+        "extra": {
+          "b_raw": 0.15087768436796578,
+          "clamped": 1.0
+        },
+        "h_bucket": "long",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
         "n_folds": 36,
         "pop_bucket": "large",
         "value": 0.09531017980432493
@@ -1207,6 +1618,18 @@
       },
       {
         "extra": {
+          "b_raw": -0.07608322281827978,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": -0.07608322281827978
+      },
+      {
+        "extra": {
           "b_raw": -0.0037599422102468755,
           "clamped": 0.0
         },
@@ -1252,6 +1675,30 @@
         "n_folds": 1386,
         "pop_bucket": "medium",
         "value": 0.09531017980432493
+      },
+      {
+        "extra": {
+          "b_raw": -0.06531493439388694,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1306,
+        "pop_bucket": "medium",
+        "value": -0.06531493439388694
+      },
+      {
+        "extra": {
+          "b_raw": -0.004986571683082576,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": -0.004986571683082576
       },
       {
         "extra": {
@@ -1363,6 +1810,18 @@
       },
       {
         "extra": {
+          "b_raw": -0.07607898152243305,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": -0.07607898152243305
+      },
+      {
+        "extra": {
           "b_raw": -0.0006411888822199029,
           "clamped": 0.0
         },
@@ -1408,6 +1867,30 @@
         "n_folds": 1530,
         "pop_bucket": "xlarge",
         "value": 0.09531017980432493
+      },
+      {
+        "extra": {
+          "b_raw": -0.13790401361139246,
+          "clamped": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": -0.09531017980432493
+      },
+      {
+        "extra": {
+          "b_raw": -0.004318696894033122,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": -0.004318696894033122
       },
       {
         "extra": {
@@ -1519,6 +2002,18 @@
       },
       {
         "extra": {
+          "b_raw": -0.05453660342476134,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": -0.05453660342476134
+      },
+      {
+        "extra": {
           "b_raw": 0.0070119303829652094,
           "clamped": 0.0
         },
@@ -1564,6 +2059,102 @@
         "n_folds": 68,
         "pop_bucket": "large",
         "value": 0.08014959491192283
+      },
+      {
+        "extra": {
+          "b_raw": -0.1365941044390486,
+          "clamped": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": -0.09531017980432493
+      },
+      {
+        "extra": {
+          "b_raw": -0.010526281554599443,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": -0.010526281554599443
+      },
+      {
+        "extra": {
+          "b_raw": -0.016662527090560885,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": -0.016662527090560885
+      },
+      {
+        "extra": {
+          "b_raw": -0.016162183776556698,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": -0.016162183776556698
+      },
+      {
+        "extra": {
+          "b_raw": -0.04210708891540894,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": -0.04210708891540894
+      },
+      {
+        "extra": {
+          "b_raw": 0.08060004067774865,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": 0.08060004067774865
+      },
+      {
+        "extra": {
+          "b_raw": 0.016329190116052075,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.016329190116052075
+      },
+      {
+        "extra": {
+          "b_raw": 0.10236905168549036,
+          "clamped": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.09531017980432493
       },
       {
         "extra": {
@@ -1675,6 +2266,18 @@
       },
       {
         "extra": {
+          "b_raw": -0.07558887975432117,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": -0.07558887975432117
+      },
+      {
+        "extra": {
           "b_raw": -0.0019110406555879272,
           "clamped": 0.0
         },
@@ -1720,6 +2323,54 @@
         "n_folds": 2984,
         "pop_bucket": "*",
         "value": 0.09531017980432493
+      },
+      {
+        "extra": {
+          "b_raw": -0.10522825215072387,
+          "clamped": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 2904,
+        "pop_bucket": "*",
+        "value": -0.09531017980432493
+      },
+      {
+        "extra": {
+          "b_raw": -0.004769860848019588,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": -0.004769860848019588
+      },
+      {
+        "extra": {
+          "b_raw": -0.01698657980593316,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": -0.01698657980593316
+      },
+      {
+        "extra": {
+          "b_raw": 0.04806590946818555,
+          "clamped": 0.0
+        },
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": 0.04806590946818555
       }
     ],
     "coverage_post": [
@@ -1869,6 +2520,22 @@
       },
       {
         "h_bucket": "short",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": 0.9046153846153846
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": 0.9396433470507545
+      },
+      {
+        "h_bucket": "short",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 650,
@@ -1930,6 +2597,38 @@
         "n_folds": 732,
         "pop_bucket": "medium",
         "value": 0.894808743169399
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 618,
+        "pop_bucket": "medium",
+        "value": 0.9045307443365695
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 688,
+        "pop_bucket": "medium",
+        "value": 0.8953488372093024
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": 0.916923076923077
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": 0.9080932784636488
       },
       {
         "h_bucket": "short",
@@ -2077,6 +2776,22 @@
       },
       {
         "h_bucket": "short",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.8638888888888889
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.8580246913580247
+      },
+      {
+        "h_bucket": "short",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 720,
@@ -2141,6 +2856,38 @@
       },
       {
         "h_bucket": "short",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.9430555555555555
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.9209876543209876
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.8875
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.9308641975308642
+      },
+      {
+        "h_bucket": "short",
         "indicator": "B19013_001E",
         "method": "trend_ensemble",
         "n_folds": 32,
@@ -2285,6 +3032,22 @@
       },
       {
         "h_bucket": "short",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.90625
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.9166666666666666
+      },
+      {
+        "h_bucket": "short",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 32,
@@ -2346,6 +3109,134 @@
         "n_folds": 36,
         "pop_bucket": "large",
         "value": 0.8611111111111112
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.9375
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.9444444444444444
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.875
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.8611111111111112
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": 0.8892307692307693
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": 0.9163237311385459
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.8777777777777778
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.8641975308641975
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.9375
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.9444444444444444
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": 0.8984615384615384
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": 0.9149519890260631
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.9319444444444445
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.9358024691358025
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.9375
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.9444444444444444
       },
       {
         "h_bucket": "*",
@@ -2421,6 +3312,14 @@
       },
       {
         "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": 0.9448875997099347
+      },
+      {
+        "h_bucket": "*",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 1379,
@@ -2450,6 +3349,22 @@
         "n_folds": 1386,
         "pop_bucket": "medium",
         "value": 0.8802308802308803
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1306,
+        "pop_bucket": "medium",
+        "value": 0.8996937212863706
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": 0.9122552574329225
       },
       {
         "h_bucket": "*",
@@ -2525,6 +3440,14 @@
       },
       {
         "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.8607843137254902
+      },
+      {
+        "h_bucket": "*",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 1530,
@@ -2554,6 +3477,22 @@
         "n_folds": 1530,
         "pop_bucket": "xlarge",
         "value": 0.857516339869281
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.9313725490196079
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.9071895424836601
       },
       {
         "h_bucket": "*",
@@ -2629,6 +3568,14 @@
       },
       {
         "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.8529411764705882
+      },
+      {
+        "h_bucket": "*",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 68,
@@ -2658,6 +3605,70 @@
         "n_folds": 68,
         "pop_bucket": "large",
         "value": 0.8970588235294118
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.9411764705882353
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.8823529411764706
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": 0.9035532994923858
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.8705882352941177
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.9411764705882353
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": 0.9071791153009428
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.9098039215686274
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.9411764705882353
       },
       {
         "h_bucket": "*",
@@ -2733,6 +3744,14 @@
       },
       {
         "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": 0.9025864964729594
+      },
+      {
+        "h_bucket": "*",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 2977,
@@ -2762,6 +3781,38 @@
         "n_folds": 2984,
         "pop_bucket": "*",
         "value": 0.9420241286863271
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 2904,
+        "pop_bucket": "*",
+        "value": 0.9207988980716253
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": 0.8750419885791065
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": 0.8874706079946255
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": 0.928115552569701
       }
     ],
     "coverage_pre": [
@@ -2911,6 +3962,22 @@
       },
       {
         "h_bucket": "short",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": 0.9507692307692308
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": 0.9396433470507545
+      },
+      {
+        "h_bucket": "short",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 650,
@@ -2972,6 +4039,38 @@
         "n_folds": 732,
         "pop_bucket": "medium",
         "value": 1.0
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 618,
+        "pop_bucket": "medium",
+        "value": 0.9045307443365695
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 688,
+        "pop_bucket": "medium",
+        "value": 0.8953488372093024
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": 0.916923076923077
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": 0.9080932784636488
       },
       {
         "h_bucket": "short",
@@ -3119,6 +4218,22 @@
       },
       {
         "h_bucket": "short",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.8638888888888889
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.8580246913580247
+      },
+      {
+        "h_bucket": "short",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 720,
@@ -3180,6 +4295,38 @@
         "n_folds": 810,
         "pop_bucket": "xlarge",
         "value": 1.0
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.7652777777777777
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.6567901234567901
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.8875
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.8061728395061728
       },
       {
         "h_bucket": "short",
@@ -3327,6 +4474,22 @@
       },
       {
         "h_bucket": "short",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.96875
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 1.0
+      },
+      {
+        "h_bucket": "short",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 32,
@@ -3388,6 +4551,134 @@
         "n_folds": 36,
         "pop_bucket": "large",
         "value": 1.0
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.84375
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.8333333333333334
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.875
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.75
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": 0.8892307692307693
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": 0.9163237311385459
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.8777777777777778
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.8641975308641975
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.9375
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.9444444444444444
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": 0.8984615384615384
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": 0.9149519890260631
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.8208333333333333
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.782716049382716
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.65625
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.5833333333333334
       },
       {
         "h_bucket": "*",
@@ -3463,6 +4754,14 @@
       },
       {
         "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": 0.9448875997099347
+      },
+      {
+        "h_bucket": "*",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 1379,
@@ -3492,6 +4791,22 @@
         "n_folds": 1386,
         "pop_bucket": "medium",
         "value": 0.976911976911977
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1306,
+        "pop_bucket": "medium",
+        "value": 0.8996937212863706
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": 0.9122552574329225
       },
       {
         "h_bucket": "*",
@@ -3567,6 +4882,14 @@
       },
       {
         "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.8607843137254902
+      },
+      {
+        "h_bucket": "*",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 1530,
@@ -3596,6 +4919,22 @@
         "n_folds": 1530,
         "pop_bucket": "xlarge",
         "value": 0.9986928104575163
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.707843137254902
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.8444444444444444
       },
       {
         "h_bucket": "*",
@@ -3671,6 +5010,14 @@
       },
       {
         "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.9852941176470589
+      },
+      {
+        "h_bucket": "*",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 68,
@@ -3700,6 +5047,70 @@
         "n_folds": 68,
         "pop_bucket": "large",
         "value": 1.0
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.8382352941176471
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.8088235294117647
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": 0.9035532994923858
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.8705882352941177
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.9411764705882353
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": 0.9071791153009428
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.8006535947712419
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.6176470588235294
       },
       {
         "h_bucket": "*",
@@ -3775,6 +5186,14 @@
       },
       {
         "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": 0.9025864964729594
+      },
+      {
+        "h_bucket": "*",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 2977,
@@ -3804,6 +5223,38 @@
         "n_folds": 2984,
         "pop_bucket": "*",
         "value": 0.9886058981233244
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 2904,
+        "pop_bucket": "*",
+        "value": 0.7971763085399449
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": 0.8750419885791065
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": 0.8874706079946255
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": 0.8458179375209943
       }
     ],
     "rmse": [
@@ -3953,6 +5404,22 @@
       },
       {
         "h_bucket": "short",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": 0.08526148270345363
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": 0.10976469541920764
+      },
+      {
+        "h_bucket": "short",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 650,
@@ -4014,6 +5481,38 @@
         "n_folds": 732,
         "pop_bucket": "medium",
         "value": 0.2964288738433008
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 618,
+        "pop_bucket": "medium",
+        "value": 0.45034096419288344
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 688,
+        "pop_bucket": "medium",
+        "value": 0.4858031685782047
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": 0.026305241835054675
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": 0.034963171385726334
       },
       {
         "h_bucket": "short",
@@ -4161,6 +5660,22 @@
       },
       {
         "h_bucket": "short",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.044116033576265916
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.06124824226810834
+      },
+      {
+        "h_bucket": "short",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 720,
@@ -4222,6 +5737,38 @@
         "n_folds": 810,
         "pop_bucket": "xlarge",
         "value": 0.16890698771810012
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.27616962875687706
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.2913939288133286
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.006752002835355103
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.011104935427031472
       },
       {
         "h_bucket": "short",
@@ -4369,6 +5916,22 @@
       },
       {
         "h_bucket": "short",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.05409364594993269
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.06132162437498607
+      },
+      {
+        "h_bucket": "short",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 32,
@@ -4430,6 +5993,134 @@
         "n_folds": 36,
         "pop_bucket": "large",
         "value": 0.1557975750791649
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.4831402396257454
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.3754715743495682
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.014076407943083874
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.024309769076392373
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": 0.05741467966610943
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": 0.07750618230293464
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.025308709383359815
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.03887852815288674
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.03460161554343325
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.05262244244723405
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": 0.3058000390403403
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": 0.3727482798816311
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 0.19048343173627974
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 0.31191953375813397
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 0.12373113558406147
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.1827843942250564
       },
       {
         "h_bucket": "*",
@@ -4505,6 +6196,14 @@
       },
       {
         "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": 0.09897366903263954
+      },
+      {
+        "h_bucket": "*",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 1379,
@@ -4534,6 +6233,22 @@
         "n_folds": 1386,
         "pop_bucket": "medium",
         "value": 0.2780630086882712
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1306,
+        "pop_bucket": "medium",
+        "value": 0.46935650657721667
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": 0.03118315168623849
       },
       {
         "h_bucket": "*",
@@ -4609,6 +6324,14 @@
       },
       {
         "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.05386907875276318
+      },
+      {
+        "h_bucket": "*",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 1530,
@@ -4638,6 +6361,22 @@
         "n_folds": 1530,
         "pop_bucket": "xlarge",
         "value": 0.13722573808233265
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.2843311146124713
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.009313471128538345
       },
       {
         "h_bucket": "*",
@@ -4713,6 +6452,14 @@
       },
       {
         "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.058032473060163035
+      },
+      {
+        "h_bucket": "*",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 68,
@@ -4742,6 +6489,70 @@
         "n_folds": 68,
         "pop_bucket": "large",
         "value": 0.13933144621985225
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.429514504135423
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.020152135980160028
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": 0.06877116990398355
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.03319116265019969
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.04504916753669498
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": 0.3428245880226884
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 0.26188408549307646
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.15777242811634415
       },
       {
         "h_bucket": "*",
@@ -4817,6 +6628,14 @@
       },
       {
         "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": 0.07814027401391276
+      },
+      {
+        "h_bucket": "*",
         "indicator": "S1501_C02_014E",
         "method": "trend_ensemble",
         "n_folds": 2977,
@@ -4846,6 +6665,38 @@
         "n_folds": 2984,
         "pop_bucket": "*",
         "value": 0.21450076711992594
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 2904,
+        "pop_bucket": "*",
+        "value": 0.3820807116683521
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": 0.022456265737340424
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": 0.05294636047330988
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": 0.30042918006866837
       }
     ],
     "se_inflator": [
@@ -5085,6 +6936,32 @@
       },
       {
         "extra": {
+          "coverage_post": 0.9046153846153846,
+          "coverage_pre": 0.9507692307692308,
+          "factor": 0.775
+        },
+        "h_bucket": "short",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": 1.0075
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9396433470507545,
+          "coverage_pre": 0.9396433470507545,
+          "factor": 1.0
+        },
+        "h_bucket": "long",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
           "coverage_post": 0.936923076923077,
           "coverage_pre": 0.9692307692307692,
           "factor": 0.775
@@ -5186,6 +7063,58 @@
         "n_folds": 732,
         "pop_bucket": "medium",
         "value": 0.42250000000000004
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9045307443365695,
+          "coverage_pre": 0.9045307443365695,
+          "factor": 1.0
+        },
+        "h_bucket": "short",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 618,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8953488372093024,
+          "coverage_pre": 0.8953488372093024,
+          "factor": 1.0
+        },
+        "h_bucket": "long",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 688,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.916923076923077,
+          "coverage_pre": 0.916923076923077,
+          "factor": 1.0
+        },
+        "h_bucket": "short",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9080932784636488,
+          "coverage_pre": 0.9080932784636488,
+          "factor": 1.0
+        },
+        "h_bucket": "long",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": 1.3
       },
       {
         "extra": {
@@ -5423,6 +7352,32 @@
       },
       {
         "extra": {
+          "coverage_post": 0.8638888888888889,
+          "coverage_pre": 0.8638888888888889,
+          "factor": 1.0
+        },
+        "h_bucket": "short",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8580246913580247,
+          "coverage_pre": 0.8580246913580247,
+          "factor": 1.0
+        },
+        "h_bucket": "long",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 1.3
+      },
+      {
+        "extra": {
           "coverage_post": 0.9416666666666667,
           "coverage_pre": 0.9416666666666667,
           "factor": 1.0
@@ -5524,6 +7479,58 @@
         "n_folds": 810,
         "pop_bucket": "xlarge",
         "value": 0.27625
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9430555555555555,
+          "coverage_pre": 0.7652777777777777,
+          "factor": 3.0
+        },
+        "h_bucket": "short",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 3.9000000000000004
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9209876543209876,
+          "coverage_pre": 0.6567901234567901,
+          "factor": 3.0
+        },
+        "h_bucket": "long",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 3.9000000000000004
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8875,
+          "coverage_pre": 0.8875,
+          "factor": 1.0
+        },
+        "h_bucket": "short",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9308641975308642,
+          "coverage_pre": 0.8061728395061728,
+          "factor": 1.5
+        },
+        "h_bucket": "long",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 1.9500000000000002
       },
       {
         "extra": {
@@ -5761,6 +7768,32 @@
       },
       {
         "extra": {
+          "coverage_post": 0.90625,
+          "coverage_pre": 0.96875,
+          "factor": 0.775
+        },
+        "h_bucket": "short",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 1.0075
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9166666666666666,
+          "coverage_pre": 1.0,
+          "factor": 0.55
+        },
+        "h_bucket": "long",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 0.7150000000000001
+      },
+      {
+        "extra": {
           "coverage_post": 0.9375,
           "coverage_pre": 0.96875,
           "factor": 0.8875
@@ -5862,6 +7895,214 @@
         "n_folds": 36,
         "pop_bucket": "large",
         "value": 0.27625
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9375,
+          "coverage_pre": 0.84375,
+          "factor": 3.0
+        },
+        "h_bucket": "short",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 3.9000000000000004
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9444444444444444,
+          "coverage_pre": 0.8333333333333334,
+          "factor": 3.0
+        },
+        "h_bucket": "long",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 3.9000000000000004
+      },
+      {
+        "extra": {
+          "coverage_post": 0.875,
+          "coverage_pre": 0.875,
+          "factor": 1.0
+        },
+        "h_bucket": "short",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8611111111111112,
+          "coverage_pre": 0.75,
+          "factor": 3.0
+        },
+        "h_bucket": "long",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 3.9000000000000004
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8892307692307693,
+          "coverage_pre": 0.8892307692307693,
+          "factor": 1.0
+        },
+        "h_bucket": "short",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9163237311385459,
+          "coverage_pre": 0.9163237311385459,
+          "factor": 1.0
+        },
+        "h_bucket": "long",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8777777777777778,
+          "coverage_pre": 0.8777777777777778,
+          "factor": 1.0
+        },
+        "h_bucket": "short",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8641975308641975,
+          "coverage_pre": 0.8641975308641975,
+          "factor": 1.0
+        },
+        "h_bucket": "long",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9375,
+          "coverage_pre": 0.9375,
+          "factor": 1.0
+        },
+        "h_bucket": "short",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9444444444444444,
+          "coverage_pre": 0.9444444444444444,
+          "factor": 1.0
+        },
+        "h_bucket": "long",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8984615384615384,
+          "coverage_pre": 0.8984615384615384,
+          "factor": 1.0
+        },
+        "h_bucket": "short",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 650,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9149519890260631,
+          "coverage_pre": 0.9149519890260631,
+          "factor": 1.0
+        },
+        "h_bucket": "long",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 729,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9319444444444445,
+          "coverage_pre": 0.8208333333333333,
+          "factor": 1.5
+        },
+        "h_bucket": "short",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 720,
+        "pop_bucket": "xlarge",
+        "value": 1.9500000000000002
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9358024691358025,
+          "coverage_pre": 0.782716049382716,
+          "factor": 2.0
+        },
+        "h_bucket": "long",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 810,
+        "pop_bucket": "xlarge",
+        "value": 2.6
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9375,
+          "coverage_pre": 0.65625,
+          "factor": 3.0
+        },
+        "h_bucket": "short",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 32,
+        "pop_bucket": "large",
+        "value": 3.9000000000000004
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9444444444444444,
+          "coverage_pre": 0.5833333333333334,
+          "factor": 3.0
+        },
+        "h_bucket": "long",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 36,
+        "pop_bucket": "large",
+        "value": 3.9000000000000004
       },
       {
         "extra": {
@@ -5982,6 +8223,19 @@
       },
       {
         "extra": {
+          "coverage_post": 0.9448875997099347,
+          "coverage_pre": 0.9448875997099347,
+          "factor": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
           "coverage_post": 0.8600435097897027,
           "coverage_pre": 0.971718636693256,
           "factor": 0.55
@@ -6031,6 +8285,32 @@
         "n_folds": 1386,
         "pop_bucket": "medium",
         "value": 0.7150000000000001
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8996937212863706,
+          "coverage_pre": 0.8996937212863706,
+          "factor": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1306,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9122552574329225,
+          "coverage_pre": 0.9122552574329225,
+          "factor": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": 1.3
       },
       {
         "extra": {
@@ -6151,6 +8431,19 @@
       },
       {
         "extra": {
+          "coverage_post": 0.8607843137254902,
+          "coverage_pre": 0.8607843137254902,
+          "factor": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 1.3
+      },
+      {
+        "extra": {
           "coverage_post": 0.9274509803921569,
           "coverage_pre": 0.9274509803921569,
           "factor": 1.0
@@ -6200,6 +8493,32 @@
         "n_folds": 1530,
         "pop_bucket": "xlarge",
         "value": 0.27625
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9313725490196079,
+          "coverage_pre": 0.707843137254902,
+          "factor": 3.0
+        },
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 3.9000000000000004
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9071895424836601,
+          "coverage_pre": 0.8444444444444444,
+          "factor": 1.25
+        },
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 1.625
       },
       {
         "extra": {
@@ -6320,6 +8639,19 @@
       },
       {
         "extra": {
+          "coverage_post": 0.8529411764705882,
+          "coverage_pre": 0.9852941176470589,
+          "factor": 0.55
+        },
+        "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 0.7150000000000001
+      },
+      {
+        "extra": {
           "coverage_post": 0.9117647058823529,
           "coverage_pre": 0.9558823529411765,
           "factor": 0.8875
@@ -6369,6 +8701,110 @@
         "n_folds": 68,
         "pop_bucket": "large",
         "value": 0.42250000000000004
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9411764705882353,
+          "coverage_pre": 0.8382352941176471,
+          "factor": 3.0
+        },
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 3.9000000000000004
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8823529411764706,
+          "coverage_pre": 0.8088235294117647,
+          "factor": 3.0
+        },
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 3.9000000000000004
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9035532994923858,
+          "coverage_pre": 0.9035532994923858,
+          "factor": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8705882352941177,
+          "coverage_pre": 0.8705882352941177,
+          "factor": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9411764705882353,
+          "coverage_pre": 0.9411764705882353,
+          "factor": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9071791153009428,
+          "coverage_pre": 0.9071791153009428,
+          "factor": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1379,
+        "pop_bucket": "medium",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9098039215686274,
+          "coverage_pre": 0.8006535947712419,
+          "factor": 1.5
+        },
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 1530,
+        "pop_bucket": "xlarge",
+        "value": 1.9500000000000002
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9411764705882353,
+          "coverage_pre": 0.6176470588235294,
+          "factor": 3.0
+        },
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 68,
+        "pop_bucket": "large",
+        "value": 3.9000000000000004
       },
       {
         "extra": {
@@ -6489,6 +8925,19 @@
       },
       {
         "extra": {
+          "coverage_post": 0.9025864964729594,
+          "coverage_pre": 0.9025864964729594,
+          "factor": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "B20002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": 1.3
+      },
+      {
+        "extra": {
           "coverage_post": 0.9486059791736647,
           "coverage_pre": 0.9486059791736647,
           "factor": 1.0
@@ -6538,6 +8987,58 @@
         "n_folds": 2984,
         "pop_bucket": "*",
         "value": 0.7150000000000001
+      },
+      {
+        "extra": {
+          "coverage_post": 0.9207988980716253,
+          "coverage_pre": 0.7971763085399449,
+          "factor": 2.0
+        },
+        "h_bucket": "*",
+        "indicator": "S2301_C04_001E",
+        "method": "trend_ensemble",
+        "n_folds": 2904,
+        "pop_bucket": "*",
+        "value": 2.6
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8750419885791065,
+          "coverage_pre": 0.8750419885791065,
+          "factor": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "B01002_001E",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.8874706079946255,
+          "coverage_pre": 0.8874706079946255,
+          "factor": 1.0
+        },
+        "h_bucket": "*",
+        "indicator": "homeownership_rate",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": 1.3
+      },
+      {
+        "extra": {
+          "coverage_post": 0.928115552569701,
+          "coverage_pre": 0.8458179375209943,
+          "factor": 1.5
+        },
+        "h_bucket": "*",
+        "indicator": "vacancy_rate",
+        "method": "trend_ensemble",
+        "n_folds": 2977,
+        "pop_bucket": "*",
+        "value": 1.9500000000000002
       }
     ]
   }

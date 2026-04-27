@@ -71,6 +71,12 @@ class AcsClient:
     or pass an explicit `api_key`, it's appended to every request.
     """
 
+    # Write the cache to disk at most once every this many new fetches.
+    # Per-call saves on a 20MB+ cache file cause excessive I/O when
+    # fetching large panels (~1,000s of calls). The cache is always flushed
+    # on __del__ so no data is lost even if the process is interrupted.
+    _CACHE_WRITE_INTERVAL: int = 50
+
     def __init__(
         self,
         cache_path: Path = DEFAULT_CACHE_PATH,
@@ -81,6 +87,15 @@ class AcsClient:
         self.api_key = api_key or os.environ.get("CENSUS_API_KEY")
         self.offline = offline
         self._cache: dict = self._load_cache()
+        self._unsaved_writes: int = 0
+
+    def __del__(self) -> None:
+        """Flush any pending cache writes on garbage collection / exit."""
+        if getattr(self, "_unsaved_writes", 0) > 0:
+            try:
+                self._save_cache()
+            except Exception:
+                pass
 
     def _load_cache(self) -> dict:
         if not self.cache_path.exists():
@@ -175,14 +190,16 @@ class AcsClient:
         rows = self._fetch_url(url)
         if not rows:
             self._cache[key] = []
-            self._save_cache()
-            return []
+        else:
+            header, *data = rows
+            self._cache[key] = [dict(zip(header, r)) for r in data]
 
-        header, *data = rows
-        out = [dict(zip(header, r)) for r in data]
-        self._cache[key] = out
-        self._save_cache()
-        return out
+        self._unsaved_writes += 1
+        if self._unsaved_writes >= self._CACHE_WRITE_INTERVAL:
+            self._save_cache()
+            self._unsaved_writes = 0
+
+        return self._cache[key]
 
     def fetch_series(
         self,

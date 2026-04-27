@@ -90,20 +90,43 @@ STATE_FIPS: tuple[str, ...] = (
 # 15001 = medium, 15007 = medium, 15009 = small.
 HAWAII_COUNTIES: tuple[str, ...] = ("15001", "15003", "15007", "15009")
 
-# Indicators we calibrate against — v0.2 dollar-denominated series plus
-# v0.3 percentage indicators (educational attainment, poverty rate,
-# rent-burden median).
-INDICATORS: tuple[str, ...] = (
+# Direct indicators fetched as-is from the Census API.
+# v0.2 dollar-denominated series, v0.3 percentage indicators, v0.4 additions.
+DIRECT_INDICATORS: tuple[str, ...] = (
     # Detail tables (B*)
     "B19013_001E",   # Median household income
     "B25058_001E",   # Median contract rent
     "B25064_001E",   # Median gross rent
     "B25077_001E",   # Median home value
     "B25071_001E",   # Median gross rent as % of household income
-    # Subject tables (S*)
+    "B20002_001E",   # Median earnings for workers 16+ (per-worker income)
+    # Subject tables (S*) — routed to /acs/acs1/subject by AcsClient
     "S1501_C02_014E",  # % age 25+ with HS or higher
     "S1501_C02_015E",  # % age 25+ with bachelor's or higher
     "S1701_C03_001E",  # % below poverty (all people)
+    "S2301_C04_001E",  # Unemployment rate (%)
+    # NOTE: S0101_C02_030E (% 65+) was tried but its column mapping changed
+    # in the 2016-2018 Census S-table restructuring, making pre-2019 values
+    # inconsistent. B01002_001E (median age) is the stable single-code
+    # substitute — same demographic signal, no structural break.
+    "B01002_001E",     # Median age (years)
+)
+
+# Derived indicators: (output_name, numerator_code, denominator_code).
+# Both component codes are fetched from the Census API; the ratio is
+# computed post-fetch and stored as a synthetic AcsObservation with a
+# virtual indicator name (no real Census code).
+DERIVED_INDICATORS: tuple[tuple[str, str, str], ...] = (
+    # Homeownership rate: owner-occupied / total occupied housing units
+    ("homeownership_rate", "B25003_002E", "B25003_001E"),
+    # Vacancy rate: vacant units / total housing units
+    ("vacancy_rate",       "B25002_003E", "B25002_001E"),
+)
+
+# All indicator names exposed to the rest of the pipeline (API codes +
+# virtual names for derived series).
+INDICATORS: tuple[str, ...] = DIRECT_INDICATORS + tuple(
+    name for name, *_ in DERIVED_INDICATORS
 )
 
 # Year range. 2010 is the first year of stable post-redesign 1-year
@@ -269,6 +292,81 @@ def fetch_panel_observations(
                 pct = 100.0 * call_idx / max(total_calls, 1)
                 print(f"[panel] state={state_fips} ind={indicator} "
                       f"kept={kept_in_state} ({pct:.0f}%)", file=sys.stderr)
+    return out
+
+
+# -----------------------------------------------------------------------------
+# Derived observations (ratio of two Census codes)
+# -----------------------------------------------------------------------------
+
+def fetch_derived_observations(
+    client: AcsClient,
+    selected: dict[str, list[str]],
+    derived_specs: Sequence[tuple[str, str, str]] = DERIVED_INDICATORS,
+    years: Sequence[int] = PANEL_YEARS,
+    verbose: bool = True,
+) -> list[AcsObservation]:
+    """Fetch numerator + denominator for each derived indicator; compute ratios.
+
+    Each spec is ``(output_name, numerator_code, denominator_code)``.  Both
+    component codes are fetched state-by-state from the Census API, then the
+    rate is computed per-county per-year and stored as a synthetic
+    ``AcsObservation`` with ``indicator=output_name``.
+
+    MOE is set to NaN for derived ratios — propagating MOE through a ratio
+    requires both marginal MOEs and their covariance, which we don't track.
+    The calibration generator treats NaN MOE as "no MOE available" and skips
+    the CV diagnostic, but the observation is otherwise usable.
+    """
+    selected_geoids: set[str] = set()
+    for gs in selected.values():
+        selected_geoids.update(gs)
+
+    states_needed = sorted({g[:2] for g in selected_geoids})
+
+    out: list[AcsObservation] = []
+    for out_name, num_code, den_code in derived_specs:
+        # Collect numerator and denominator keyed by (geoid, year).
+        num_by_key: dict[tuple[str, int], float] = {}
+        den_by_key: dict[tuple[str, int], float] = {}
+
+        for state_fips in states_needed:
+            for code, store in [(num_code, num_by_key), (den_code, den_by_key)]:
+                obs = client.fetch_series(
+                    indicator=code,
+                    years=tuple(years),
+                    vintage="1y",
+                    state_fips=state_fips,
+                    county_fips=None,
+                )
+                for o in obs:
+                    if o.geoid in selected_geoids and o.estimate > 0:
+                        store[(o.geoid, o.year)] = o.estimate
+
+        # Compute rates and emit synthetic observations.
+        kept = 0
+        for (geoid, year), num in num_by_key.items():
+            den = den_by_key.get((geoid, year))
+            if den is None or den <= 0:
+                continue
+            rate = num / den
+            out.append(AcsObservation(
+                estimate=rate,
+                moe=float("nan"),
+                year=year,
+                vintage="1y",
+                geoid=geoid,
+                indicator=out_name,
+            ))
+            kept += 1
+
+        if verbose:
+            print(
+                f"[derived] {out_name} = {num_code}/{den_code}: "
+                f"{kept} observations",
+                file=sys.stderr,
+            )
+
     return out
 
 
@@ -498,10 +596,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     observations = fetch_panel_observations(
         client=client,
         selected=selected,
-        indicators=INDICATORS,
+        indicators=DIRECT_INDICATORS,
         years=PANEL_YEARS,
     )
-    print(f"[main] fetched {len(observations)} observations total", file=sys.stderr)
+    print(f"[main] fetched {len(observations)} direct observations", file=sys.stderr)
+
+    derived_obs = fetch_derived_observations(
+        client=client,
+        selected=selected,
+        derived_specs=DERIVED_INDICATORS,
+        years=PANEL_YEARS,
+    )
+    observations = observations + derived_obs
+    print(f"[main] fetched {len(observations)} observations total "
+          f"({len(derived_obs)} derived)", file=sys.stderr)
 
     median_cv = compute_median_cv(observations)
 
