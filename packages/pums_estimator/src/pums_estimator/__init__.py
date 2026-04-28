@@ -6,10 +6,11 @@ microdata to match county-level control totals from census_forecaster.
 
 Quick start
 -----------
-    >>> from pums_estimator import PumsRecord, CountyControls, SyntheticEstimatePoint
-    >>> from pums_estimator.pums.client import fetch_pums
-    >>> from pums_estimator.pums.crosswalk import load_crosswalk
-    >>> from pums_estimator.estimation.synthetic import estimate_county_distribution
+    >>> from pums_estimator import (
+    ...     PumsRecord, CountyControls, SyntheticEstimatePoint,
+    ...     fetch_pums, load_crosswalk, estimate_county_distribution,
+    ...     controls_from_acs_table, scale_margins,
+    ... )
 
 Statistical contract
 --------------------
@@ -18,6 +19,11 @@ carry the uncertainty of both the PUMS sampling design and the raking
 assumptions.  Do not treat them as equivalent to published ACS tables.
 """
 from .models import PumsRecord, CountyControls, SyntheticEstimatePoint
+from .pums.client import fetch_pums
+from .pums.crosswalk import load_crosswalk, pumas_for_county
+from .estimation.rake import rake
+from .estimation.synthetic import estimate_county_distribution
+from .controls import controls_from_acs_table, scale_margins
 
 __version__ = "0.1.0"
 
@@ -25,4 +31,11 @@ __all__ = [
     "PumsRecord",
     "CountyControls",
     "SyntheticEstimatePoint",
+    "fetch_pums",
+    "load_crosswalk",
+    "pumas_for_county",
+    "rake",
+    "estimate_county_distribution",
+    "controls_from_acs_table",
+    "scale_margins",
 ]

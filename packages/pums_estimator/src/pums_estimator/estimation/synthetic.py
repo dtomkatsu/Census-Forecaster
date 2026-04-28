@@ -47,7 +47,7 @@ from typing import Optional
 
 from ..models import PumsRecord, CountyControls, SyntheticEstimatePoint
 from ..pums.crosswalk import pumas_for_county
-from .rake import rake
+from .rake import rake, _categorise
 
 
 def estimate_county_distribution(
@@ -109,13 +109,16 @@ def estimate_county_distribution(
         return []
 
     # --- Step 4: weighted tabulation ---
+    # Use the margin categories (if present) so output labels match input keys.
+    # E.g. if margins say "2+", records with VEH=2 and VEH=3 both land in "2+".
+    target_cats = controls.margins.get(variable, {})
     category_totals: dict[str, float] = {}
     category_sq_w: dict[str, float] = {}
     for rec, w in zip(allocated, raked_weights):
         val = rec.variables.get(variable)
         if val is None:
             continue
-        cat = str(int(val))
+        cat = _categorise(val, target_cats) if target_cats else str(int(val))
         category_totals[cat] = category_totals.get(cat, 0.0) + w
         category_sq_w[cat] = category_sq_w.get(cat, 0.0) + w * w
 
