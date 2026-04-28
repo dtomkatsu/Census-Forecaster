@@ -612,7 +612,7 @@ def project_ensemble_multi(
     correlation_rho_inner: float = 0.7,
     correlation_rho_anchor: float = 0.5,
     populations: dict[str, int] | None = None,
-    use_ml: bool = False,
+    use_ml: bool = True,
     ml_series_by_key: dict[tuple[str, str], Sequence[AcsObservation]] | None = None,
     ml_populations: dict[str, int] | None = None,
     ml_model_cache: dict | None = None,

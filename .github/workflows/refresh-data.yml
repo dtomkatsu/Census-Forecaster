@@ -85,6 +85,11 @@ jobs:
             python3 -m census_forecaster.scripts.refresh_zillow_laus_anchors
           fi
 
+      - name: Refresh BPS county permit counts
+        run: |
+          # No API key required — Census BPS data is publicly available.
+          python3 -m census_forecaster.scripts.refresh_bps_permits
+
       - name: Regenerate BLS v3 calibration
         run: |
           # Only regenerate if the BLS panel exists. If neither key is
@@ -103,7 +108,7 @@ jobs:
           # absent (e.g. first-ever checkout before anyone ran build_calibration_panel),
           # the script exits cleanly with a warning rather than failing the workflow.
           if [ -f src/census_forecaster/data/calibration_panel/acs_panel.json ]; then
-            python3 -m census_forecaster.scripts.run_acs_calibration --as-of-mode publication
+            python3 -m census_forecaster.scripts.run_acs_calibration --as-of-mode publication --include-ml
           else
             echo "::warning::ACS calibration panel not present; skipping ACS calibration"
           fi

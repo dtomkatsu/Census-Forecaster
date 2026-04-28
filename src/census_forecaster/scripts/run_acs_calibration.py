@@ -48,6 +48,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         help="Minimum folds for a cell to receive calibration (default 20).",
     )
     parser.add_argument(
+        "--include-ml", action="store_true", default=False,
+        help="Include ml_trend ensemble member in calibration (adds ~5 min HGB training).",
+    )
+    parser.add_argument(
         "--as-of-mode", choices=["instant", "publication"], default="instant",
         help=(
             "How to truncate training data per fold. "
@@ -101,6 +105,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         populations=populations,
         n_threshold=args.n_threshold,
         as_of_mode=args.as_of_mode,
+        include_ml=args.include_ml,
     )
 
     sr = payload.get("strata_records", {})
