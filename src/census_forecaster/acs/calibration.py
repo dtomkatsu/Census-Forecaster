@@ -122,13 +122,18 @@ def _project_anchor_only(
     indicator: str,
     per_source_rmse: Optional[dict[str, dict[str, float]]] = None,
 ) -> Optional[ForecastPoint]:
-    """Project from the latest training observation using only the multi-source anchor."""
+    """Project from the latest training observation using only the multi-source anchor.
+
+    Uses `train[-1].geoid` so county-level anchors read the right per-county
+    series during back-test folds.
+    """
     if not train:
         return None
     rate = combined_anchor_rate(
         indicator=indicator,
         end_year=anchor_year,
         calibration=per_source_rmse,
+        geoid=train[-1].geoid,
     )
     if rate is None:
         return None
@@ -146,14 +151,18 @@ def _per_source_anchor_forecast(
     indicator: str,
     source_name: str,
 ) -> Optional[ForecastPoint]:
-    """Project at a *single* source's smoothed rate (for per-source RMSE calibration)."""
+    """Project at a *single* source's smoothed rate (for per-source RMSE calibration).
+
+    For county-level sources, looks up the source's per-county series via
+    `train[-1].geoid`; non-county sources ignore the geoid.
+    """
     if not train:
         return None
     sources = [s for s in available_sources(indicator) if s.name == source_name]
     if not sources:
         return None
     src = sources[0]
-    rate = src.smoothed_annual_rate(end_year=anchor_year)
+    rate = src.smoothed_annual_rate(end_year=anchor_year, geoid=train[-1].geoid)
     if rate is None:
         return None
     # Wrap the single rate in an AnchorRate-equivalent for `anchor_as_forecast`.

@@ -779,6 +779,7 @@ def project_ensemble_multi(
         end_year=end_year,
         calibration=per_source_calib,
         calibration_horizon=max(int(round(horizon_years)), 1),
+        geoid=geoid,
     )
     anchor_fp: ForecastPoint | None = None
     if anchor_rate is not None:

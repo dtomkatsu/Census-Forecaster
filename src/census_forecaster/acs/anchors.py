@@ -147,6 +147,7 @@ def combined_anchor_rate(
     calibration: Optional[dict[str, dict[str, float]]] = None,
     correlation_rho: float = 0.6,
     calibration_horizon: int = 2,
+    geoid: Optional[str] = None,
 ) -> Optional[AnchorRate]:
     """Compute the indicator-specific multi-source anchor rate at end_year.
 
@@ -154,6 +155,8 @@ def combined_anchor_rate(
     -------
     1. Pick all sources whose `indicator_affinity` includes `indicator`.
     2. For each, get its smoothed YoY log-rate visible at end_year.
+       County-level sources receive `geoid` so they read the right
+       per-county series; non-county sources ignore it.
     3. Inverse-variance combine, with weights drawn from the
        calibration RMSE table when available, else from each source's
        in-sample residual SD.
@@ -187,7 +190,7 @@ def combined_anchor_rate(
     source_names: list[str] = []
     rates: list[AnnualRate] = []
     for src in sources:
-        rate = src.smoothed_annual_rate(end_year=end_year)
+        rate = src.smoothed_annual_rate(end_year=end_year, geoid=geoid)
         if rate is None:
             continue
         source_names.append(src.name)

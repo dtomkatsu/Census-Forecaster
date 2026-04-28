@@ -70,6 +70,21 @@ jobs:
             python3 -m census_forecaster.scripts.refresh_bea_anchors --verify
           fi
 
+      - name: Refresh Zillow + BLS LAUS county anchors
+        env:
+          BLS_API_KEY: ${{ secrets.BLS_API_KEY }}
+        run: |
+          # Zillow CSV downloads need no API key, so run them
+          # unconditionally. The LAUS portion needs BLS_API_KEY; if it's
+          # missing we skip *just* LAUS and still get the housing block
+          # refreshed.
+          if [ -z "${BLS_API_KEY}" ]; then
+            echo "::warning::BLS_API_KEY not set; refreshing Zillow only (skipping LAUS)"
+            python3 -m census_forecaster.scripts.refresh_zillow_laus_anchors --skip-laus
+          else
+            python3 -m census_forecaster.scripts.refresh_zillow_laus_anchors
+          fi
+
       - name: Regenerate BLS v3 calibration
         run: |
           # Only regenerate if the BLS panel exists. If neither key is
@@ -127,7 +142,9 @@ jobs:
 
           - BLS multi-MSA panel re-fetched from the BLS public API
           - BEA anchors re-fetched from the BEA Regional API
+          - Zillow ZHVI/ZORI + BLS LAUS county anchors re-fetched
           - BLS v3 calibration regenerated against the new panel
+          - ACS v3 calibration regenerated against the bundled panel
 
           Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
           git commit -m "$MSG"
