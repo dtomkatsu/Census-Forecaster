@@ -15,13 +15,13 @@ class TestAcsObservationDirect:
     def test_publication_date_1y(self):
         obs = AcsObservation(estimate=100, moe=10, year=2022, vintage="1y",
                              geoid="15003", indicator="B01001_001E")
-        d = obs.publication_date()
+        d = obs.publication_date
         assert d.year == 2023
 
     def test_publication_date_5y(self):
         obs = AcsObservation(estimate=100, moe=10, year=2022, vintage="5y",
                              geoid="15003", indicator="B01001_001E")
-        d = obs.publication_date()
+        d = obs.publication_date
         assert d.year == 2023
 
 
