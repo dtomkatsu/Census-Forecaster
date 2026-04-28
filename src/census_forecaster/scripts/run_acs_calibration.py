@@ -52,6 +52,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         help="Include ml_trend ensemble member in calibration (adds ~5 min HGB training).",
     )
     parser.add_argument(
+        "--include-kalman", action="store_true", default=False,
+        help="Include kalman_state_space ensemble member in calibration.",
+    )
+    parser.add_argument(
         "--as-of-mode", choices=["instant", "publication"], default="instant",
         help=(
             "How to truncate training data per fold. "
@@ -106,6 +110,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         n_threshold=args.n_threshold,
         as_of_mode=args.as_of_mode,
         include_ml=args.include_ml,
+        include_kalman=args.include_kalman,
     )
 
     sr = payload.get("strata_records", {})

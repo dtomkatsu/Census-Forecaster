@@ -617,6 +617,7 @@ def project_ensemble_multi(
     ml_populations: dict[str, int] | None = None,
     ml_model_cache: dict | None = None,
     ml_panel=None,
+    use_kalman: bool = False,
 ) -> "ForecastPoint | None":
     """Multi-source anchor ensemble.
 
@@ -699,6 +700,30 @@ def project_ensemble_multi(
     horizon_years = target_year - end_year
     h_bucket = classify_horizon(horizon_years) if horizon_years > 0 else None
     pop_bucket = _resolve_pop_bucket(geoid, populations)
+
+    # Kalman state-space path — replaces the Bates-Granger blend when requested.
+    if use_kalman:
+        try:
+            from ..kalman import project_kalman, METHOD_NAME as _KAL_METHOD
+            kal_fp = project_kalman(
+                series_observations=series_observations,
+                target_year=target_year,
+                end_year=end_year,
+                calibration=calibration,
+                geoid=geoid,
+            )
+        except Exception:  # pragma: no cover
+            kal_fp = None
+        if kal_fp is not None:
+            kal_fp = _apply_bias_correction(
+                kal_fp, indicator, _KAL_METHOD, calibration,
+                pop_bucket=pop_bucket, h_bucket=h_bucket,
+            )
+            kal_fp = _apply_se_override(
+                kal_fp, indicator, _KAL_METHOD, calibration,
+                pop_bucket=pop_bucket, h_bucket=h_bucket,
+            )
+            return kal_fp
 
     # Trend ensemble first.
     components: list[ForecastPoint] = []
