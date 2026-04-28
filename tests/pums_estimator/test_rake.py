@@ -1,0 +1,132 @@
+"""Tests for IPF raking (Deming-Stephan)."""
+from __future__ import annotations
+
+import pytest
+from pums_estimator.models import PumsRecord, CountyControls
+from pums_estimator.estimation.rake import rake, _categorise
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _make_records(n_by_category: dict[str, int], var: str = "VEH",
+                  weight: float = 1.0) -> list[PumsRecord]:
+    """Build synthetic records with equal weights, split by category."""
+    records: list[PumsRecord] = []
+    for cat, count in n_by_category.items():
+        for _ in range(count):
+            records.append(PumsRecord(
+                serial="X", puma="1500100", weight=weight,
+                variables={var: float(cat)},
+            ))
+    return records
+
+
+# ---------------------------------------------------------------------------
+# _categorise
+# ---------------------------------------------------------------------------
+
+class TestCategorise:
+    def test_exact_integer(self):
+        assert _categorise(2.0, {"0": 10, "1": 20, "2": 30}) == "2"
+
+    def test_ceiling_category(self):
+        assert _categorise(4.0, {"0": 10, "1": 20, "2+": 30}) == "2+"
+
+    def test_ceiling_exact_threshold(self):
+        assert _categorise(2.0, {"0": 10, "1": 20, "2+": 30}) == "2+"
+
+    def test_no_match_returns_str(self):
+        # Falls back to str(int(value))
+        assert _categorise(5.0, {"0": 1}) == "5"
+
+
+# ---------------------------------------------------------------------------
+# rake()
+# ---------------------------------------------------------------------------
+
+class TestRake:
+    def test_returns_same_length(self):
+        records = _make_records({"0": 5, "1": 5})
+        controls = CountyControls("15003", 1000, {"VEH": {"0": 50, "1": 50}})
+        weights = rake(records, controls)
+        assert len(weights) == 10
+
+    def test_empty_records_returns_empty(self):
+        controls = CountyControls("15003", 1000, {"VEH": {"0": 50}})
+        assert rake([], controls) == []
+
+    def test_no_margins_returns_original_weights(self):
+        records = _make_records({"0": 5, "1": 5})
+        controls = CountyControls("15003", 1000, {})
+        weights = rake(records, controls)
+        assert weights == [r.weight for r in records]
+
+    def test_margins_match_after_raking(self):
+        """After raking, the weighted sum per category should match targets."""
+        records = _make_records({"0": 10, "1": 5})  # 10 with VEH=0, 5 with VEH=1
+        targets = {"0": 40.0, "1": 60.0}
+        controls = CountyControls("15003", 1000, {"VEH": targets})
+        weights = rake(records, controls)
+
+        w_by_cat: dict[str, float] = {}
+        for rec, w in zip(records, weights):
+            cat = str(int(rec.variables["VEH"]))
+            w_by_cat[cat] = w_by_cat.get(cat, 0.0) + w
+
+        assert w_by_cat["0"] == pytest.approx(40.0, rel=1e-3)
+        assert w_by_cat["1"] == pytest.approx(60.0, rel=1e-3)
+
+    def test_two_variable_convergence(self):
+        """Two-variable IPF should converge and satisfy both margins."""
+        import random
+        random.seed(42)
+        records = []
+        for _ in range(50):
+            records.append(PumsRecord(
+                serial="X", puma="1500100", weight=1.0,
+                variables={
+                    "VEH": float(random.choice([0, 1, 2])),
+                    "TEN": float(random.choice([1, 2])),
+                },
+            ))
+
+        veh_targets = {"0": 5.0, "1": 25.0, "2": 20.0}
+        ten_targets = {"1": 30.0, "2": 20.0}
+        controls = CountyControls("15003", 1000,
+                                  {"VEH": veh_targets, "TEN": ten_targets})
+        weights = rake(records, controls, tol=1e-6)
+
+        # Check VEH margins
+        w_veh: dict[str, float] = {}
+        w_ten: dict[str, float] = {}
+        for rec, w in zip(records, weights):
+            vcat = str(int(rec.variables["VEH"]))
+            tcat = str(int(rec.variables["TEN"]))
+            w_veh[vcat] = w_veh.get(vcat, 0.0) + w
+            w_ten[tcat] = w_ten.get(tcat, 0.0) + w
+
+        for cat, target in veh_targets.items():
+            if cat in w_veh:
+                assert w_veh[cat] == pytest.approx(target, rel=1e-3)
+        for cat, target in ten_targets.items():
+            if cat in w_ten:
+                assert w_ten[cat] == pytest.approx(target, rel=1e-3)
+
+    def test_ceiling_category_raking(self):
+        """Ceiling categories ('2+') should be handled during raking."""
+        records = _make_records({"0": 5, "1": 5, "2": 5, "3": 5})
+        targets = {"0": 5.0, "1": 10.0, "2+": 15.0}  # "2+" covers VEH=2 and VEH=3
+        controls = CountyControls("15003", 1000, {"VEH": targets})
+        weights = rake(records, controls)
+
+        w_by_cat: dict[str, float] = {"0": 0.0, "1": 0.0, "2+": 0.0}
+        for rec, w in zip(records, weights):
+            cat = _categorise(rec.variables["VEH"], targets)
+            if cat in w_by_cat:
+                w_by_cat[cat] += w
+
+        assert w_by_cat["0"] == pytest.approx(5.0, rel=1e-3)
+        assert w_by_cat["1"] == pytest.approx(10.0, rel=1e-3)
+        assert w_by_cat["2+"] == pytest.approx(15.0, rel=1e-3)
