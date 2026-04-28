@@ -66,6 +66,15 @@ class AnchorSource:
         Per-source minimum standard error on YoY log-rate (to prevent
         an unreasonably tight ensemble weight from a single low-noise
         anchor with a few atypical years). Documented in METHODOLOGY.md.
+    geography : str
+        Geographic scope of the underlying series. One of:
+        - "any"     : `values_by_year` applied uniformly to any geoid (legacy).
+        - "national": single national series (PCE, etc.).
+        - "state"   : state-level series applied to all counties in scope.
+        - "county"  : per-county series; data lives under
+                      `values_by_geoid_year`. When the requested geoid
+                      is missing, falls back to `values_by_year` (which
+                      typically holds a state-level aggregate) if present.
     """
     name: str
     path: Path
@@ -73,6 +82,7 @@ class AnchorSource:
     indicator_affinity: tuple[str, ...]
     rate_se_floor: float
     _data: dict
+    geography: str = "any"
 
     @classmethod
     def from_file(
@@ -81,6 +91,7 @@ class AnchorSource:
         publication_lag_years: int,
         indicator_affinity: tuple[str, ...],
         rate_se_floor: float = 0.005,
+        geography: str = "any",
     ) -> "AnchorSource":
         with open(path) as f:
             data = json.load(f)
@@ -98,6 +109,7 @@ class AnchorSource:
             indicator_affinity=indicator_affinity,
             rate_se_floor=rate_se_floor,
             _data=data,
+            geography=geography,
         )
 
     @staticmethod
@@ -136,17 +148,53 @@ class AnchorSource:
             "limitations": self._data.get("limitations", []),
             "publication_lag_years": self.publication_lag_years,
             "indicator_affinity": list(self.indicator_affinity),
+            "geography": self.geography,
         }
 
-    def load_series(self, end_year: Optional[int] = None) -> list[tuple[int, float]]:
+    @property
+    def covered_geoids(self) -> tuple[str, ...]:
+        """Set of geoids with per-county data, or empty tuple for non-county sources."""
+        if self.geography != "county":
+            return ()
+        by_geoid = self._data.get("values_by_geoid_year") or {}
+        return tuple(sorted(by_geoid.keys()))
+
+    def _values_dict_for(self, geoid: Optional[str]) -> dict:
+        """Pick the appropriate {year: value} dict for the requested geoid.
+
+        For geography == "county" we look up `values_by_geoid_year[geoid]`;
+        if that geoid is missing we transparently fall back to
+        `values_by_year` (which by convention holds a state-level
+        aggregate for hybrid sources). For all other geographies we
+        always return `values_by_year`.
+
+        A missing/empty result is normal — the caller treats it as
+        "no data visible at this geoid/year" and falls back gracefully.
+        """
+        if self.geography == "county" and geoid is not None:
+            by_geoid = self._data.get("values_by_geoid_year") or {}
+            geo_block = by_geoid.get(geoid) or by_geoid.get(str(geoid))
+            if geo_block:
+                return geo_block
+        return self._data.get("values_by_year") or {}
+
+    def load_series(
+        self,
+        end_year: Optional[int] = None,
+        geoid: Optional[str] = None,
+    ) -> list[tuple[int, float]]:
         """Return [(year, value), ...] sorted ascending, limited by visibility.
 
         With end_year=T, a value for year Y is included only if it would
         have been *published* on or before T — i.e. Y + publication_lag_years
         ≤ T. This is the no-peeking rule for hidden-data back-tests.
+
+        For county-level sources, `geoid` selects the per-county series;
+        non-county sources ignore the parameter for backwards-compat.
         """
         items: list[tuple[int, float]] = []
-        for k, v in self._data.get("values_by_year", {}).items():
+        values = self._values_dict_for(geoid)
+        for k, v in values.items():
             try:
                 yr = int(k)
             except ValueError:
@@ -161,14 +209,18 @@ class AnchorSource:
         items.sort(key=lambda x: x[0])
         return items
 
-    def annual_log_rates(self, end_year: Optional[int] = None) -> list[AnnualRate]:
+    def annual_log_rates(
+        self,
+        end_year: Optional[int] = None,
+        geoid: Optional[str] = None,
+    ) -> list[AnnualRate]:
         """YoY log-rates with empirical residual SE.
 
         SE is the dispersion of pairwise log-rates within the visible
         window. Floored at `rate_se_floor` so a perfectly smooth admin
         series doesn't get unreasonably high weight in the ensemble.
         """
-        series = self.load_series(end_year)
+        series = self.load_series(end_year, geoid=geoid)
         if len(series) < 2:
             return []
         rates: list[tuple[int, float]] = []
@@ -192,7 +244,9 @@ class AnchorSource:
         return [AnnualRate(year=y, log_rate=r, se_log_rate=sd) for y, r in rates]
 
     def smoothed_annual_rate(
-        self, end_year: Optional[int] = None
+        self,
+        end_year: Optional[int] = None,
+        geoid: Optional[str] = None,
     ) -> Optional[AnnualRate]:
         """Recency-weighted geometric mean of YoY log-rates.
 
@@ -205,7 +259,7 @@ class AnchorSource:
         mean is more stable than a single pair: var = Σ w_i² σ² / (Σ w_i)²
         with σ ≈ residual SD of the YoY series.
         """
-        rates = self.annual_log_rates(end_year)
+        rates = self.annual_log_rates(end_year, geoid=geoid)
         if not rates:
             return None
         n = len(rates)
@@ -232,42 +286,60 @@ class AnchorSource:
 # and PCE/CPI broad inflation can anchor income.
 
 _REGISTRY_SPEC = [
-    # (filename, publication_lag_years, indicator_affinity, rate_se_floor)
+    # (filename, publication_lag_years, indicator_affinity, rate_se_floor, geography)
     # CPI Honolulu broad inflation: anchors income (used as nominal
     # purchasing-power-equivalent macro rate). publication_lag=0:
     # H1+H2 averages are out by Dec of the year.
     ("cpi_honolulu_allitems.json", 0,
-     ("B19013_001E",), 0.005),
+     ("B19013_001E",), 0.005, "any"),
     # CPI Honolulu rent — anchors gross/contract rent.
     ("cpi_honolulu_rent.json", 0,
-     ("B25058_001E", "B25064_001E"), 0.005),
+     ("B25058_001E", "B25064_001E"), 0.005, "any"),
     # PCE deflator (national) — anchors income as alternate macro proxy.
     ("pce_deflator.json", 0,
-     ("B19013_001E",), 0.005),
+     ("B19013_001E",), 0.005, "national"),
     # QCEW HI wages — anchors income.
     ("qcew_hawaii_wages.json", 1,  # final annual averages release ~Aug of year+1
-     ("B19013_001E",), 0.005),
+     ("B19013_001E",), 0.005, "state"),
     # HUD FMR Honolulu — *validation* anchor for rent (lags 2y so its
     # back-test weight will be small; primarily used for checks).
     ("hud_fmr_honolulu.json", 2,
-     ("B25058_001E", "B25064_001E"), 0.010),
+     ("B25058_001E", "B25064_001E"), 0.010, "any"),
     # FHFA HPI Hawaii — anchors home-value.
     ("fred_hi_hpi.json", 0,  # Q4 release within Q1 of year+1
-     ("B25077_001E",), 0.005),
+     ("B25077_001E",), 0.005, "state"),
     # ----- BEA anchors (added v0.3) -----
     # BEA per-capita personal income, Hawaii state. Year-Y data is
     # finalised in the April Y+1 release; treat as 1-year-lagged so the
     # back-test honours the no-peeking discipline.
     ("bea_hi_percapita_income.json", 1,
-     ("B19013_001E", "S1701_C03_001E"), 0.006),
+     ("B19013_001E", "S1701_C03_001E"), 0.006, "state"),
     # BEA Regional Price Parity, Honolulu metro all-items. Annual
     # release ~May of year+1.
     ("bea_honolulu_rpp_all.json", 1,
-     ("B19013_001E",), 0.005),
+     ("B19013_001E",), 0.005, "any"),
     # BEA Regional Price Parity, Hawaii state services-rents. Anchors
     # rent indicators alongside CPI Honolulu rent and HUD FMR.
     ("bea_hi_rpp_housing.json", 1,
-     ("B25058_001E", "B25064_001E"), 0.006),
+     ("B25058_001E", "B25064_001E"), 0.006, "state"),
+    # ----- County-level anchors (added v0.3 Phase A) -----
+    # Zillow ZHVI — county-level home value index, monthly cadence
+    # aggregated to annual (Dec value or annual mean depending on the
+    # refresh script). Publication lag ~1 month; rounded up to 1 year
+    # for the back-test discipline so a 2024 forecast made in Jan 2025
+    # cannot peek at the Jan 2025 ZHVI release.
+    ("zillow_zhvi.json", 0,
+     ("B25077_001E",), 0.005, "county"),
+    # Zillow ZORI — county-level rent index. Same cadence/lag treatment.
+    ("zillow_zori.json", 0,
+     ("B25058_001E", "B25064_001E"), 0.010, "county"),
+    # BLS LAUS — county-level unemployment rate.
+    # NOT registered as a log-rate anchor: LAUS % changes (e.g. 2.4→10.1→2.6
+    # during COVID) are structurally incompatible with the log-growth-rate
+    # blending framework and increase S2301_C04 RMSE when included (45.9% vs
+    # 38.2% trend-only in Phase A backtests). The data file is kept for Phase C
+    # where LAUS level values are used directly as ML features.
+    # ("bls_laus.json", 0, ("S2301_C04_001E",), 0.005, "county"),
 ]
 
 
@@ -282,19 +354,20 @@ def load_source(name_or_filename: str) -> AnchorSource:
     )
     if spec is None:
         raise KeyError(f"No anchor spec registered for {name_or_filename!r}")
-    _, lag, affinity, floor = spec
+    _, lag, affinity, floor, geography = spec
     return AnchorSource.from_file(
         path=path,
         publication_lag_years=lag,
         indicator_affinity=affinity,
         rate_se_floor=floor,
+        geography=geography,
     )
 
 
 def available_sources(indicator: Optional[str] = None) -> list[AnchorSource]:
     """All registered sources (optionally filtered to those that can anchor `indicator`)."""
     sources: list[AnchorSource] = []
-    for fname, lag, affinity, floor in _REGISTRY_SPEC:
+    for fname, lag, affinity, floor, geography in _REGISTRY_SPEC:
         path = _ANCHOR_DIR / fname
         if not path.exists():
             continue
@@ -304,6 +377,7 @@ def available_sources(indicator: Optional[str] = None) -> list[AnchorSource]:
                 publication_lag_years=lag,
                 indicator_affinity=affinity,
                 rate_se_floor=floor,
+                geography=geography,
             )
         except (OSError, json.JSONDecodeError):
             continue
