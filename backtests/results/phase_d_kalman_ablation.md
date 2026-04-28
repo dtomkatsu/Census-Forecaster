@@ -1,5 +1,7 @@
 # Kalman ablation: kalman_state_space vs best-existing-baseline
 
+Baseline is multi_anchor where anchor sources exist, trend_ensemble otherwise.
+
 | Indicator | Baseline | RMSE base | RMSE kalman | Δ (rel) | Cov90 kalman |
 |---|---|---:|---:|---:|---:|
 | B01002_001E | trend | 2.25% | 2.69% | +19.64% | 99.5% |
@@ -22,16 +24,18 @@
 ## Ship gate verdict
 
 * Rule 1 (≥75% indicators improve RMSE by ≥5% vs best baseline): **FAIL** (8/16 = 50.0%)
-* Rule 2 (CI90 coverage ∈ [85%, 95%] for all indicators): **FAIL** (failing: 10: B01002_001E, B25077_001E, S1501_C02_014E, S1501_C02_015E, S1701_C03_001E...)
-* Rule 3 (no indicator regresses by > 2% RMSE): **FAIL** (6 regressed)
+* Rule 2 (CI90 coverage ∈ [85%, 95%] for all indicators): **FAIL** (failing: B01002_001E 99.5%, homeownership_rate 99.8%, S1501_C02_014E 99.5%, in_migration_rate 77.8%, vacancy_rate 70.0%, S2301_C04_001E 66.4%, B25077_001E 79.0%, S1701_C03_001E 84.7%, S1501_C02_015E 96.3%, pct_professional 97.5%)
+* Rule 3 (no indicator regresses by > 2% RMSE): **FAIL** (6 regressed: B01002, B19013, B20002, B25058, B25064, B25077, S1501_C02_014E)
 
 ## **Verdict: HOLD** — kalman opt-in only (`use_kalman=False` default retained).
 
 ## Notes
 
-- Infrastructure complete: kalman/ module, 24 unit tests, fold residuals in calibration.
+- Infrastructure complete: `kalman/` module, 24 unit tests, fold residuals in calibration.
 - Coverage failures driven by diffuse init (too-wide CIs on smooth indicators:
-  B01002, S1501_C02_014E, homeownership_rate) and COVID-era shocks
-  (too-narrow CIs on S2301, vacancy_rate, in_migration_rate).
-- Per-indicator allowlist candidates (≥5% RMSE vs baseline AND coverage in band):
-  pct_service_occupations (−15.0%, 90.8%), B25071 (−10.6%, 93.8%).
+  B01002 age, S1501_C02_014E education, homeownership_rate) and COVID-era shocks
+  (too-narrow CIs on S2301 unemployment, vacancy_rate, in_migration_rate).
+- Per-indicator allowlist candidates (≥5% RMSE improvement AND coverage in [85%, 95%]):
+  **pct_service_occupations** (−15.0% RMSE, 90.8% CI90), **B25071** gross rent (−10.6%, 93.8%).
+- Next steps for promotion: tune per-indicator process noise Q; add `kalman_promoted_indicators`
+  allowlist to calibration JSON; use Kalman only for those indicators when `use_kalman=True`.

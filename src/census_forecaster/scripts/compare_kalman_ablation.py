@@ -132,17 +132,30 @@ def _get_method_stats(cal: dict, method: str) -> dict[str, dict]:
     return out
 
 
-_ML_METHOD = "ensemble_with_ml"
 _KAL_METHOD = "kalman_state_space"
+
+
+def _best_baseline(rmse_dict: dict[str, dict]) -> dict[str, tuple[str, float]]:
+    """Return {indicator: (baseline_label, baseline_rmse)} using best existing method."""
+    out = {}
+    for ind, method_map in rmse_dict.items():
+        an = method_map.get("multi_anchor")
+        tr = method_map.get("trend_ensemble")
+        if an:
+            out[ind] = ("anchor", an)
+        elif tr:
+            out[ind] = ("trend", tr)
+    return out
 
 
 def _build_report(cal_ml: dict, cal_kalman: dict) -> str:
     import math
 
-    ml_stats = _get_method_stats(cal_ml, _ML_METHOD)
-    kal_stats = _get_method_stats(cal_kalman, _KAL_METHOD)
+    baseline = _best_baseline(cal_ml.get("rmse_by_indicator_method", {}))
+    kal_rmse_dict = cal_kalman.get("rmse_by_indicator_method", {})
+    kal_cov_dict = cal_kalman.get("ci90_coverage_by_indicator_method", {})
 
-    all_indicators = sorted(set(ml_stats) | set(kal_stats))
+    all_indicators = sorted(baseline.keys())
 
     rows = []
     n_improve = 0
@@ -151,16 +164,12 @@ def _build_report(cal_ml: dict, cal_kalman: dict) -> str:
     cov_failures: list[str] = []
 
     for ind in all_indicators:
-        ml = ml_stats.get(ind)
-        kal = kal_stats.get(ind)
-        if ml is None or kal is None:
+        bl_label, bl_rmse = baseline[ind]
+        kal_rmse = (kal_rmse_dict.get(ind) or {}).get(_KAL_METHOD)
+        if kal_rmse is None or not (math.isfinite(bl_rmse) and math.isfinite(kal_rmse)):
             continue
-        ml_rmse = ml["rmse"]
-        kal_rmse = kal["rmse"]
-        if not (math.isfinite(ml_rmse) and math.isfinite(kal_rmse)):
-            continue
-        delta = (kal_rmse - ml_rmse) / ml_rmse if ml_rmse > 0 else float("nan")
-        kal_cov = kal["cov90"]
+        delta = (kal_rmse - bl_rmse) / bl_rmse if bl_rmse > 0 else float("nan")
+        kal_cov = (kal_cov_dict.get(ind) or {}).get(_KAL_METHOD, float("nan"))
         n_total += 1
         if delta <= -0.05:
             n_improve += 1
@@ -168,18 +177,21 @@ def _build_report(cal_ml: dict, cal_kalman: dict) -> str:
             n_regress += 1
         if math.isfinite(kal_cov) and not (0.85 <= kal_cov <= 0.95):
             cov_failures.append(ind)
-        rows.append((ind, ml_rmse, kal_rmse, delta, kal_cov))
+        rows.append((ind, bl_label, bl_rmse, kal_rmse, delta, kal_cov))
 
-    lines: list[str] = ["# Kalman ablation: kalman_state_space vs ensemble_with_ml", ""]
+    lines: list[str] = [
+        "# Kalman ablation: kalman_state_space vs best-existing-baseline", "",
+        "Baseline is multi_anchor where anchor sources exist, trend_ensemble otherwise.", "",
+    ]
     lines.append(
-        "| Indicator | RMSE ml | RMSE kalman | Δ (rel) | Cov90 kalman |"
+        "| Indicator | Baseline | RMSE base | RMSE kalman | Δ (rel) | Cov90 kalman |"
     )
-    lines.append("|---|---:|---:|---:|---:|")
-    for ind, ml_r, kal_r, delta, cov in rows:
+    lines.append("|---|---|---:|---:|---:|---:|")
+    for ind, bl_lbl, bl_r, kal_r, delta, cov in rows:
         cov_str = f"{cov:.1%}" if math.isfinite(cov) else "n/a"
         delta_str = f"{delta:+.2%}" if math.isfinite(delta) else "n/a"
         lines.append(
-            f"| {ind} | {ml_r:.2%} | {kal_r:.2%} | {delta_str} | {cov_str} |"
+            f"| {ind} | {bl_lbl} | {bl_r:.2%} | {kal_r:.2%} | {delta_str} | {cov_str} |"
         )
     lines.append("")
 
@@ -193,7 +205,7 @@ def _build_report(cal_ml: dict, cal_kalman: dict) -> str:
     r1_label = "PASS" if r1_pass else "FAIL"
     r1_frac = f"{n_improve}/{n_total} = {n_improve / n_total:.1%}" if n_total else "0/0"
     lines.append(
-        f"* Rule 1 (≥75% indicators improve RMSE by ≥5%): **{r1_label}** ({r1_frac})"
+        f"* Rule 1 (≥75% indicators improve RMSE by ≥5% vs best baseline): **{r1_label}** ({r1_frac})"
     )
     r2_label = "PASS" if r2_pass else "FAIL"
     cov_fail_str = ", ".join(cov_failures) if cov_failures else "none"
