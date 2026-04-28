@@ -497,6 +497,84 @@ def _apply_bias_correction(
     )
 
 
+def _apply_conformal_floor(
+    fp: ForecastPoint,
+    indicator: str,
+    method_key: str,
+    calibration: dict | None,
+    se_pre_kappa: float,
+    pop_bucket: str | None = None,
+    h_bucket: str | None = None,
+) -> ForecastPoint:
+    """Widen the CI to the split-conformal floor when it would be tighter.
+
+    The conformal half-width is  q · se_pre_kappa  where q is the
+    per-stratum quantile stored in calibration["conformal_quantile_by_stratum"].
+    If this exceeds the current κ-based half-width, replace the CI; otherwise
+    return fp unchanged (κ-based CI already wider — the floor doesn't bind).
+
+    Parameters
+    ----------
+    se_pre_kappa : the ForecastPoint.se_total *before* the κ override was
+        applied — the same SE used when computing the non-conformity scores
+        during calibration.
+    """
+    if calibration is None or fp is None or se_pre_kappa <= 0:
+        return fp
+
+    conf_records = calibration.get("conformal_quantile_by_stratum")
+    if not conf_records:
+        return fp
+
+    # Build / reuse lookup; cache on the calibration dict to avoid rebuilding.
+    _cache_key = "_conformal_lookup_cache"
+    lookup = calibration.get(_cache_key)
+    if lookup is None:
+        from .conformal import ConformalRecord, build_conformal_lookup
+        records = [
+            ConformalRecord(
+                indicator=d["indicator"], method=d["method"],
+                pop_bucket=d["pop_bucket"], h_bucket=d["h_bucket"],
+                quantile=d["quantile"], n_calibration=d["n_calibration"],
+                target_coverage=d["target_coverage"],
+            )
+            for d in conf_records
+        ]
+        lookup = build_conformal_lookup(records)
+        try:
+            calibration[_cache_key] = lookup  # type: ignore[index]
+        except TypeError:
+            pass  # calibration is frozen
+
+    q = lookup(indicator, method_key, pop_bucket, h_bucket)
+    if q is None or not math.isfinite(q) or q <= 0:
+        return fp
+
+    conformal_half = q * se_pre_kappa
+    kappa_half = (fp.ci90_high - fp.ci90_low) / 2.0
+
+    if conformal_half <= kappa_half:
+        return fp  # κ already wider; floor doesn't bind
+
+    ci_lo = fp.point - conformal_half
+    ci_hi = fp.point + conformal_half
+    notes = f"{fp.notes}; conformal_floor(q={q:.3f})" if fp.notes else f"conformal_floor(q={q:.3f})"
+    return ForecastPoint(
+        point=fp.point,
+        se_total=fp.se_total,
+        se_sample=fp.se_sample,
+        se_forecast=fp.se_forecast,
+        ci90_low=ci_lo,
+        ci90_high=ci_hi,
+        method=fp.method,
+        target_year=fp.target_year,
+        geoid=fp.geoid,
+        indicator=fp.indicator,
+        horizon=fp.horizon,
+        notes=notes,
+    )
+
+
 def _calibrated_macro_weight(
     indicator: str,
     calibration: dict | None,
@@ -719,9 +797,14 @@ def project_ensemble_multi(
                 kal_fp, indicator, _KAL_METHOD, calibration,
                 pop_bucket=pop_bucket, h_bucket=h_bucket,
             )
+            _se_pre_kappa_kal = kal_fp.se_total
             kal_fp = _apply_se_override(
                 kal_fp, indicator, _KAL_METHOD, calibration,
                 pop_bucket=pop_bucket, h_bucket=h_bucket,
+            )
+            kal_fp = _apply_conformal_floor(
+                kal_fp, indicator, _KAL_METHOD, calibration,
+                _se_pre_kappa_kal, pop_bucket=pop_bucket, h_bucket=h_bucket,
             )
             return kal_fp
 
@@ -744,9 +827,14 @@ def project_ensemble_multi(
             inner, indicator, "trend_ensemble", calibration,
             pop_bucket=pop_bucket, h_bucket=h_bucket,
         )
+        _se_pre_kappa_inner = inner.se_total
         inner = _apply_se_override(
             inner, indicator, "trend_ensemble", calibration,
             pop_bucket=pop_bucket, h_bucket=h_bucket,
+        )
+        inner = _apply_conformal_floor(
+            inner, indicator, "trend_ensemble", calibration,
+            _se_pre_kappa_inner, pop_bucket=pop_bucket, h_bucket=h_bucket,
         )
 
     # ML trend (third member). Optional — controlled by `use_ml`. We build
@@ -774,9 +862,14 @@ def project_ensemble_multi(
                 ml_fp, indicator, _ML_METHOD, calibration,
                 pop_bucket=pop_bucket, h_bucket=h_bucket,
             )
+            _se_pre_kappa_ml = ml_fp.se_total
             ml_fp = _apply_se_override(
                 ml_fp, indicator, _ML_METHOD, calibration,
                 pop_bucket=pop_bucket, h_bucket=h_bucket,
+            )
+            ml_fp = _apply_conformal_floor(
+                ml_fp, indicator, _ML_METHOD, calibration,
+                _se_pre_kappa_ml, pop_bucket=pop_bucket, h_bucket=h_bucket,
             )
 
     # If we have both classical trend AND ML, fuse them into a single
@@ -813,14 +906,19 @@ def project_ensemble_multi(
             target_year=target_year,
             anchor_rate=anchor_rate,
         )
-        # Same order: bias first, then SE override.
+        # Same order: bias first, then SE override, then conformal floor.
         anchor_fp = _apply_bias_correction(
             anchor_fp, indicator, "multi_anchor", calibration,
             pop_bucket=pop_bucket, h_bucket=h_bucket,
         )
+        _se_pre_kappa_anchor = anchor_fp.se_total
         anchor_fp = _apply_se_override(
             anchor_fp, indicator, "multi_anchor", calibration,
             pop_bucket=pop_bucket, h_bucket=h_bucket,
+        )
+        anchor_fp = _apply_conformal_floor(
+            anchor_fp, indicator, "multi_anchor", calibration,
+            _se_pre_kappa_anchor, pop_bucket=pop_bucket, h_bucket=h_bucket,
         )
 
     if inner is None and anchor_fp is None:
