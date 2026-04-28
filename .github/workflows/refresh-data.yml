@@ -42,12 +42,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: pip
 
-      - name: Install package
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e .[dev]
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install census-forecaster package
+        run: uv sync --package census-forecaster --extra dev
 
       - name: Refresh BLS multi-MSA panel
         env:
@@ -56,7 +58,7 @@ jobs:
           if [ -z "${BLS_API_KEY}" ]; then
             echo "::warning::BLS_API_KEY not set; skipping BLS panel refresh"
           else
-            python3 -m census_forecaster.scripts.refresh_bls_panel \
+            uv run python -m census_forecaster.scripts.refresh_bls_panel \
               --start-year 2010
           fi
 
@@ -67,7 +69,7 @@ jobs:
           if [ -z "${BEA_API_KEY}" ]; then
             echo "::warning::BEA_API_KEY not set; skipping BEA refresh"
           else
-            python3 -m census_forecaster.scripts.refresh_bea_anchors --verify
+            uv run python -m census_forecaster.scripts.refresh_bea_anchors --verify
           fi
 
       - name: Refresh Zillow + BLS LAUS county anchors
@@ -80,22 +82,22 @@ jobs:
           # refreshed.
           if [ -z "${BLS_API_KEY}" ]; then
             echo "::warning::BLS_API_KEY not set; refreshing Zillow only (skipping LAUS)"
-            python3 -m census_forecaster.scripts.refresh_zillow_laus_anchors --skip-laus
+            uv run python -m census_forecaster.scripts.refresh_zillow_laus_anchors --skip-laus
           else
-            python3 -m census_forecaster.scripts.refresh_zillow_laus_anchors
+            uv run python -m census_forecaster.scripts.refresh_zillow_laus_anchors
           fi
 
       - name: Refresh BPS county permit counts
         run: |
           # No API key required — Census BPS data is publicly available.
-          python3 -m census_forecaster.scripts.refresh_bps_permits
+          uv run python -m census_forecaster.scripts.refresh_bps_permits
 
       - name: Regenerate BLS v3 calibration
         run: |
           # Only regenerate if the BLS panel exists. If neither key is
           # set, the calibration step would crash on a missing panel.
-          if [ -f src/census_forecaster/data/bls_panel/cpi_panel.json ]; then
-            python3 -m census_forecaster.backtest.cpi --stratify
+          if [ -f packages/census_forecaster/src/census_forecaster/data/bls_panel/cpi_panel.json ]; then
+            uv run python -m census_forecaster.backtest.cpi --stratify
           else
             echo "::warning::BLS panel not present; skipping BLS calibration"
           fi
@@ -107,14 +109,14 @@ jobs:
           # to the repo, so this step needs no API key. If the panel files are
           # absent (e.g. first-ever checkout before anyone ran build_calibration_panel),
           # the script exits cleanly with a warning rather than failing the workflow.
-          if [ -f src/census_forecaster/data/calibration_panel/acs_panel.json ]; then
-            python3 -m census_forecaster.scripts.run_acs_calibration --as-of-mode publication --include-ml --include-conformal
+          if [ -f packages/census_forecaster/src/census_forecaster/data/calibration_panel/acs_panel.json ]; then
+            uv run python -m census_forecaster.scripts.run_acs_calibration --as-of-mode publication --include-ml --include-conformal
           else
             echo "::warning::ACS calibration panel not present; skipping ACS calibration"
           fi
 
       - name: Run tests against refreshed data
-        run: python3 -m pytest tests/ -v --tb=short
+        run: uv run pytest tests/ -v --tb=short
 
       - name: Commit + push if data changed
         run: |
@@ -125,9 +127,9 @@ jobs:
           # up source-code edits that someone might have made between
           # checkout and now (shouldn't happen, but defense in depth).
           git add \
-            src/census_forecaster/data/bls_panel/ \
-            src/census_forecaster/data/anchors/ \
-            src/census_forecaster/data/calibration_panel/ \
+            packages/census_forecaster/src/census_forecaster/data/bls_panel/ \
+            packages/census_forecaster/src/census_forecaster/data/anchors/ \
+            packages/census_forecaster/src/census_forecaster/data/calibration_panel/ \
             backtests/results/
 
           if git diff --staged --quiet; then
@@ -136,11 +138,6 @@ jobs:
           fi
 
           REFRESH_DATE=$(date -u +'%Y-%m-%d')
-          # All lines of the commit message must remain indented to the
-          # block-scalar level so YAML treats them as part of the `run:`
-          # script. Inside the bash string, the leading whitespace is
-          # stripped by the shell since git only cares about the first
-          # `\n` to separate subject from body.
           MSG="chore(data): monthly refresh ${REFRESH_DATE} [skip ci]
 
           Auto-refresh from monthly cron run.
