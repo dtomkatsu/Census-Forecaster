@@ -94,9 +94,14 @@ class HoldOutFold:
 
 
 def _truncate(
-    series: Sequence[AcsObservation], anchor_year: int
+    series: Sequence[AcsObservation],
+    anchor_year: int,
+    as_of_date: Optional[date] = None,
 ) -> list[AcsObservation]:
-    return [o for o in series if effective_year(o) <= anchor_year]
+    result = [o for o in series if effective_year(o) <= anchor_year]
+    if as_of_date is not None:
+        result = [o for o in result if o.publication_date <= as_of_date]
+    return result
 
 
 def _project_trend_only(
@@ -967,6 +972,7 @@ def run_stratified_calibration(
     populations: Optional[dict[str, int]] = None,
     n_threshold: int = 20,
     bias_clamp_log: float = DEFAULT_BIAS_CLAMP_LOG,
+    as_of_mode: str = "instant",
     include_ml: bool = False,
 ) -> dict:
     """v3 stratified hold-out calibration.
@@ -999,6 +1005,13 @@ def run_stratified_calibration(
     marginalised v2-style tables for backwards compatibility.
     """
     from .strata import classify_pop, classify_horizon, WILDCARD, record_to_dict
+    from ..publication import acs_1y_release_date as _acs_pub
+
+    if as_of_mode not in ("instant", "publication"):
+        raise ValueError(f"as_of_mode must be 'instant' or 'publication', got {as_of_mode!r}")
+
+    def _as_of(anchor: int) -> Optional[date]:
+        return _acs_pub(anchor) if as_of_mode == "publication" else None
 
     populations = populations or {}
     anchor_list = list(anchor_years)
@@ -1018,7 +1031,7 @@ def run_stratified_calibration(
                 )
                 if actual_obs is None or actual_obs.estimate <= 0:
                     continue
-                train = _truncate(full_sorted, anchor)
+                train = _truncate(full_sorted, anchor, as_of_date=_as_of(anchor))
                 if not train:
                     continue
                 for src in available_sources(indicator):
@@ -1066,7 +1079,7 @@ def run_stratified_calibration(
                 )
                 if actual_obs is None or actual_obs.estimate <= 0:
                     continue
-                train = _truncate(full_sorted, anchor)
+                train = _truncate(full_sorted, anchor, as_of_date=_as_of(anchor))
                 if not train:
                     continue
                 h_bucket = classify_horizon(h) or WILDCARD
@@ -1134,7 +1147,7 @@ def run_stratified_calibration(
                     continue
                 for geoid, full_sorted in county_list:
                     pop_bucket = classify_pop(populations.get(geoid)) or WILDCARD
-                    train = _truncate(full_sorted, anchor)
+                    train = _truncate(full_sorted, anchor, as_of_date=_as_of(anchor))
                     if not train:
                         continue
                     for h in horizon_list:
@@ -1195,6 +1208,7 @@ def run_stratified_calibration(
         "run_date": date.today().isoformat(),
         "anchor_years": anchor_list,
         "horizons": horizon_list,
+        "as_of_mode": as_of_mode,
         # Pass 1 (h-marginalised): per-source RMSE
         "rmse_by_indicator_source": rmse_by_indicator_source,
         # v3 strata records

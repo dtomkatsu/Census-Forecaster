@@ -10,7 +10,7 @@
     2021,
     2022
   ],
-  "as_of_mode": "publication",
+  "as_of_mode": "instant",
   "ci90_coverage_by_indicator_method": {
     "B01002_001E": {
       "trend_ensemble": 0.8750419885791065

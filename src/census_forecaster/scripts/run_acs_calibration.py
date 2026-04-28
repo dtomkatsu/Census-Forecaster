@@ -48,6 +48,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         help="Minimum folds for a cell to receive calibration (default 20).",
     )
     parser.add_argument(
+        "--as-of-mode", choices=["instant", "publication"], default="instant",
+        help=(
+            "How to truncate training data per fold. "
+            "'instant' (default): include all observations with effective_year ≤ anchor_year. "
+            "'publication': additionally filter by publication_date ≤ acs_1y_release_date(anchor_year), "
+            "simulating the information set available when the anchor-year ACS was released."
+        ),
+    )
+    parser.add_argument(
         "--out", type=Path, default=None,
         help="Output path for calibration.json. Default: data/anchors/calibration.json.",
     )
@@ -91,6 +100,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         horizons=tuple(horizons),
         populations=populations,
         n_threshold=args.n_threshold,
+        as_of_mode=args.as_of_mode,
     )
 
     sr = payload.get("strata_records", {})

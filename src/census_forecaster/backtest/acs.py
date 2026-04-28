@@ -25,7 +25,8 @@ from __future__ import annotations
 import math
 import statistics
 from dataclasses import dataclass, field
-from typing import Callable, Sequence
+from datetime import date
+from typing import Callable, Optional, Sequence
 
 from ..models import AcsObservation, ForecastPoint
 from ..acs.projection import (
@@ -217,10 +218,20 @@ def make_methods_with_multi_anchor(
 
 
 def truncate_to_anchor(
-    series_observations: Sequence[AcsObservation], anchor_year: int
+    series_observations: Sequence[AcsObservation],
+    anchor_year: int,
+    as_of_date: Optional[date] = None,
 ) -> list[AcsObservation]:
-    """Keep only observations with effective_year ≤ anchor_year."""
-    return [o for o in series_observations if effective_year(o) <= anchor_year]
+    """Keep only observations with effective_year ≤ anchor_year.
+
+    When `as_of_date` is provided, additionally filters to observations whose
+    `publication_date` is on or before that date — simulating the information
+    set available to a forecaster at a specific calendar date (publication mode).
+    """
+    result = [o for o in series_observations if effective_year(o) <= anchor_year]
+    if as_of_date is not None:
+        result = [o for o in result if o.publication_date <= as_of_date]
+    return result
 
 
 def _summarise_rows(name: str, rows: list[BacktestRow]) -> BacktestSummary:
