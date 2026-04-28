@@ -975,6 +975,7 @@ def run_stratified_calibration(
     as_of_mode: str = "instant",
     include_ml: bool = False,
     bps_data: Optional[dict] = None,
+    include_kalman: bool = False,
 ) -> dict:
     """v3 stratified hold-out calibration.
 
@@ -1180,6 +1181,47 @@ def run_stratified_calibration(
                             se_sample=ml_fp.se_sample, se_forecast=ml_fp.se_forecast,
                             ci90_low=ml_fp.ci90_low, ci90_high=ml_fp.ci90_high,
                         ))
+
+    # ---- Pass 2c (optional): Kalman state-space FoldResidual cache ----
+    # Runs the Kalman filter per (geoid, indicator, anchor, h). Substantially
+    # faster than ML (no model training — forward filter is O(n_years) per fold).
+    if include_kalman:
+        from ..kalman.project import project_kalman as _project_kalman, METHOD_NAME as _KAL_METHOD
+        for (geoid, indicator), full in series_by_key.items():
+            full_sorted = sorted(full, key=lambda o: (effective_year(o), o.vintage))
+            pop_bucket = classify_pop(populations.get(geoid)) or WILDCARD
+            for anchor in anchor_list:
+                train = _truncate(full_sorted, anchor, as_of_date=_as_of(anchor))
+                if not train:
+                    continue
+                for h in horizon_list:
+                    target_year = anchor + h
+                    actual_obs = next(
+                        (o for o in full_sorted
+                         if effective_year(o) == target_year and o.vintage == "1y"),
+                        None,
+                    )
+                    if actual_obs is None or actual_obs.estimate <= 0:
+                        continue
+                    h_bucket = classify_horizon(h) or WILDCARD
+                    kal_fp = _project_kalman(
+                        series_observations=train,
+                        target_year=target_year,
+                        end_year=anchor,
+                        calibration={"rmse_by_indicator_source": rmse_by_indicator_source},
+                        geoid=geoid,
+                    )
+                    if kal_fp is None:
+                        continue
+                    fold_residuals.append(FoldResidual(
+                        indicator=indicator, method=_KAL_METHOD,
+                        geoid=geoid, anchor_year=anchor, horizon=h,
+                        pop_bucket=pop_bucket, h_bucket=h_bucket,
+                        actual=actual_obs.estimate,
+                        point=kal_fp.point, se_total=kal_fp.se_total,
+                        se_sample=kal_fp.se_sample, se_forecast=kal_fp.se_forecast,
+                        ci90_low=kal_fp.ci90_low, ci90_high=kal_fp.ci90_high,
+                    ))
 
     # ---- Pass A: bias estimation per cell (with marginalisation) ----
     bias_records = _estimate_bias_records(fold_residuals, n_threshold, bias_clamp_log)
