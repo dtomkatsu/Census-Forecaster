@@ -340,6 +340,15 @@ _REGISTRY_SPEC = [
     # 38.2% trend-only in Phase A backtests). The data file is kept for Phase C
     # where LAUS level values are used directly as ML features.
     # ("bls_laus.json", 0, ("S2301_C04_001E",), 0.005, "county"),
+    # Census SAIPE — county-level annual poverty rate.
+    # NOT registered as a log-rate anchor: empirically registering it
+    # increased S1701_C03_001E multi_anchor RMSE from 21.78% to 22.95%
+    # in 2026-04 backtests.  The same structural issue as LAUS — SAIPE is
+    # a model-based *rate* with measurement noise on a different timescale
+    # than the ACS S1701 5-year window, so log-growth comparison is noisy.
+    # SAIPE is instead loaded as ML features (saipe_lag0/1/2, saipe_3yr_mean)
+    # in ml_features.py, the same pattern Phase C used for BPS permits.
+    # ("saipe_poverty.json", 0, ("S1701_C03_001E",), 0.010, "county"),
 ]
 
 

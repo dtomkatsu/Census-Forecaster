@@ -60,6 +60,8 @@ from .ml_features import (
     TrainingMatrix,
     build_panel_index,
     load_bps_data,
+    load_laus_data,
+    load_saipe_data,
     make_feature_spec,
     make_inference_row,
     make_training_rows,
@@ -155,7 +157,12 @@ def train_ml_model(
 
     if panel is None:
         _bps = bps_data if bps_data is not None else load_bps_data()
-        panel = build_panel_index(series_by_key, bps_data=_bps)
+        panel = build_panel_index(
+            series_by_key,
+            bps_data=_bps,
+            saipe_data=load_saipe_data(),
+            laus_data=load_laus_data(),
+        )
 
     matrix: TrainingMatrix = make_training_rows(
         panel, populations, indicator, cutoff_year, horizons,
@@ -394,7 +401,12 @@ def project_ml_trend_one_shot(
 
     if panel is None:
         _bps = bps_data if bps_data is not None else load_bps_data()
-        panel = build_panel_index(series_by_key, bps_data=_bps)
+        panel = build_panel_index(
+            series_by_key,
+            bps_data=_bps,
+            saipe_data=load_saipe_data(),
+            laus_data=load_laus_data(),
+        )
 
     if cutoff_year is None:
         cutoff_year = int(round(effective_year(series_observations[-1])))

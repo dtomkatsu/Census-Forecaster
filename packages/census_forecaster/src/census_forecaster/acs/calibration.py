@@ -975,6 +975,8 @@ def run_stratified_calibration(
     as_of_mode: str = "instant",
     include_ml: bool = False,
     bps_data: Optional[dict] = None,
+    saipe_data: Optional[dict] = None,
+    laus_data: Optional[dict] = None,
     include_kalman: bool = False,
     include_conformal: bool = False,
 ) -> dict:
@@ -1148,7 +1150,12 @@ def run_stratified_calibration(
     # is intentional — per-anchor model fitting must happen ONCE per
     # anchor, not once per (geoid, h) combination.
     if include_ml:
-        from .ml_features import build_panel_index as _build_panel_index, load_bps_data as _load_bps
+        from .ml_features import (
+            build_panel_index as _build_panel_index,
+            load_bps_data as _load_bps,
+            load_saipe_data as _load_saipe,
+            load_laus_data as _load_laus,
+        )
         from .ml_trend import (
             train_ml_model as _train_ml_model,
             project_ml_trend as _project_ml_trend,
@@ -1156,7 +1163,14 @@ def run_stratified_calibration(
         )
 
         _bps = bps_data if bps_data is not None else _load_bps()
-        ml_panel = _build_panel_index(series_by_key, bps_data=_bps)
+        _saipe = saipe_data if saipe_data is not None else _load_saipe()
+        _laus = laus_data if laus_data is not None else _load_laus()
+        ml_panel = _build_panel_index(
+            series_by_key,
+            bps_data=_bps,
+            saipe_data=_saipe,
+            laus_data=_laus,
+        )
         # Group (geoid, indicator) by indicator so we can iterate
         # indicator-major, anchor-major, then geoid for each.
         by_indicator: dict[str, list[tuple[str, list[AcsObservation]]]] = {}

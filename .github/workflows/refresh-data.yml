@@ -92,6 +92,12 @@ jobs:
           # No API key required — Census BPS data is publicly available.
           uv run python -m census_forecaster.scripts.refresh_bps_permits
 
+      - name: Refresh Census SAIPE county poverty rates
+        run: |
+          # No API key strictly required, but CENSUS_API_KEY raises the
+          # rate limit; pass through if available.
+          uv run python -m census_forecaster.scripts.refresh_saipe
+
       - name: Regenerate BLS v3 calibration
         run: |
           # Only regenerate if the BLS panel exists. If neither key is
@@ -145,6 +151,7 @@ jobs:
           - BLS multi-MSA panel re-fetched from the BLS public API
           - BEA anchors re-fetched from the BEA Regional API
           - Zillow ZHVI/ZORI + BLS LAUS county anchors re-fetched
+          - Census SAIPE county poverty rates re-fetched
           - BLS v3 calibration regenerated against the new panel
           - ACS v3 calibration regenerated against the bundled panel
 

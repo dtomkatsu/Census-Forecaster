@@ -70,25 +70,38 @@ class PanelIndex:
         return self.estimate_by_key.get((geoid, indicator, year))
 
 
-# Sentinel indicator name for BPS data stored in estimate_by_key.
-# Not added to PanelIndex.indicators so it never appears as a cross-indicator
-# feature for other ACS indicators — only the explicit BPS columns use it.
+# Sentinel indicator names for auxiliary admin data stored in estimate_by_key.
+# Not added to PanelIndex.indicators so they never appear as cross-indicator
+# features for other ACS indicators — only the explicit lag columns use them.
 _BPS_INDICATOR = "_BPS_PERMITS_ANNUAL"
+_SAIPE_INDICATOR = "_SAIPE_POVERTY_RATE"
+_LAUS_INDICATOR = "_LAUS_UNEMPLOYMENT_RATE"
 
 
 def build_panel_index(
     series_by_key: Mapping[tuple[str, str], Sequence[AcsObservation]],
     bps_data: Optional[Mapping[str, Mapping[int, float]]] = None,
+    saipe_data: Optional[Mapping[str, Mapping[int, float]]] = None,
+    laus_data: Optional[Mapping[str, Mapping[int, float]]] = None,
 ) -> PanelIndex:
     """Build a PanelIndex from the calibration panel.
 
     Parameters
     ----------
     bps_data : optional {geoid → {year → total_units_permitted}}
-        When provided, BPS permit counts are injected into `estimate_by_key`
-        under the sentinel key ``_BPS_PERMITS_ANNUAL``.  They are accessed by
-        ``_build_row`` to produce the four BPS lag columns; they are NOT added
-        to ``indicators`` so they never appear as cross-indicator features.
+        BPS permit counts injected under sentinel ``_BPS_PERMITS_ANNUAL``.
+        Accessed by ``_build_row`` for the BPS lag columns.
+    saipe_data : optional {geoid → {year → poverty_rate_pct}}
+        Census SAIPE county poverty rates (annual, %).  Used to feed the
+        S1701-friendly ``saipe_lag0/1/2`` and ``saipe_3yr_mean`` columns.
+    laus_data : optional {geoid → {year → unemployment_rate_pct}}
+        BLS LAUS county unemployment rates (annual average, %).  Used to
+        feed the S2301-friendly ``laus_lag0/1/2`` and ``laus_3yr_mean``
+        columns.
+
+    None of the auxiliary indicators are added to ``indicators`` so they
+    never appear as cross-indicator features for other ACS targets —
+    only the explicit lag columns reference them.
     """
     est: dict[tuple[str, str, int], float] = {}
     indicators: set[str] = set()
@@ -116,6 +129,18 @@ def build_panel_index(
             for year, count in year_vals.items():
                 if count is not None and count >= 0:
                     est[(geoid, _BPS_INDICATOR, int(year))] = float(count)
+
+    if saipe_data is not None:
+        for geoid, year_vals in saipe_data.items():
+            for year, rate in year_vals.items():
+                if rate is not None and rate > 0:
+                    est[(geoid, _SAIPE_INDICATOR, int(year))] = float(rate)
+
+    if laus_data is not None:
+        for geoid, year_vals in laus_data.items():
+            for year, rate in year_vals.items():
+                if rate is not None and rate > 0:
+                    est[(geoid, _LAUS_INDICATOR, int(year))] = float(rate)
 
     return PanelIndex(
         estimate_by_key=est,
@@ -158,6 +183,23 @@ _CORE_COLUMNS: tuple[str, ...] = (
     "bps_log_lag1",    # log(permits[anchor - 1])
     "bps_log_lag2",    # log(permits[anchor - 2])
     "bps_3yr_mean",    # mean(bps_log_lag0, bps_log_lag1, bps_log_lag2)
+    # SAIPE poverty-rate columns (Census Small Area Income & Poverty
+    # Estimates).  Direct level signal for S1701; informative through
+    # cross-indicator correlations for other targets.  Raw rate (% as
+    # decimal) — HGB treats monotonic transforms equivalently and the
+    # raw rate keeps mean-of-lags interpretable.
+    "saipe_lag0",      # poverty rate (%) at anchor year
+    "saipe_lag1",      # poverty rate (%) at anchor - 1
+    "saipe_lag2",      # poverty rate (%) at anchor - 2
+    "saipe_3yr_mean",  # mean of valid lags
+    # LAUS unemployment-rate columns (BLS Local Area Unemployment Statistics).
+    # Direct level signal for S2301; the labour-market state also covaries
+    # with poverty, in-migration, and rent-burden, so HGB can use it
+    # broadly.  Same raw-rate convention as SAIPE.
+    "laus_lag0",       # unemployment rate (%) at anchor year
+    "laus_lag1",       # unemployment rate (%) at anchor - 1
+    "laus_lag2",       # unemployment rate (%) at anchor - 2
+    "laus_3yr_mean",   # mean of valid lags
 )
 
 _HORIZON_COLUMN = "horizon"
@@ -304,6 +346,28 @@ def _build_row(
     bps_3yr = sum(bps_valid) / len(bps_valid) if bps_valid else float("nan")
     row.extend([log_bps0, log_bps1, log_bps2, bps_3yr])
 
+    # SAIPE poverty-rate features (raw percentage, e.g. 8.5 for 8.5%).
+    saipe0 = panel.get(geoid, _SAIPE_INDICATOR, anchor_year)
+    saipe1 = panel.get(geoid, _SAIPE_INDICATOR, anchor_year - 1)
+    saipe2 = panel.get(geoid, _SAIPE_INDICATOR, anchor_year - 2)
+    saipe_lag0 = float(saipe0) if (saipe0 is not None and saipe0 > 0) else float("nan")
+    saipe_lag1 = float(saipe1) if (saipe1 is not None and saipe1 > 0) else float("nan")
+    saipe_lag2 = float(saipe2) if (saipe2 is not None and saipe2 > 0) else float("nan")
+    saipe_valid = [v for v in (saipe_lag0, saipe_lag1, saipe_lag2) if math.isfinite(v)]
+    saipe_3yr = sum(saipe_valid) / len(saipe_valid) if saipe_valid else float("nan")
+    row.extend([saipe_lag0, saipe_lag1, saipe_lag2, saipe_3yr])
+
+    # LAUS unemployment-rate features (raw percentage).
+    laus0 = panel.get(geoid, _LAUS_INDICATOR, anchor_year)
+    laus1 = panel.get(geoid, _LAUS_INDICATOR, anchor_year - 1)
+    laus2 = panel.get(geoid, _LAUS_INDICATOR, anchor_year - 2)
+    laus_lag0 = float(laus0) if (laus0 is not None and laus0 > 0) else float("nan")
+    laus_lag1 = float(laus1) if (laus1 is not None and laus1 > 0) else float("nan")
+    laus_lag2 = float(laus2) if (laus2 is not None and laus2 > 0) else float("nan")
+    laus_valid = [v for v in (laus_lag0, laus_lag1, laus_lag2) if math.isfinite(v)]
+    laus_3yr = sum(laus_valid) / len(laus_valid) if laus_valid else float("nan")
+    row.extend([laus_lag0, laus_lag1, laus_lag2, laus_3yr])
+
     row.append(float(horizon))
     return row
 
@@ -399,6 +463,22 @@ def make_inference_row(
     )
 
 
+def _load_anchor_values_by_geoid_year(filename: str) -> Optional[dict[str, dict[int, float]]]:
+    """Load values_by_geoid_year from a bundled anchor JSON file."""
+    path = Path(__file__).parent.parent / "data" / "anchors" / filename
+    if not path.exists():
+        return None
+    import json as _json
+    with open(path) as f:
+        payload = _json.load(f)
+    raw = payload.get("values_by_geoid_year", {})
+    return {
+        geoid: {int(yr): float(v) for yr, v in yr_dict.items()
+                if v is not None}
+        for geoid, yr_dict in raw.items()
+    }
+
+
 def load_bps_data() -> Optional[dict[str, dict[int, float]]]:
     """Load BPS permit data from the bundled JSON file, or None if absent."""
     bps_path = (
@@ -417,12 +497,32 @@ def load_bps_data() -> Optional[dict[str, dict[int, float]]]:
     }
 
 
+def load_saipe_data() -> Optional[dict[str, dict[int, float]]]:
+    """Load SAIPE county poverty-rate data from the bundled anchor JSON.
+
+    Returns None if the file is absent — callers should treat this as
+    "no SAIPE features available" and fill the corresponding row columns
+    with NaN.
+    """
+    return _load_anchor_values_by_geoid_year("saipe_poverty.json")
+
+
+def load_laus_data() -> Optional[dict[str, dict[int, float]]]:
+    """Load BLS LAUS county unemployment-rate data from the bundled anchor JSON.
+
+    Returns None if the file is absent.
+    """
+    return _load_anchor_values_by_geoid_year("bls_laus.json")
+
+
 __all__ = [
     "PanelIndex",
     "FeatureSpec",
     "TrainingMatrix",
     "build_panel_index",
     "load_bps_data",
+    "load_saipe_data",
+    "load_laus_data",
     "make_feature_spec",
     "make_training_rows",
     "make_inference_row",
