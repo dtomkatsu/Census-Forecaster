@@ -68,7 +68,7 @@ from typing import Iterable, Optional, Sequence
 
 from ..acs.client import AcsClient
 from ..acs.strata import classify_pop, POP_BUCKET_BOUNDS
-from ..models import AcsObservation
+from common.models import AcsObservation
 
 
 # -----------------------------------------------------------------------------

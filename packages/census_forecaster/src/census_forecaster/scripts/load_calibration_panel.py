@@ -20,7 +20,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 
-from ..models import AcsObservation
+from common.models import AcsObservation
 
 
 class PanelMissingError(FileNotFoundError):

@@ -56,7 +56,7 @@ from datetime import date
 from pathlib import Path
 from typing import Callable, Optional, Sequence
 
-from ..models import AcsObservation, ForecastPoint
+from common.models import AcsObservation, ForecastPoint
 from .projection import (
     EMPIRICAL_SE_INFLATOR,
     effective_year,
@@ -1017,7 +1017,7 @@ def run_stratified_calibration(
     compatibility.
     """
     from .strata import classify_pop, classify_horizon, WILDCARD, record_to_dict
-    from ..publication import acs_1y_release_date as _acs_pub
+    from common.publication import acs_1y_release_date as _acs_pub
 
     if as_of_mode not in ("instant", "publication"):
         raise ValueError(f"as_of_mode must be 'instant' or 'publication', got {as_of_mode!r}")

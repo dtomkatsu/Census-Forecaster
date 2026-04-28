@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Callable, Optional, Sequence
 
-from ..models import AcsObservation, ForecastPoint
+from common.models import AcsObservation, ForecastPoint
 from ..acs.projection import (
     project_damped_trend,
     project_ar1_log_diff,
@@ -94,7 +94,7 @@ def project_carry_forward(
     if not series_observations:
         return None
     latest = series_observations[-1]
-    from ..moe import moe_to_se, ci_from_se
+    from common.moe import moe_to_se, ci_from_se
     sample_se = moe_to_se(latest.moe)
     if math.isnan(sample_se):
         sample_se = 0.0
@@ -157,7 +157,7 @@ def project_linear_log(
     se_forecast_log = sd * math.sqrt(max(horizon, 1.0))
     se_forecast = se_forecast_log * point
 
-    from ..moe import moe_to_se, combine_se, ci_from_se
+    from common.moe import moe_to_se, combine_se, ci_from_se
     sample_relative = moe_to_se(latest.moe) / latest.estimate if latest.estimate > 0 else 0.0
     if not math.isfinite(sample_relative):
         sample_relative = 0.0

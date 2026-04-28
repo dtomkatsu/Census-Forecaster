@@ -45,8 +45,8 @@ from __future__ import annotations
 import math
 from typing import Sequence
 
-from ..models import AcsObservation, ForecastPoint
-from ..moe import moe_to_se, combine_se, ci_from_se
+from common.models import AcsObservation, ForecastPoint
+from common.moe import moe_to_se, combine_se, ci_from_se
 from .projection import (
     project_damped_trend,
     project_ar1_log_diff,

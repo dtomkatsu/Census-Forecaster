@@ -47,8 +47,8 @@ import sys
 from dataclasses import dataclass, field
 from typing import Mapping, Optional, Sequence
 
-from ..models import AcsObservation, ForecastPoint
-from ..moe import moe_to_se, combine_se, ci_from_se
+from common.models import AcsObservation, ForecastPoint
+from common.moe import moe_to_se, combine_se, ci_from_se
 from .projection import (
     ANNUAL_RATE_CAP,
     EMPIRICAL_SE_INFLATOR,

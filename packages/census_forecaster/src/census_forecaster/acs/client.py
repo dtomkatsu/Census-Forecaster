@@ -33,7 +33,7 @@ import urllib.error
 from pathlib import Path
 from typing import Optional
 
-from ..models import AcsObservation
+from common.models import AcsObservation
 
 
 def _default_cache_path() -> Path:

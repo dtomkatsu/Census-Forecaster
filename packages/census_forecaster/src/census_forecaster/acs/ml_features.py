@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Mapping, Optional, Sequence
 
-from ..models import AcsObservation
+from common.models import AcsObservation
 from .projection import effective_year
 
 

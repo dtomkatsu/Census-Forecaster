@@ -26,7 +26,7 @@ Quick start (BLS CPI):
     >>> proj = project_forward_full(data["CUURS49ASA0"], date(2026, 4, 1))
     >>> proj.value, proj.cap_fired, proj.forecast_se_log
 """
-from .models import (
+from common.models import (
     AcsObservation,
     BlsObservation,
     ForecastPoint,
