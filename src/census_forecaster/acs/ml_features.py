@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Iterable, Mapping, Optional, Sequence
 
 from ..models import AcsObservation
@@ -69,10 +70,26 @@ class PanelIndex:
         return self.estimate_by_key.get((geoid, indicator, year))
 
 
+# Sentinel indicator name for BPS data stored in estimate_by_key.
+# Not added to PanelIndex.indicators so it never appears as a cross-indicator
+# feature for other ACS indicators — only the explicit BPS columns use it.
+_BPS_INDICATOR = "_BPS_PERMITS_ANNUAL"
+
+
 def build_panel_index(
     series_by_key: Mapping[tuple[str, str], Sequence[AcsObservation]],
+    bps_data: Optional[Mapping[str, Mapping[int, float]]] = None,
 ) -> PanelIndex:
-    """Build a PanelIndex from the calibration panel."""
+    """Build a PanelIndex from the calibration panel.
+
+    Parameters
+    ----------
+    bps_data : optional {geoid → {year → total_units_permitted}}
+        When provided, BPS permit counts are injected into `estimate_by_key`
+        under the sentinel key ``_BPS_PERMITS_ANNUAL``.  They are accessed by
+        ``_build_row`` to produce the four BPS lag columns; they are NOT added
+        to ``indicators`` so they never appear as cross-indicator features.
+    """
     est: dict[tuple[str, str, int], float] = {}
     indicators: set[str] = set()
     geoids: set[str] = set()
@@ -93,6 +110,12 @@ def build_panel_index(
                 continue
             year = int(round(effective_year(o)))
             est[(geoid, indicator, year)] = float(o.estimate)
+
+    if bps_data is not None:
+        for geoid, year_vals in bps_data.items():
+            for year, count in year_vals.items():
+                if count is not None and count >= 0:
+                    est[(geoid, _BPS_INDICATOR, int(year))] = float(count)
 
     return PanelIndex(
         estimate_by_key=est,
@@ -127,6 +150,14 @@ _CORE_COLUMNS: tuple[str, ...] = (
     # Filled in with sin/cos of 2-pi · (anchor mod 11) / 11 — no actual
     # cyclical structure, but a robust target-encoded pseudo-time index.
     "anchor_year_norm",
+    # BPS leading-indicator columns (18-24 month lead for vacancy/migration).
+    # Log-scaled permit counts; NaN-filled when BPS data absent for that
+    # county/year. HistGradientBoosting handles NaN via native missing-value
+    # split branches.
+    "bps_log_lag0",    # log(permits[anchor])
+    "bps_log_lag1",    # log(permits[anchor - 1])
+    "bps_log_lag2",    # log(permits[anchor - 2])
+    "bps_3yr_mean",    # mean(bps_log_lag0, bps_log_lag1, bps_log_lag2)
 )
 
 _HORIZON_COLUMN = "horizon"
@@ -261,6 +292,18 @@ def _build_row(
         v = panel.get(geoid, other, anchor_year)
         row.append(math.log(v) if (v is not None and v > 0) else float("nan"))
 
+    # BPS leading-indicator features (log-scaled permit counts).
+    bps0 = panel.get(geoid, _BPS_INDICATOR, anchor_year)
+    bps1 = panel.get(geoid, _BPS_INDICATOR, anchor_year - 1)
+    bps2 = panel.get(geoid, _BPS_INDICATOR, anchor_year - 2)
+    # BPS can be zero for low-activity counties; treat 0 as missing (log undefined).
+    log_bps0 = math.log(bps0) if (bps0 is not None and bps0 > 0) else float("nan")
+    log_bps1 = math.log(bps1) if (bps1 is not None and bps1 > 0) else float("nan")
+    log_bps2 = math.log(bps2) if (bps2 is not None and bps2 > 0) else float("nan")
+    bps_valid = [v for v in (log_bps0, log_bps1, log_bps2) if math.isfinite(v)]
+    bps_3yr = sum(bps_valid) / len(bps_valid) if bps_valid else float("nan")
+    row.extend([log_bps0, log_bps1, log_bps2, bps_3yr])
+
     row.append(float(horizon))
     return row
 
@@ -356,11 +399,30 @@ def make_inference_row(
     )
 
 
+def load_bps_data() -> Optional[dict[str, dict[int, float]]]:
+    """Load BPS permit data from the bundled JSON file, or None if absent."""
+    bps_path = (
+        Path(__file__).parent.parent / "data" / "leading_indicators" / "bps_permits.json"
+    )
+    if not bps_path.exists():
+        return None
+    import json as _json
+    with open(bps_path) as f:
+        payload = _json.load(f)
+    raw = payload.get("values_by_geoid_year", {})
+    # Convert {geoid: {str_year: count}} → {geoid: {int_year: float}}
+    return {
+        geoid: {int(yr): float(cnt) for yr, cnt in yr_dict.items()}
+        for geoid, yr_dict in raw.items()
+    }
+
+
 __all__ = [
     "PanelIndex",
     "FeatureSpec",
     "TrainingMatrix",
     "build_panel_index",
+    "load_bps_data",
     "make_feature_spec",
     "make_training_rows",
     "make_inference_row",

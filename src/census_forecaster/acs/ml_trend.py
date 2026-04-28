@@ -59,6 +59,7 @@ from .ml_features import (
     PanelIndex,
     TrainingMatrix,
     build_panel_index,
+    load_bps_data,
     make_feature_spec,
     make_inference_row,
     make_training_rows,
@@ -138,6 +139,7 @@ def train_ml_model(
     cutoff_year: int,
     horizons: Sequence[int] = (1, 2, 3, 4, 5),
     panel: Optional[PanelIndex] = None,
+    bps_data: Optional[Mapping[str, Mapping[int, float]]] = None,
 ) -> Optional[TrainedMlModel]:
     """Fit one HGB model for one (indicator, cutoff_year).
 
@@ -152,7 +154,8 @@ def train_ml_model(
     HGB, np = deps  # noqa: N806
 
     if panel is None:
-        panel = build_panel_index(series_by_key)
+        _bps = bps_data if bps_data is not None else load_bps_data()
+        panel = build_panel_index(series_by_key, bps_data=_bps)
 
     matrix: TrainingMatrix = make_training_rows(
         panel, populations, indicator, cutoff_year, horizons,
@@ -374,6 +377,7 @@ def project_ml_trend_one_shot(
     cutoff_year: Optional[int] = None,
     model_cache: Optional[dict[tuple[str, int], TrainedMlModel]] = None,
     panel: Optional[PanelIndex] = None,
+    bps_data: Optional[Mapping[str, Mapping[int, float]]] = None,
 ) -> Optional[ForecastPoint]:
     """One-shot: train (or fetch cached) model and produce a forecast.
 
@@ -389,7 +393,8 @@ def project_ml_trend_one_shot(
     indicator = series_observations[-1].indicator
 
     if panel is None:
-        panel = build_panel_index(series_by_key)
+        _bps = bps_data if bps_data is not None else load_bps_data()
+        panel = build_panel_index(series_by_key, bps_data=_bps)
 
     if cutoff_year is None:
         cutoff_year = int(round(effective_year(series_observations[-1])))

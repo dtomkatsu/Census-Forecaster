@@ -974,6 +974,7 @@ def run_stratified_calibration(
     bias_clamp_log: float = DEFAULT_BIAS_CLAMP_LOG,
     as_of_mode: str = "instant",
     include_ml: bool = False,
+    bps_data: Optional[dict] = None,
 ) -> dict:
     """v3 stratified hold-out calibration.
 
@@ -1118,14 +1119,15 @@ def run_stratified_calibration(
     # is intentional — per-anchor model fitting must happen ONCE per
     # anchor, not once per (geoid, h) combination.
     if include_ml:
-        from .ml_features import build_panel_index as _build_panel_index
+        from .ml_features import build_panel_index as _build_panel_index, load_bps_data as _load_bps
         from .ml_trend import (
             train_ml_model as _train_ml_model,
             project_ml_trend as _project_ml_trend,
             METHOD_NAME as _ML_METHOD,
         )
 
-        ml_panel = _build_panel_index(series_by_key)
+        _bps = bps_data if bps_data is not None else _load_bps()
+        ml_panel = _build_panel_index(series_by_key, bps_data=_bps)
         # Group (geoid, indicator) by indicator so we can iterate
         # indicator-major, anchor-major, then geoid for each.
         by_indicator: dict[str, list[tuple[str, list[AcsObservation]]]] = {}

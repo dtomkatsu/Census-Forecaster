@@ -36,7 +36,7 @@ from ..acs.calibration import (
     FoldResidual,
     run_stratified_calibration,
 )
-from ..acs.ml_features import build_panel_index
+from ..acs.ml_features import build_panel_index, load_bps_data
 from ..acs.ml_trend import (
     METHOD_NAME as ML_METHOD,
     project_ml_trend,
@@ -303,19 +303,22 @@ def format_report(
     no_ml_metrics: dict[str, IndicatorMetrics],
     with_ml_metrics: dict[str, IndicatorMetrics],
     ml_only_metrics: dict[str, IndicatorMetrics],
+    ml_no_bps_metrics: dict[str, IndicatorMetrics] | None = None,
 ) -> str:
-    """Build the Markdown report comparing both calibrations."""
+    """Build the Markdown report comparing calibrations."""
     indicators = sorted(set(no_ml_metrics) | set(with_ml_metrics))
     lines: list[str] = []
-    lines.append("# ML ablation: ensemble_with_ml vs ensemble_v3")
+    bps_col = ml_no_bps_metrics is not None
+    lines.append("# ML ablation: ensemble_with_ml (+ BPS) vs ensemble_v3")
     lines.append("")
-    lines.append(
-        "| Indicator | RMSE-pct (no-ml) | RMSE-pct (with-ml) | Δ (rel) | "
-        "Cov90 (no-ml) | Cov90 (with-ml) | n folds |"
+    header = (
+        "| Indicator | RMSE no-ml | RMSE ml+BPS | Δ (rel) | "
+        + ("RMSE ml-noBPS | BPS Δ (rel) | " if bps_col else "")
+        + "Cov90 no-ml | Cov90 ml+BPS | n folds |"
     )
-    lines.append(
-        "|---|---:|---:|---:|---:|---:|---:|"
-    )
+    sep = "|---|---:|---:|---:|" + ("|---:|---:|" if bps_col else "") + "---:|---:|---:|"
+    lines.append(header)
+    lines.append(sep)
     improved = 0
     regressed = 0
     n_total = 0
@@ -335,9 +338,17 @@ def format_report(
             coverage_violations.append(
                 f"{ind}: cov={b.coverage * 100:.1f}% (target [85, 95])"
             )
+        bps_extra = ""
+        if bps_col and ml_no_bps_metrics is not None:
+            c = ml_no_bps_metrics.get(ind)
+            if c is not None:
+                bps_delta = (b.rmse_pct - c.rmse_pct) / c.rmse_pct if c.rmse_pct > 0 else float("nan")
+                bps_extra = f" {c.rmse_pct * 100:.2f}% | {bps_delta * 100:+.2f}% |"
+            else:
+                bps_extra = " — | — |"
         lines.append(
             f"| {ind} | {a.rmse_pct * 100:.2f}% | {b.rmse_pct * 100:.2f}% | "
-            f"{rel * 100:+.2f}% | {a.coverage * 100:.1f}% | "
+            f"{rel * 100:+.2f}% |{bps_extra} {a.coverage * 100:.1f}% | "
             f"{b.coverage * 100:.1f}% | {b.n_folds} |"
         )
     lines.append("")
@@ -419,6 +430,10 @@ def main(argv: Iterable[str] | None = None) -> int:
         file=sys.stderr,
     )
 
+    bps = load_bps_data()
+    n_ind = len(set(ind for (_, ind) in series))
+    n_models = n_ind * len(anchor_years)
+
     print(f"[ablation] running v3 calibration WITHOUT ml ...", file=sys.stderr)
     cal_no_ml = run_stratified_calibration(
         series_by_key=series,
@@ -429,43 +444,51 @@ def main(argv: Iterable[str] | None = None) -> int:
     )
 
     print(
-        f"[ablation] running v3 calibration WITH ml (this trains "
-        f"{len(set(ind for (_, ind) in series))} × {len(anchor_years)} HGB models) ...",
+        f"[ablation] running v3 calibration WITH ml, NO BPS "
+        f"(trains {n_models} HGB models) ...",
         file=sys.stderr,
     )
-    cal_with_ml = run_stratified_calibration(
+    cal_ml_no_bps = run_stratified_calibration(
         series_by_key=series,
         anchor_years=anchor_years,
         horizons=horizons,
         populations=populations,
         include_ml=True,
+        bps_data={},   # explicitly empty → no BPS features
     )
 
-    # Pull residuals back into FoldResidual lists.
-    resid_no_ml_raw = _residuals_from_calibration(cal_no_ml)
-    resid_with_ml_raw = _residuals_from_calibration(cal_with_ml)
+    print(
+        f"[ablation] running v3 calibration WITH ml, WITH BPS "
+        f"(trains {n_models} HGB models) ...",
+        file=sys.stderr,
+    )
+    cal_ml_bps = run_stratified_calibration(
+        series_by_key=series,
+        anchor_years=anchor_years,
+        horizons=horizons,
+        populations=populations,
+        include_ml=True,
+        bps_data=bps,
+    )
 
-    # Apply v3 bias + κ corrections to each method's residuals BEFORE
-    # combining. This matches what production projection does and is
-    # the apples-to-apples comparison: each method's CI is calibrated
-    # to its own per-stratum coverage target before the ensemble
-    # combiner sees it.
+    # Apply v3 bias + κ corrections to each method's residuals.
     print(f"[ablation] applying v3 corrections to fold residuals ...", file=sys.stderr)
-    resid_no_ml = _apply_v3_corrections(resid_no_ml_raw, cal_no_ml)
-    resid_with_ml = _apply_v3_corrections(resid_with_ml_raw, cal_with_ml)
+    resid_no_ml = _apply_v3_corrections(_residuals_from_calibration(cal_no_ml), cal_no_ml)
+    resid_ml_no_bps = _apply_v3_corrections(_residuals_from_calibration(cal_ml_no_bps), cal_ml_no_bps)
+    resid_ml_bps = _apply_v3_corrections(_residuals_from_calibration(cal_ml_bps), cal_ml_bps)
 
-    # Need to compute trend_ensemble + multi_anchor inverse-variance ensemble
-    # numerics on each side. We treat the existing trend+anchor stratified
-    # ensemble (post-correction) as ``ensemble_v3``.
     print(f"[ablation] aggregating per-indicator metrics ...", file=sys.stderr)
-    ensemble_v3_no_ml = _build_ensemble_v3_residuals(resid_no_ml)
-    ensemble_with_ml = _build_with_ml_residuals(resid_with_ml, series, populations)
+    ensemble_v3 = _build_ensemble_v3_residuals(resid_no_ml)
+    ensemble_ml_no_bps = _build_with_ml_residuals(resid_ml_no_bps, series, populations)
+    ensemble_ml_bps = _build_with_ml_residuals(resid_ml_bps, series, populations)
 
-    no_ml_metrics = _aggregate_per_indicator(ensemble_v3_no_ml, "ensemble_v3")
-    with_ml_metrics = _aggregate_per_indicator(ensemble_with_ml, "ensemble_with_ml")
-    ml_only_metrics = _aggregate_per_indicator(resid_with_ml, ML_METHOD)
+    no_ml_metrics = _aggregate_per_indicator(ensemble_v3, "ensemble_v3")
+    ml_no_bps_metrics = _aggregate_per_indicator(ensemble_ml_no_bps, "ensemble_with_ml")
+    ml_bps_metrics = _aggregate_per_indicator(ensemble_ml_bps, "ensemble_with_ml")
+    ml_only_metrics = _aggregate_per_indicator(resid_ml_bps, ML_METHOD)
 
-    report = format_report(no_ml_metrics, with_ml_metrics, ml_only_metrics)
+    report = format_report(no_ml_metrics, ml_bps_metrics, ml_only_metrics,
+                           ml_no_bps_metrics=ml_no_bps_metrics)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(report)
