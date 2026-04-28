@@ -6,6 +6,7 @@ projection and back-test code easy to test with hand-built inputs.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Optional
 
 
@@ -45,6 +46,19 @@ class AcsObservation:
     def __post_init__(self) -> None:
         if self.vintage not in ("1y", "5y"):
             raise ValueError(f"vintage must be '1y' or '5y', got {self.vintage!r}")
+
+    @property
+    def publication_date(self) -> date:
+        """Approximate date this observation became publicly available.
+
+        1-year ACS for year Y → second Thursday of September Y+1.
+        5-year ACS ending year Y → first Thursday of December Y+1.
+        Derived from `publication.py`; accurate within ±3 days of Census schedule.
+        """
+        from .publication import acs_1y_release_date, acs_5y_release_date
+        if self.vintage == "1y":
+            return acs_1y_release_date(self.year)
+        return acs_5y_release_date(self.year)
 
 
 @dataclass(frozen=True)
