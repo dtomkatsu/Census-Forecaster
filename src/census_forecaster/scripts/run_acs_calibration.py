@@ -56,6 +56,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         help="Include kalman_state_space ensemble member in calibration.",
     )
     parser.add_argument(
+        "--include-conformal", action="store_true", default=False,
+        help=(
+            "Split anchor years into tuning/calibration/evaluation and compute "
+            "per-stratum split-conformal quantiles (schema_version 4)."
+        ),
+    )
+    parser.add_argument(
         "--as-of-mode", choices=["instant", "publication"], default="instant",
         help=(
             "How to truncate training data per fold. "
@@ -111,6 +118,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         as_of_mode=args.as_of_mode,
         include_ml=args.include_ml,
         include_kalman=args.include_kalman,
+        include_conformal=args.include_conformal,
     )
 
     sr = payload.get("strata_records", {})

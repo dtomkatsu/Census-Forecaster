@@ -976,13 +976,20 @@ def run_stratified_calibration(
     include_ml: bool = False,
     bps_data: Optional[dict] = None,
     include_kalman: bool = False,
+    include_conformal: bool = False,
 ) -> dict:
-    """v3 stratified hold-out calibration.
+    """v3/v4 stratified hold-out calibration.
 
     Multi-horizon, population-stratified, geometric-bias-corrected. Caches
     per-fold residuals so SE-override bisection and bias estimation operate
     in-memory; runs roughly 100× faster than the v2 verify-pass approach
     on the multi-state, 5-horizon panel.
+
+    When `include_conformal=True` (schema_version 4) the anchor years are
+    split into three sets:
+      - tuning    (all but last 2): κ bisection + bias estimation
+      - calibration (second to last): split-conformal quantile computation
+      - evaluation  (last):          honest held-out coverage report
 
     Parameters
     ----------
@@ -1000,11 +1007,14 @@ def run_stratified_calibration(
         are emitted with floor values (κ = base_inflator, b = 0).
     bias_clamp_log : magnitude of the symmetric clamp on the bias term
         in log space. Default `log(1.10)` ≈ ±10% multiplicative.
+    include_conformal : when True, split anchor_years and compute
+        per-stratum conformal quantiles (requires ≥ 3 anchor years).
 
     Returns
     -------
-    dict — schema_version=3 payload with both strata records and
-    marginalised v2-style tables for backwards compatibility.
+    dict — schema_version=3 (or 4 when include_conformal) payload with
+    both strata records and marginalised v2-style tables for backwards
+    compatibility.
     """
     from .strata import classify_pop, classify_horizon, WILDCARD, record_to_dict
     from ..publication import acs_1y_release_date as _acs_pub
@@ -1019,6 +1029,22 @@ def run_stratified_calibration(
     anchor_list = list(anchor_years)
     horizon_list = list(horizons)
 
+    # ---- Fold split for conformal (Phase E) ----
+    # When include_conformal and ≥3 anchor years: split into
+    #   tuning (all but last 2) → κ + bias
+    #   calibration (second-to-last) → conformal quantile
+    #   evaluation (last) → honest held-out coverage
+    # When not using conformal (or < 3 years): all folds go to tuning.
+    if include_conformal and len(anchor_list) >= 3:
+        tuning_anchors = anchor_list[:-2]
+        calibration_anchors = [anchor_list[-2]]
+        evaluation_anchors = [anchor_list[-1]]
+    else:
+        tuning_anchors = anchor_list
+        calibration_anchors = []
+        evaluation_anchors = []
+
+    # Pass 1 uses all anchors (per-source RMSE is not split).
     # ---- Pass 1: per-source RMSE (h-marginalised; reused from v2 path) ----
     folds_pass1: list[HoldOutFold] = []
     for (geoid, indicator), full in series_by_key.items():
@@ -1066,8 +1092,10 @@ def run_stratified_calibration(
                 continue
             rmse_by_indicator_source[ind][src] = math.sqrt(sum(sq_errs) / len(sq_errs))
 
-    # ---- Pass 2: produce FoldResidual cache for both methods ----
-    fold_residuals: list[FoldResidual] = []
+    # ---- Pass 2: produce FoldResidual cache for all methods ----
+    # Collect residuals for every anchor year; split into tuning /
+    # calibration / evaluation after the loop.
+    all_fold_residuals: list[FoldResidual] = []
     for (geoid, indicator), full in series_by_key.items():
         full_sorted = sorted(full, key=lambda o: (effective_year(o), o.vintage))
         pop_bucket = classify_pop(populations.get(geoid)) or WILDCARD
@@ -1088,7 +1116,7 @@ def run_stratified_calibration(
 
                 tr = _project_trend_only(train, target_year)
                 if tr is not None:
-                    fold_residuals.append(FoldResidual(
+                    all_fold_residuals.append(FoldResidual(
                         indicator=indicator, method="trend_ensemble",
                         geoid=geoid, anchor_year=anchor, horizon=h,
                         pop_bucket=pop_bucket, h_bucket=h_bucket,
@@ -1102,7 +1130,7 @@ def run_stratified_calibration(
                     per_source_rmse=rmse_by_indicator_source,
                 )
                 if an is not None:
-                    fold_residuals.append(FoldResidual(
+                    all_fold_residuals.append(FoldResidual(
                         indicator=indicator, method="multi_anchor",
                         geoid=geoid, anchor_year=anchor, horizon=h,
                         pop_bucket=pop_bucket, h_bucket=h_bucket,
@@ -1172,7 +1200,7 @@ def run_stratified_calibration(
                         )
                         if ml_fp is None:
                             continue
-                        fold_residuals.append(FoldResidual(
+                        all_fold_residuals.append(FoldResidual(
                             indicator=indicator, method=_ML_METHOD,
                             geoid=geoid, anchor_year=anchor, horizon=h,
                             pop_bucket=pop_bucket, h_bucket=h_bucket,
@@ -1213,7 +1241,7 @@ def run_stratified_calibration(
                     )
                     if kal_fp is None:
                         continue
-                    fold_residuals.append(FoldResidual(
+                    all_fold_residuals.append(FoldResidual(
                         indicator=indicator, method=_KAL_METHOD,
                         geoid=geoid, anchor_year=anchor, horizon=h,
                         pop_bucket=pop_bucket, h_bucket=h_bucket,
@@ -1222,6 +1250,18 @@ def run_stratified_calibration(
                         se_sample=kal_fp.se_sample, se_forecast=kal_fp.se_forecast,
                         ci90_low=kal_fp.ci90_low, ci90_high=kal_fp.ci90_high,
                     ))
+
+    # ---- Fold split: tuning / calibration / evaluation ----
+    tuning_set = set(tuning_anchors)
+    calibration_set = set(calibration_anchors)
+    evaluation_set = set(evaluation_anchors)
+
+    fold_residuals = [r for r in all_fold_residuals if r.anchor_year in tuning_set or not tuning_anchors]
+    conformal_residuals = [r for r in all_fold_residuals if r.anchor_year in calibration_set]
+    evaluation_residuals = [r for r in all_fold_residuals if r.anchor_year in evaluation_set]
+    # When conformal is off, tuning_anchors == anchor_list so fold_residuals == all.
+    if not calibration_anchors:
+        fold_residuals = all_fold_residuals
 
     # ---- Pass A: bias estimation per cell (with marginalisation) ----
     bias_records = _estimate_bias_records(fold_residuals, n_threshold, bias_clamp_log)
@@ -1241,14 +1281,51 @@ def run_stratified_calibration(
     # ---- Pass C: per-cell RMSE on bias-corrected residuals ----
     rmse_records = _rmse_records_from_residuals(bias_corrected, n_threshold)
 
+    # ---- Pass D (optional): split-conformal quantiles from calibration folds ----
+    conformal_records: list = []
+    evaluation_coverage: dict = {}
+    if include_conformal and conformal_residuals:
+        from .conformal import compute_conformal_quantiles, build_conformal_lookup
+        # Apply bias correction to calibration residuals using tuning-fold bias.
+        conformal_bc: list[FoldResidual] = []
+        for r in conformal_residuals:
+            b = bias_lookup(r.indicator, r.method, r.pop_bucket, r.h_bucket)
+            conformal_bc.append(_apply_bias_to_residual(r, b))
+        conformal_records = compute_conformal_quantiles(
+            conformal_bc, target_coverage=0.90, n_threshold=n_threshold,
+        )
+        # Honest evaluation coverage using conformal floor on evaluation folds.
+        if evaluation_residuals:
+            conf_lookup = build_conformal_lookup(conformal_records)
+            eval_covered: dict[tuple[str, str], list[bool]] = {}
+            for r in evaluation_residuals:
+                b = bias_lookup(r.indicator, r.method, r.pop_bucket, r.h_bucket)
+                r_bc = _apply_bias_to_residual(r, b)
+                q = conf_lookup(r.indicator, r.method, r.pop_bucket, r.h_bucket)
+                # Apply κ override to get the kappa half-width.
+                kappa_half = (r_bc.ci90_high - r_bc.ci90_low) / 2.0
+                # Conformal half-width: q * se_total (pre-κ).
+                conf_half = (q * r.se_total) if q is not None else 0.0
+                half = max(kappa_half, conf_half)
+                in_ci = abs(r_bc.actual - r_bc.point) <= half
+                key = (r.indicator, r.method)
+                eval_covered.setdefault(key, []).append(in_ci)
+            evaluation_coverage = {
+                ind: {meth: sum(v) / len(v) for (i, m), v in eval_covered.items()
+                      if i == ind for meth in [m]}
+                for ind in {i for i, _ in eval_covered}
+            }
+
     # ---- Build marginalised v2-style tables for back-compat ----
     rmse_v2 = _marginalised_v2_table(rmse_records)
     cov_pre_v2 = _marginalised_v2_table(cov_pre_records)
     cov_post_v2 = _marginalised_v2_table(cov_post_records)
     se_override_v2 = _marginalised_v2_se_overrides(se_records, EMPIRICAL_SE_INFLATOR)
 
+    schema_v = 4 if include_conformal else 3
+
     return {
-        "schema_version": 3,
+        "schema_version": schema_v,
         "run_date": date.today().isoformat(),
         "anchor_years": anchor_list,
         "horizons": horizon_list,
@@ -1263,6 +1340,18 @@ def run_stratified_calibration(
             "se_inflator": [record_to_dict(r) for r in se_records],
             "bias": [record_to_dict(r) for r in bias_records],
         },
+        # Phase E: split-conformal quantiles (schema_version 4 only)
+        "conformal_quantile_by_stratum": [
+            {
+                "indicator": r.indicator, "method": r.method,
+                "pop_bucket": r.pop_bucket, "h_bucket": r.h_bucket,
+                "quantile": r.quantile,
+                "n_calibration": r.n_calibration,
+                "target_coverage": r.target_coverage,
+            }
+            for r in conformal_records
+        ],
+        "evaluation_coverage": evaluation_coverage,
         # Marginalised v2-style tables for back-compat
         "rmse_by_indicator_method": rmse_v2,
         "ci90_coverage_by_indicator_method": cov_pre_v2,
@@ -1278,7 +1367,7 @@ def run_stratified_calibration(
                 "se_total": r.se_total, "ci90_low": r.ci90_low, "ci90_high": r.ci90_high,
                 "in_ci": int(r.ci90_low <= r.actual <= r.ci90_high),
             }
-            for r in fold_residuals
+            for r in all_fold_residuals
         ],
         "folds_pass1": [_fold_to_dict(f) for f in folds_pass1],
     }
