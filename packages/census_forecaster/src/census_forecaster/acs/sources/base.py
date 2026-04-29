@@ -83,6 +83,8 @@ class AnchorSource:
     rate_se_floor: float
     _data: dict
     geography: str = "any"
+    anchor_type: str = "rate"
+    level_se_floor: float = 0.0
 
     @classmethod
     def from_file(
@@ -92,6 +94,8 @@ class AnchorSource:
         indicator_affinity: tuple[str, ...],
         rate_se_floor: float = 0.005,
         geography: str = "any",
+        anchor_type: str = "rate",
+        level_se_floor: float = 0.0,
     ) -> "AnchorSource":
         with open(path) as f:
             data = json.load(f)
@@ -110,6 +114,8 @@ class AnchorSource:
             rate_se_floor=rate_se_floor,
             _data=data,
             geography=geography,
+            anchor_type=anchor_type,
+            level_se_floor=level_se_floor,
         )
 
     @staticmethod
@@ -243,6 +249,37 @@ class AnchorSource:
         sd = max(sd, self.rate_se_floor)
         return [AnnualRate(year=y, log_rate=r, se_log_rate=sd) for y, r in rates]
 
+    def latest_level(
+        self,
+        end_year: Optional[int] = None,
+        geoid: Optional[str] = None,
+    ) -> Optional[float]:
+        """Return the most recently visible observed level value.
+
+        Unlike ``load_series``, does not filter out ``v <= 0`` — a 0%
+        rate is valid for level-type anchors (e.g. 0% unemployment).
+        Negative values are still excluded as they indicate bad data.
+        Only meaningful when ``anchor_type == "level"``.
+        """
+        values = self._values_dict_for(geoid)
+        best_year: Optional[int] = None
+        best_val: Optional[float] = None
+        for k, v in values.items():
+            try:
+                yr = int(k)
+            except ValueError:
+                continue
+            if v is None or not isinstance(v, (int, float)) or not math.isfinite(v):
+                continue
+            if v < 0:
+                continue
+            if end_year is not None and (yr + self.publication_lag_years) > end_year:
+                continue
+            if best_year is None or yr > best_year:
+                best_year = yr
+                best_val = float(v)
+        return best_val
+
     def smoothed_annual_rate(
         self,
         end_year: Optional[int] = None,
@@ -286,42 +323,42 @@ class AnchorSource:
 # and PCE/CPI broad inflation can anchor income.
 
 _REGISTRY_SPEC = [
-    # (filename, publication_lag_years, indicator_affinity, rate_se_floor, geography)
+    # (filename, publication_lag_years, indicator_affinity, rate_se_floor, geography, anchor_type, level_se_floor)
     # CPI Honolulu broad inflation: anchors income (used as nominal
     # purchasing-power-equivalent macro rate). publication_lag=0:
     # H1+H2 averages are out by Dec of the year.
     ("cpi_honolulu_allitems.json", 0,
-     ("B19013_001E",), 0.005, "any"),
+     ("B19013_001E",), 0.005, "any", "rate", 0.0),
     # CPI Honolulu rent — anchors gross/contract rent.
     ("cpi_honolulu_rent.json", 0,
-     ("B25058_001E", "B25064_001E"), 0.005, "any"),
+     ("B25058_001E", "B25064_001E"), 0.005, "any", "rate", 0.0),
     # PCE deflator (national) — anchors income as alternate macro proxy.
     ("pce_deflator.json", 0,
-     ("B19013_001E",), 0.005, "national"),
+     ("B19013_001E",), 0.005, "national", "rate", 0.0),
     # QCEW HI wages — anchors income.
     ("qcew_hawaii_wages.json", 1,  # final annual averages release ~Aug of year+1
-     ("B19013_001E",), 0.005, "state"),
+     ("B19013_001E",), 0.005, "state", "rate", 0.0),
     # HUD FMR Honolulu — *validation* anchor for rent (lags 2y so its
     # back-test weight will be small; primarily used for checks).
     ("hud_fmr_honolulu.json", 2,
-     ("B25058_001E", "B25064_001E"), 0.010, "any"),
+     ("B25058_001E", "B25064_001E"), 0.010, "any", "rate", 0.0),
     # FHFA HPI Hawaii — anchors home-value.
     ("fred_hi_hpi.json", 0,  # Q4 release within Q1 of year+1
-     ("B25077_001E",), 0.005, "state"),
+     ("B25077_001E",), 0.005, "state", "rate", 0.0),
     # ----- BEA anchors (added v0.3) -----
     # BEA per-capita personal income, Hawaii state. Year-Y data is
     # finalised in the April Y+1 release; treat as 1-year-lagged so the
     # back-test honours the no-peeking discipline.
     ("bea_hi_percapita_income.json", 1,
-     ("B19013_001E", "S1701_C03_001E"), 0.006, "state"),
+     ("B19013_001E", "S1701_C03_001E"), 0.006, "state", "rate", 0.0),
     # BEA Regional Price Parity, Honolulu metro all-items. Annual
     # release ~May of year+1.
     ("bea_honolulu_rpp_all.json", 1,
-     ("B19013_001E",), 0.005, "any"),
+     ("B19013_001E",), 0.005, "any", "rate", 0.0),
     # BEA Regional Price Parity, Hawaii state services-rents. Anchors
     # rent indicators alongside CPI Honolulu rent and HUD FMR.
     ("bea_hi_rpp_housing.json", 1,
-     ("B25058_001E", "B25064_001E"), 0.006, "state"),
+     ("B25058_001E", "B25064_001E"), 0.006, "state", "rate", 0.0),
     # ----- County-level anchors (added v0.3 Phase A) -----
     # Zillow ZHVI — county-level home value index, monthly cadence
     # aggregated to annual (Dec value or annual mean depending on the
@@ -329,27 +366,44 @@ _REGISTRY_SPEC = [
     # for the back-test discipline so a 2024 forecast made in Jan 2025
     # cannot peek at the Jan 2025 ZHVI release.
     ("zillow_zhvi.json", 0,
-     ("B25077_001E",), 0.005, "county"),
+     ("B25077_001E",), 0.005, "county", "rate", 0.0),
     # Zillow ZORI — county-level rent index. Same cadence/lag treatment.
     ("zillow_zori.json", 0,
-     ("B25058_001E", "B25064_001E"), 0.010, "county"),
+     ("B25058_001E", "B25064_001E"), 0.010, "county", "rate", 0.0),
     # BLS LAUS — county-level unemployment rate.
-    # NOT registered as a log-rate anchor: LAUS % changes (e.g. 2.4→10.1→2.6
-    # during COVID) are structurally incompatible with the log-growth-rate
-    # blending framework and increase S2301_C04 RMSE when included (45.9% vs
-    # 38.2% trend-only in Phase A backtests). The data file is kept for Phase C
-    # where LAUS level values are used directly as ML features.
-    # ("bls_laus.json", 0, ("S2301_C04_001E",), 0.005, "county"),
+    # Registered as a LEVEL anchor (not a log-rate anchor): LAUS is directly
+    # the county unemployment rate in percentage points and predicts ACS S2301
+    # at h=1 as a level observation (not a growth rate). Log-rate registration
+    # was tried and failed (increased RMSE); the level-anchor path bypasses the
+    # log-growth-rate arithmetic entirely.
+    # level_se_floor=1.5: empirical RMSE of LAUS vs ACS S2301 at county level
+    # is typically 0.5–2.0 pp; 1.5 is a conservative floor before κ calibration.
+    ("bls_laus.json", 0,
+     ("S2301_C04_001E",), 0.005, "county", "level", 1.5),
     # Census SAIPE — county-level annual poverty rate.
-    # NOT registered as a log-rate anchor: empirically registering it
-    # increased S1701_C03_001E multi_anchor RMSE from 21.78% to 22.95%
-    # in 2026-04 backtests.  The same structural issue as LAUS — SAIPE is
-    # a model-based *rate* with measurement noise on a different timescale
-    # than the ACS S1701 5-year window, so log-growth comparison is noisy.
-    # SAIPE is instead loaded as ML features (saipe_lag0/1/2, saipe_3yr_mean)
-    # in ml_features.py, the same pattern Phase C used for BPS permits.
-    # ("saipe_poverty.json", 0, ("S1701_C03_001E",), 0.010, "county"),
+    # Registered as a LEVEL anchor: SAIPE is a model-based estimate of the
+    # county poverty rate (%) and predicts ACS S1701 directly at h=1.
+    # Log-rate registration was tried and failed (+1.18pp RMSE regression).
+    # level_se_floor=2.0: empirical RMSE of SAIPE vs ACS S1701 at county level
+    # is typically 1.0–3.0 pp; 2.0 is a conservative floor before κ calibration.
+    ("saipe_poverty.json", 0,
+     ("S1701_C03_001E",), 0.010, "county", "level", 2.0),
 ]
+
+
+def _unpack_spec(spec: tuple) -> tuple:
+    """Unpack a registry spec tuple into (fname, lag, affinity, floor, geo, atype, lfloor).
+
+    Supports both the old 5-element format and the new 7-element format
+    for backwards compatibility with any external code that registered
+    custom sources via the 5-element convention.
+    """
+    if len(spec) == 7:
+        return spec
+    if len(spec) == 5:
+        fname, lag, affinity, floor, geo = spec
+        return (fname, lag, affinity, floor, geo, "rate", 0.0)
+    raise ValueError(f"Unexpected registry spec length {len(spec)}: {spec!r}")
 
 
 def load_source(name_or_filename: str) -> AnchorSource:
@@ -363,20 +417,23 @@ def load_source(name_or_filename: str) -> AnchorSource:
     )
     if spec is None:
         raise KeyError(f"No anchor spec registered for {name_or_filename!r}")
-    _, lag, affinity, floor, geography = spec
+    _, lag, affinity, floor, geography, anchor_type, level_se_floor = _unpack_spec(spec)
     return AnchorSource.from_file(
         path=path,
         publication_lag_years=lag,
         indicator_affinity=affinity,
         rate_se_floor=floor,
         geography=geography,
+        anchor_type=anchor_type,
+        level_se_floor=level_se_floor,
     )
 
 
 def available_sources(indicator: Optional[str] = None) -> list[AnchorSource]:
     """All registered sources (optionally filtered to those that can anchor `indicator`)."""
     sources: list[AnchorSource] = []
-    for fname, lag, affinity, floor, geography in _REGISTRY_SPEC:
+    for spec in _REGISTRY_SPEC:
+        fname, lag, affinity, floor, geography, anchor_type, level_se_floor = _unpack_spec(spec)
         path = _ANCHOR_DIR / fname
         if not path.exists():
             continue
@@ -387,6 +444,8 @@ def available_sources(indicator: Optional[str] = None) -> list[AnchorSource]:
                 indicator_affinity=affinity,
                 rate_se_floor=floor,
                 geography=geography,
+                anchor_type=anchor_type,
+                level_se_floor=level_se_floor,
             )
         except (OSError, json.JSONDecodeError):
             continue

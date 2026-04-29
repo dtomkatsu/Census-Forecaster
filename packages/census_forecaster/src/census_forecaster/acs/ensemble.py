@@ -761,7 +761,10 @@ def project_ensemble_multi(
         cutoff to avoid rebuilding it for each forecast.
     """
     # Local import to avoid a circular dependency between ensemble and anchors.
-    from .anchors import combined_anchor_rate, anchor_as_forecast, load_calibration
+    from .anchors import (
+        combined_anchor_rate, anchor_as_forecast, load_calibration,
+        combined_level_anchor, level_anchor_as_forecast, METHOD_LEVEL_ANCHOR,
+    )
     from .strata import classify_horizon
 
     if not series_observations:
@@ -921,45 +924,121 @@ def project_ensemble_multi(
             _se_pre_kappa_anchor, pop_bucket=pop_bucket, h_bucket=h_bucket,
         )
 
-    if inner is None and anchor_fp is None:
+    # Level anchor — for rate/percentage indicators (unemployment, poverty)
+    # where the external series level IS the forecast rather than a growth
+    # rate modifier. Bypasses the log-growth-rate arithmetic that breaks on
+    # COVID-era swings.
+    #
+    # Gate: only participate in the blend when the level anchor's calibrated
+    # RMSE is within `_LEVEL_ANCHOR_RMSE_RATIO` of the best other method's
+    # RMSE. This prevents a poor-fitting level anchor (e.g. LAUS → S2301
+    # which has 52% RMSE vs 33% for ml_trend) from dragging the ensemble down
+    # even though it gets down-weighted by inverse-variance.
+    _LEVEL_ANCHOR_RMSE_RATIO = 1.25
+    _rmse_table = (calibration or {}).get("rmse_by_indicator_method", {}).get(indicator, {})
+    _level_rmse = _rmse_table.get(METHOD_LEVEL_ANCHOR)
+    _best_other_rmse = min(
+        (_rmse_table.get(m, float("inf")) for m in ("trend_ensemble", "ml_trend", "multi_anchor")),
+        default=float("inf"),
+    )
+    _level_anchor_ok = (
+        _level_rmse is None  # no calibration yet → allow, calibration will judge later
+        or math.isfinite(_best_other_rmse) is False  # no other method → allow
+        or _level_rmse <= _best_other_rmse * _LEVEL_ANCHOR_RMSE_RATIO
+    )
+
+    level_anchor_fp: "ForecastPoint | None" = None
+    if _level_anchor_ok:
+        try:
+            from .sources import available_sources as _avail_sources
+            _level_sources = [s for s in _avail_sources(indicator) if s.anchor_type == "level"]
+            if _level_sources:
+                _level_anchor = combined_level_anchor(
+                    indicator=indicator,
+                    end_year=end_year,
+                    geoid=geoid,
+                    sources=_level_sources,
+                    calibration=per_source_calib,
+                )
+                if _level_anchor is not None:
+                    level_anchor_fp = level_anchor_as_forecast(
+                        latest=series_observations[-1],
+                        target_year=target_year,
+                        level_anchor=_level_anchor,
+                    )
+        except Exception:  # pragma: no cover — graceful degradation
+            level_anchor_fp = None
+
+    if level_anchor_fp is not None:
+        level_anchor_fp = _apply_bias_correction(
+            level_anchor_fp, indicator, METHOD_LEVEL_ANCHOR, calibration,
+            pop_bucket=pop_bucket, h_bucket=h_bucket,
+        )
+        _se_pre_kappa_level = level_anchor_fp.se_total
+        level_anchor_fp = _apply_se_override(
+            level_anchor_fp, indicator, METHOD_LEVEL_ANCHOR, calibration,
+            pop_bucket=pop_bucket, h_bucket=h_bucket,
+        )
+        level_anchor_fp = _apply_conformal_floor(
+            level_anchor_fp, indicator, METHOD_LEVEL_ANCHOR, calibration,
+            _se_pre_kappa_level, pop_bucket=pop_bucket, h_bucket=h_bucket,
+        )
+
+    if inner is None and anchor_fp is None and level_anchor_fp is None:
         return None
+    if inner is None and anchor_fp is None:
+        return level_anchor_fp
+
+    # Build the rate-anchor blend (inner + anchor_fp) first.
     if inner is None:
-        return anchor_fp
-    if anchor_fp is None:
-        return inner
+        rate_blend: "ForecastPoint | None" = anchor_fp
+    elif anchor_fp is None:
+        rate_blend = inner
+    else:
+        macro_weight = _calibrated_macro_weight(indicator, calibration)
+        w = [1 - macro_weight, macro_weight]
+        pieces = [inner, anchor_fp]
+        point = sum(w[i] * pieces[i].point for i in range(2))
+        rho = correlation_rho_anchor
+        var = 0.0
+        for i in range(2):
+            for j in range(2):
+                corr = 1.0 if i == j else rho
+                var += w[i] * w[j] * pieces[i].se_total * pieces[j].se_total * corr
+        se_total = math.sqrt(var) if var > 0 else 0.0
+        se_sample = math.sqrt(sum((w[i] * pieces[i].se_sample) ** 2 for i in range(2)))
+        se_forecast = math.sqrt(sum((w[i] * pieces[i].se_forecast) ** 2 for i in range(2)))
+        ci_lo, ci_hi = ci_from_se(point, se_total)
+        notes = (
+            f"multi_anchor_blend(macro={macro_weight:.2f}, trend={1 - macro_weight:.2f}); "
+            f"trend: {inner.notes}; anchor: {anchor_fp.notes}"
+        )
+        rate_blend = ForecastPoint(
+            point=point,
+            se_total=se_total,
+            se_sample=se_sample,
+            se_forecast=se_forecast,
+            ci90_low=ci_lo,
+            ci90_high=ci_hi,
+            method="ensemble_multi_anchor",
+            target_year=target_year,
+            geoid=inner.geoid,
+            indicator=inner.indicator,
+            horizon=inner.horizon,
+            notes=notes,
+        )
 
-    # Blend at calibrated weight.
-    macro_weight = _calibrated_macro_weight(indicator, calibration)
-    w = [1 - macro_weight, macro_weight]
-    pieces = [inner, anchor_fp]
+    # If a level anchor is available, fuse it with the rate-blend result using
+    # inverse-variance combination at ρ=0.5 (lower correlation than within the
+    # classical trend ensemble since level and rate anchors use independent data).
+    if level_anchor_fp is None:
+        return rate_blend
 
-    point = sum(w[i] * pieces[i].point for i in range(2))
-    rho = correlation_rho_anchor
-    var = 0.0
-    for i in range(2):
-        for j in range(2):
-            corr = 1.0 if i == j else rho
-            var += w[i] * w[j] * pieces[i].se_total * pieces[j].se_total * corr
-    se_total = math.sqrt(var) if var > 0 else 0.0
-    se_sample = math.sqrt(sum((w[i] * pieces[i].se_sample) ** 2 for i in range(2)))
-    se_forecast = math.sqrt(sum((w[i] * pieces[i].se_forecast) ** 2 for i in range(2)))
-    ci_lo, ci_hi = ci_from_se(point, se_total)
-
-    notes = (
-        f"multi_anchor_blend(macro={macro_weight:.2f}, trend={1 - macro_weight:.2f}); "
-        f"trend: {inner.notes}; anchor: {anchor_fp.notes}"
-    )
-    return ForecastPoint(
-        point=point,
-        se_total=se_total,
-        se_sample=se_sample,
-        se_forecast=se_forecast,
-        ci90_low=ci_lo,
-        ci90_high=ci_hi,
-        method="ensemble_multi_anchor",
+    assert rate_blend is not None
+    final = _combine_two_with_rho(
+        rate_blend, level_anchor_fp,
         target_year=target_year,
-        geoid=inner.geoid,
-        indicator=inner.indicator,
-        horizon=inner.horizon,
-        notes=notes,
+        method_label="ensemble_multi_anchor",
+        rho=0.5,
     )
+    return final if final is not None else rate_blend

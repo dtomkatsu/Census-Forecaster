@@ -58,9 +58,175 @@ from .projection import (
 )
 from .sources import AnchorSource, AnnualRate, available_sources
 
+METHOD_LEVEL_ANCHOR = "level_anchor"
+
 
 _PKG_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CALIBRATION_PATH = _PKG_ROOT / "data" / "anchors" / "calibration.json"
+
+
+# -----------------------------------------------------------------------------
+# Level-anchor point (for rate/percentage indicators)
+# -----------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class LevelAnchorPoint:
+    """Combined level observation from one or more level-type anchor sources.
+
+    Unlike AnchorRate (which carries a log-growth-rate), this carries the
+    observed level directly — e.g. the county unemployment rate in percentage
+    points — because rate indicators are not log-growth-rate compatible.
+
+    The point forecast at target_year is this level (possibly with the
+    SE growing for h>1 under a random-walk assumption on the external series).
+    """
+    point: float
+    se: float
+    indicator: str
+    end_year: int
+    geoid: Optional[str]
+    source_names: tuple[str, ...]
+    weights: tuple[float, ...]
+
+
+def combined_level_anchor(
+    indicator: str,
+    end_year: int,
+    geoid: Optional[str] = None,
+    sources: Optional[list[AnchorSource]] = None,
+    calibration: Optional[dict] = None,
+) -> Optional[LevelAnchorPoint]:
+    """Combine all level-type anchor sources for this indicator at end_year.
+
+    Inverse-variance combines the latest observed levels from all level-type
+    sources that have data visible at end_year. Uses each source's
+    ``level_se_floor`` as the SE floor; calibration per-source RMSE is NOT
+    used here (it is in relative units, which don't apply to level forecasts).
+    The κ calibration in the ensemble path handles SE scaling post-hoc.
+
+    Returns None when no level source has visible data for this indicator/geoid.
+    """
+    if sources is None:
+        sources = available_sources(indicator)
+
+    level_sources = [s for s in sources if s.anchor_type == "level"]
+    if not level_sources:
+        return None
+
+    items: list[tuple[float, float, str]] = []  # (level, se, source_name)
+    for src in level_sources:
+        level = src.latest_level(end_year=end_year, geoid=geoid)
+        if level is None:
+            continue
+        se = max(src.level_se_floor, 1e-6)
+        items.append((level, se, src.name))
+
+    if not items:
+        return None
+
+    inv_vars = [1.0 / (se ** 2) for _, se, _ in items]
+    total_inv = sum(inv_vars)
+    if total_inv <= 0:
+        weights = [1.0 / len(items)] * len(items)
+    else:
+        weights = [w / total_inv for w in inv_vars]
+
+    point = sum(w * lv for w, (lv, _, _) in zip(weights, items))
+    se = math.sqrt(sum((w * se) ** 2 for w, (_, se, _) in zip(weights, items)))
+    # Ensure combined SE >= any single source's floor.
+    max_floor = max(s.level_se_floor for s in level_sources if s.level_se_floor > 0) if level_sources else 0.0
+    se = max(se, max_floor)
+
+    return LevelAnchorPoint(
+        point=point,
+        se=se,
+        indicator=indicator,
+        end_year=end_year,
+        geoid=geoid,
+        source_names=tuple(name for _, _, name in items),
+        weights=tuple(weights),
+    )
+
+
+def level_anchor_as_forecast(
+    latest: AcsObservation,
+    target_year: int,
+    level_anchor: LevelAnchorPoint,
+) -> ForecastPoint:
+    """Project `latest` forward using an external level observation.
+
+    The level anchor's point IS the point forecast (not a growth rate
+    applied to latest.estimate). For h=1 this says "next year's ACS value
+    will be approximately equal to the current external level." For h>1
+    the uncertainty grows with sqrt(h) under a random-walk assumption.
+
+    SE = level_anchor.se * EMPIRICAL_SE_INFLATOR * sqrt(h) (forecast component)
+    plus the ACS sample SE scaled to the new point magnitude (sample component).
+    The κ calibration in the ensemble path will further refine the SE via
+    the per-stratum multiplier, just as it does for other methods.
+    """
+    horizon = target_year - effective_year(latest)
+    if horizon <= 0:
+        sample_se = moe_to_se(latest.moe)
+        if not math.isfinite(sample_se):
+            sample_se = 0.0
+        ci_lo, ci_hi = ci_from_se(latest.estimate, sample_se)
+        return ForecastPoint(
+            point=latest.estimate,
+            se_total=sample_se,
+            se_sample=sample_se,
+            se_forecast=0.0,
+            ci90_low=ci_lo,
+            ci90_high=ci_hi,
+            method=METHOD_LEVEL_ANCHOR + "_passthrough",
+            target_year=target_year,
+            geoid=latest.geoid,
+            indicator=latest.indicator,
+            horizon=int(round(horizon)),
+            notes="target at/before latest observation",
+        )
+
+    point = level_anchor.point
+
+    # Forecast SE: base from level anchor, growing with sqrt(h) for h>1.
+    se_forecast = level_anchor.se * EMPIRICAL_SE_INFLATOR * math.sqrt(max(horizon, 1))
+
+    # Sample SE: latest ACS relative CV scaled to the new point level.
+    # This captures that the anchor level might differ from the ACS level
+    # by the same relative amount as the ACS sampling noise.
+    sample_relative = (
+        moe_to_se(latest.moe) / latest.estimate if latest.estimate > 0 else 0.0
+    )
+    if not math.isfinite(sample_relative):
+        sample_relative = 0.0
+    se_sample = sample_relative * point
+
+    se_total = combine_se(se_sample, se_forecast)
+    ci_lo, ci_hi = ci_from_se(point, se_total)
+
+    source_str = "+".join(
+        f"{name}={w:.2f}"
+        for name, w in zip(level_anchor.source_names, level_anchor.weights)
+    )
+    notes = (
+        f"level_anchor(sources=[{source_str}], "
+        f"level={point:.2f}, se_base={level_anchor.se:.2f})"
+    )
+
+    return ForecastPoint(
+        point=point,
+        se_total=se_total,
+        se_sample=se_sample,
+        se_forecast=se_forecast,
+        ci90_low=ci_lo,
+        ci90_high=ci_hi,
+        method=METHOD_LEVEL_ANCHOR,
+        target_year=target_year,
+        geoid=latest.geoid,
+        indicator=latest.indicator,
+        horizon=int(round(horizon)),
+        notes=notes,
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -184,6 +350,15 @@ def combined_anchor_rate(
     """
     if sources is None:
         sources = available_sources(indicator)
+    if not sources:
+        return None
+
+    # Only use rate-type anchors here; level-type anchors go through
+    # combined_level_anchor() / level_anchor_as_forecast() instead.
+    # Including level-type sources here would apply log-growth-rate
+    # arithmetic to rate-bounded series (e.g. LAUS unemployment), which
+    # produces explosive signals during COVID and was empirically worse.
+    sources = [s for s in sources if s.anchor_type == "rate"]
     if not sources:
         return None
 

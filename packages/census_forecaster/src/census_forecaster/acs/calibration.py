@@ -68,6 +68,9 @@ from .anchors import (
     AnchorRate,
     anchor_as_forecast,
     combined_anchor_rate,
+    combined_level_anchor,
+    level_anchor_as_forecast,
+    METHOD_LEVEL_ANCHOR,
 )
 from .sources import available_sources
 
@@ -185,6 +188,38 @@ def _per_source_anchor_forecast(
     )
 
 
+def _project_level_anchor_only(
+    train: Sequence[AcsObservation],
+    target_year: int,
+    anchor_year: int,
+    indicator: str,
+) -> Optional[ForecastPoint]:
+    """Project using only the level-type anchor for this indicator.
+
+    Used in pass 2 to compute per-method RMSE for `level_anchor`.
+    """
+    if not train:
+        return None
+    level_sources = [
+        s for s in available_sources(indicator) if s.anchor_type == "level"
+    ]
+    if not level_sources:
+        return None
+    level_anchor = combined_level_anchor(
+        indicator=indicator,
+        end_year=anchor_year,
+        geoid=train[-1].geoid,
+        sources=level_sources,
+    )
+    if level_anchor is None:
+        return None
+    return level_anchor_as_forecast(
+        latest=train[-1],
+        target_year=target_year,
+        level_anchor=level_anchor,
+    )
+
+
 def run_holdout_calibration(
     series_by_key: dict[tuple[str, str], Sequence[AcsObservation]],
     anchor_years: Sequence[int],
@@ -225,6 +260,12 @@ def run_holdout_calibration(
             if not train:
                 continue
             for src in available_sources(indicator):
+                # Level-type anchors go through the level-anchor path, not
+                # the per-source rate-RMSE pass. Including them here would
+                # produce explosive log-rate RMSE (e.g. LAUS during COVID)
+                # that pollutes rmse_by_indicator_source with useless entries.
+                if src.anchor_type == "level":
+                    continue
                 fp = _per_source_anchor_forecast(
                     train, target_year, anchor, indicator, src.name
                 )
@@ -287,6 +328,9 @@ def run_holdout_calibration(
             )
             if an is not None:
                 method_runs["multi_anchor"] = an
+            lv = _project_level_anchor_only(train, target_year, anchor, indicator)
+            if lv is not None:
+                method_runs[METHOD_LEVEL_ANCHOR] = lv
 
             for name, fp in method_runs.items():
                 bucket_r = rmse_by_indicator_method.setdefault(indicator, {}).setdefault(name, [])
@@ -1065,6 +1109,8 @@ def run_stratified_calibration(
                 if not train:
                     continue
                 for src in available_sources(indicator):
+                    if src.anchor_type == "level":
+                        continue  # level sources use level_anchor path, not rate RMSE
                     fp = _per_source_anchor_forecast(
                         train, target_year, anchor, indicator, src.name
                     )
@@ -1264,6 +1310,49 @@ def run_stratified_calibration(
                         se_sample=kal_fp.se_sample, se_forecast=kal_fp.se_forecast,
                         ci90_low=kal_fp.ci90_low, ci90_high=kal_fp.ci90_high,
                     ))
+
+    # ---- Pass 2d: level_anchor FoldResidual cache ----
+    # Evaluates level-type anchor sources (LAUS, SAIPE) which predict the ACS
+    # value directly as a level rather than as a growth rate. Always included
+    # (not gated on include_ml or include_kalman) since the data files are
+    # bundled and the computation is cheap (one latest_level() call per fold).
+    for (geoid, indicator), full in series_by_key.items():
+        full_sorted = sorted(full, key=lambda o: (effective_year(o), o.vintage))
+        pop_bucket = classify_pop(populations.get(geoid)) or WILDCARD
+        # Quick check: does this indicator have any level sources?
+        _level_sources_for_ind = [
+            s for s in available_sources(indicator) if s.anchor_type == "level"
+        ]
+        if not _level_sources_for_ind:
+            continue
+        for anchor in anchor_list:
+            train = _truncate(full_sorted, anchor, as_of_date=_as_of(anchor))
+            if not train:
+                continue
+            for h in horizon_list:
+                target_year = anchor + h
+                actual_obs = next(
+                    (o for o in full_sorted
+                     if effective_year(o) == target_year and o.vintage == "1y"),
+                    None,
+                )
+                if actual_obs is None or actual_obs.estimate <= 0:
+                    continue
+                h_bucket = classify_horizon(h) or WILDCARD
+                lv_fp = _project_level_anchor_only(
+                    train, target_year, anchor, indicator,
+                )
+                if lv_fp is None:
+                    continue
+                all_fold_residuals.append(FoldResidual(
+                    indicator=indicator, method=METHOD_LEVEL_ANCHOR,
+                    geoid=geoid, anchor_year=anchor, horizon=h,
+                    pop_bucket=pop_bucket, h_bucket=h_bucket,
+                    actual=actual_obs.estimate,
+                    point=lv_fp.point, se_total=lv_fp.se_total,
+                    se_sample=lv_fp.se_sample, se_forecast=lv_fp.se_forecast,
+                    ci90_low=lv_fp.ci90_low, ci90_high=lv_fp.ci90_high,
+                ))
 
     # ---- Fold split: tuning / calibration / evaluation ----
     tuning_set = set(tuning_anchors)
