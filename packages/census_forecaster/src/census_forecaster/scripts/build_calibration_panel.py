@@ -32,9 +32,11 @@ Selection logic
 
 Cost
 ----
-Total Census API calls: ~3,050
+Total Census API calls: ~8,250
 * 51 (population pre-fetch, state-batched)
-* 50 states × 4 indicators × 15 years = 3,000 (panel fetch, state-batched)
+* 50 states × 11 raw + 7 component-code groups × 15 years ≈ 8,200
+  (panel fetch, state-batched; derived indicators share component codes
+  where possible — B08301_001E is fetched once and reused)
 
 A Census API key is REQUIRED. Without one, the unauthenticated 500/day
 cap makes this take 6+ days; with a key, runtime is ~5-10 minutes
@@ -144,6 +146,30 @@ DERIVED_INDICATORS: tuple[tuple[str, tuple[str, ...], str], ...] = (
     ("pct_service_occupations",
      ("C24010_019E", "C24010_055E"),
      "C24010_001E"),
+    # --- Transportation indicators (v0.4) ---
+    # % of workers 16+ who drove alone to work
+    # B08301_003E / B08301_001E
+    ("pct_drove_alone",
+     ("B08301_003E",),
+     "B08301_001E"),
+    # % of workers 16+ using public transit (excludes taxicab)
+    # B08301_010E / B08301_001E
+    ("pct_public_transit",
+     ("B08301_010E",),
+     "B08301_001E"),
+    # % of workers 16+ who worked from home
+    # B08301_021E / B08301_001E
+    # NOTE: strong COVID discontinuity (2019→2021). The model learns this
+    # as a structural shift signal for post-COVID forecasts.
+    ("pct_work_from_home",
+     ("B08301_021E",),
+     "B08301_001E"),
+    # % of occupied housing units with no vehicle available
+    # (owner no-vehicle B25044_003E + renter no-vehicle B25044_010E)
+    # / total occupied units B25044_001E
+    ("pct_no_vehicle",
+     ("B25044_003E", "B25044_010E"),
+     "B25044_001E"),
 )
 
 # All indicator names exposed to the rest of the pipeline (API codes +
