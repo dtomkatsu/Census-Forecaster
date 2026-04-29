@@ -60,7 +60,7 @@
     },
     "S2301_C04_001E": {
       "level_anchor": 0.9624848729326341,
-      "ml_trend": 0.7484787018255578,
+      "ml_trend": 0.7473726758286177,
       "trend_ensemble": 0.7687954729183508
     },
     "homeownership_rate": {
@@ -68,15 +68,15 @@
       "trend_ensemble": 0.8808678500986193
     },
     "in_migration_rate": {
-      "ml_trend": 0.825434439178515,
+      "ml_trend": 0.8084518167456556,
       "trend_ensemble": 0.8696682464454977
     },
     "pct_professional": {
-      "ml_trend": 0.840782122905028,
+      "ml_trend": 0.8355236957387495,
       "trend_ensemble": 0.8815109343936381
     },
     "pct_service_occupations": {
-      "ml_trend": 0.8320031923383878,
+      "ml_trend": 0.8331342094782955,
       "trend_ensemble": 0.8640159045725646
     },
     "vacancy_rate": {
@@ -133,7 +133,7 @@
     },
     "S2301_C04_001E": {
       "level_anchor": 0.9237595804759984,
-      "ml_trend": 0.9058823529411765,
+      "ml_trend": 0.9029911075181891,
       "trend_ensemble": 0.9070331447049312
     },
     "homeownership_rate": {
@@ -141,15 +141,15 @@
       "trend_ensemble": 0.8808678500986193
     },
     "in_migration_rate": {
-      "ml_trend": 0.9221958925750395,
+      "ml_trend": 0.919826224328594,
       "trend_ensemble": 0.8696682464454977
     },
     "pct_professional": {
-      "ml_trend": 0.928172386272945,
+      "ml_trend": 0.921146953405018,
       "trend_ensemble": 0.8815109343936381
     },
     "pct_service_occupations": {
-      "ml_trend": 0.9305666400638468,
+      "ml_trend": 0.9303066507367582,
       "trend_ensemble": 0.8640159045725646
     },
     "vacancy_rate": {
@@ -158,6 +158,42 @@
     }
   },
   "conformal_quantile_by_stratum": [
+    {
+      "h_bucket": "long",
+      "indicator": "B01002_001E",
+      "method": "ml_trend",
+      "n_calibration": 41,
+      "pop_bucket": "medium",
+      "quantile": 2.375496182612446,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "B01002_001E",
+      "method": "ml_trend",
+      "n_calibration": 82,
+      "pop_bucket": "medium",
+      "quantile": 2.5787557642860603,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "B01002_001E",
+      "method": "ml_trend",
+      "n_calibration": 45,
+      "pop_bucket": "xlarge",
+      "quantile": 1.5496107495672913,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "B01002_001E",
+      "method": "ml_trend",
+      "n_calibration": 90,
+      "pop_bucket": "xlarge",
+      "quantile": 0.9339421950139459,
+      "target_coverage": 0.9
+    },
     {
       "h_bucket": "long",
       "indicator": "B01002_001E",
@@ -192,6 +228,42 @@
       "n_calibration": 90,
       "pop_bucket": "xlarge",
       "quantile": 1.7054486403232136,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "B19013_001E",
+      "method": "ml_trend",
+      "n_calibration": 41,
+      "pop_bucket": "medium",
+      "quantile": 1.833147910660899,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "B19013_001E",
+      "method": "ml_trend",
+      "n_calibration": 82,
+      "pop_bucket": "medium",
+      "quantile": 1.9500063173698197,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "B19013_001E",
+      "method": "ml_trend",
+      "n_calibration": 45,
+      "pop_bucket": "xlarge",
+      "quantile": 1.648059872627399,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "B19013_001E",
+      "method": "ml_trend",
+      "n_calibration": 90,
+      "pop_bucket": "xlarge",
+      "quantile": 1.7013337365233543,
       "target_coverage": 0.9
     },
     {
@@ -269,6 +341,42 @@
     {
       "h_bucket": "long",
       "indicator": "B20002_001E",
+      "method": "ml_trend",
+      "n_calibration": 41,
+      "pop_bucket": "medium",
+      "quantile": 1.611870588404723,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "B20002_001E",
+      "method": "ml_trend",
+      "n_calibration": 82,
+      "pop_bucket": "medium",
+      "quantile": 2.2356680218342606,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "B20002_001E",
+      "method": "ml_trend",
+      "n_calibration": 45,
+      "pop_bucket": "xlarge",
+      "quantile": 2.664623490285102,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "B20002_001E",
+      "method": "ml_trend",
+      "n_calibration": 90,
+      "pop_bucket": "xlarge",
+      "quantile": 1.6149119755901995,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "B20002_001E",
       "method": "trend_ensemble",
       "n_calibration": 41,
       "pop_bucket": "medium",
@@ -300,6 +408,42 @@
       "n_calibration": 90,
       "pop_bucket": "xlarge",
       "quantile": 1.6489385038818634,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "B25058_001E",
+      "method": "ml_trend",
+      "n_calibration": 41,
+      "pop_bucket": "medium",
+      "quantile": 2.8544528849083166,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "B25058_001E",
+      "method": "ml_trend",
+      "n_calibration": 82,
+      "pop_bucket": "medium",
+      "quantile": 2.8280451282362526,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "B25058_001E",
+      "method": "ml_trend",
+      "n_calibration": 45,
+      "pop_bucket": "xlarge",
+      "quantile": 3.059275898180892,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "B25058_001E",
+      "method": "ml_trend",
+      "n_calibration": 90,
+      "pop_bucket": "xlarge",
+      "quantile": 3.203248385366204,
       "target_coverage": 0.9
     },
     {
@@ -377,6 +521,42 @@
     {
       "h_bucket": "long",
       "indicator": "B25064_001E",
+      "method": "ml_trend",
+      "n_calibration": 41,
+      "pop_bucket": "medium",
+      "quantile": 2.1560029500650706,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "B25064_001E",
+      "method": "ml_trend",
+      "n_calibration": 82,
+      "pop_bucket": "medium",
+      "quantile": 2.794357819848605,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "B25064_001E",
+      "method": "ml_trend",
+      "n_calibration": 45,
+      "pop_bucket": "xlarge",
+      "quantile": 2.405851925989412,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "B25064_001E",
+      "method": "ml_trend",
+      "n_calibration": 90,
+      "pop_bucket": "xlarge",
+      "quantile": 3.0009945978777264,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "B25064_001E",
       "method": "multi_anchor",
       "n_calibration": 42,
       "pop_bucket": "medium",
@@ -449,6 +629,42 @@
     {
       "h_bucket": "long",
       "indicator": "B25071_001E",
+      "method": "ml_trend",
+      "n_calibration": 41,
+      "pop_bucket": "medium",
+      "quantile": 1.6711243903956705,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "B25071_001E",
+      "method": "ml_trend",
+      "n_calibration": 82,
+      "pop_bucket": "medium",
+      "quantile": 1.5576301000663892,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "B25071_001E",
+      "method": "ml_trend",
+      "n_calibration": 45,
+      "pop_bucket": "xlarge",
+      "quantile": 1.1266807134156605,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "B25071_001E",
+      "method": "ml_trend",
+      "n_calibration": 90,
+      "pop_bucket": "xlarge",
+      "quantile": 0.6848171773286446,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "B25071_001E",
       "method": "trend_ensemble",
       "n_calibration": 41,
       "pop_bucket": "medium",
@@ -480,6 +696,42 @@
       "n_calibration": 90,
       "pop_bucket": "xlarge",
       "quantile": 1.4481819169514278,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "B25077_001E",
+      "method": "ml_trend",
+      "n_calibration": 41,
+      "pop_bucket": "medium",
+      "quantile": 2.3767067086725393,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "B25077_001E",
+      "method": "ml_trend",
+      "n_calibration": 82,
+      "pop_bucket": "medium",
+      "quantile": 2.7987572926498245,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "B25077_001E",
+      "method": "ml_trend",
+      "n_calibration": 45,
+      "pop_bucket": "xlarge",
+      "quantile": 2.5941569161498133,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "B25077_001E",
+      "method": "ml_trend",
+      "n_calibration": 90,
+      "pop_bucket": "xlarge",
+      "quantile": 2.6355308135319397,
       "target_coverage": 0.9
     },
     {
@@ -557,6 +809,42 @@
     {
       "h_bucket": "long",
       "indicator": "S1501_C02_014E",
+      "method": "ml_trend",
+      "n_calibration": 41,
+      "pop_bucket": "medium",
+      "quantile": 2.2378556971636856,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "S1501_C02_014E",
+      "method": "ml_trend",
+      "n_calibration": 82,
+      "pop_bucket": "medium",
+      "quantile": 1.4191172468681978,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "S1501_C02_014E",
+      "method": "ml_trend",
+      "n_calibration": 45,
+      "pop_bucket": "xlarge",
+      "quantile": 1.0348994755139036,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "S1501_C02_014E",
+      "method": "ml_trend",
+      "n_calibration": 90,
+      "pop_bucket": "xlarge",
+      "quantile": 0.8149033294153544,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "S1501_C02_014E",
       "method": "trend_ensemble",
       "n_calibration": 41,
       "pop_bucket": "medium",
@@ -588,6 +876,42 @@
       "n_calibration": 90,
       "pop_bucket": "xlarge",
       "quantile": 1.5426538767889801,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "S1501_C02_015E",
+      "method": "ml_trend",
+      "n_calibration": 41,
+      "pop_bucket": "medium",
+      "quantile": 2.5538436520375396,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "S1501_C02_015E",
+      "method": "ml_trend",
+      "n_calibration": 82,
+      "pop_bucket": "medium",
+      "quantile": 1.8509416928292977,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "S1501_C02_015E",
+      "method": "ml_trend",
+      "n_calibration": 45,
+      "pop_bucket": "xlarge",
+      "quantile": 1.1857514997728786,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "S1501_C02_015E",
+      "method": "ml_trend",
+      "n_calibration": 90,
+      "pop_bucket": "xlarge",
+      "quantile": 0.61132903395351,
       "target_coverage": 0.9
     },
     {
@@ -660,6 +984,42 @@
       "n_calibration": 90,
       "pop_bucket": "xlarge",
       "quantile": 0.5523917375029721,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "S1701_C03_001E",
+      "method": "ml_trend",
+      "n_calibration": 41,
+      "pop_bucket": "medium",
+      "quantile": 1.8151514183058066,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "S1701_C03_001E",
+      "method": "ml_trend",
+      "n_calibration": 82,
+      "pop_bucket": "medium",
+      "quantile": 2.096952569714455,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "S1701_C03_001E",
+      "method": "ml_trend",
+      "n_calibration": 45,
+      "pop_bucket": "xlarge",
+      "quantile": 1.4259684752937012,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "S1701_C03_001E",
+      "method": "ml_trend",
+      "n_calibration": 90,
+      "pop_bucket": "xlarge",
+      "quantile": 1.1533421508303874,
       "target_coverage": 0.9
     },
     {
@@ -773,6 +1133,42 @@
     {
       "h_bucket": "long",
       "indicator": "S2301_C04_001E",
+      "method": "ml_trend",
+      "n_calibration": 35,
+      "pop_bucket": "medium",
+      "quantile": 2.306616407603854,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "S2301_C04_001E",
+      "method": "ml_trend",
+      "n_calibration": 74,
+      "pop_bucket": "medium",
+      "quantile": 2.260933535874379,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "S2301_C04_001E",
+      "method": "ml_trend",
+      "n_calibration": 45,
+      "pop_bucket": "xlarge",
+      "quantile": 2.2567870562922043,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "S2301_C04_001E",
+      "method": "ml_trend",
+      "n_calibration": 90,
+      "pop_bucket": "xlarge",
+      "quantile": 2.5439631533956226,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "S2301_C04_001E",
       "method": "trend_ensemble",
       "n_calibration": 37,
       "pop_bucket": "medium",
@@ -804,6 +1200,42 @@
       "n_calibration": 90,
       "pop_bucket": "xlarge",
       "quantile": 2.0164014182020353,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "homeownership_rate",
+      "method": "ml_trend",
+      "n_calibration": 41,
+      "pop_bucket": "medium",
+      "quantile": 3.6034629360385475,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "homeownership_rate",
+      "method": "ml_trend",
+      "n_calibration": 82,
+      "pop_bucket": "medium",
+      "quantile": 2.658131653277051,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "homeownership_rate",
+      "method": "ml_trend",
+      "n_calibration": 45,
+      "pop_bucket": "xlarge",
+      "quantile": 1.6503126224227154,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "homeownership_rate",
+      "method": "ml_trend",
+      "n_calibration": 90,
+      "pop_bucket": "xlarge",
+      "quantile": 1.0476844741232438,
       "target_coverage": 0.9
     },
     {
@@ -845,6 +1277,42 @@
     {
       "h_bucket": "long",
       "indicator": "in_migration_rate",
+      "method": "ml_trend",
+      "n_calibration": 41,
+      "pop_bucket": "medium",
+      "quantile": 2.9972414449736053,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "in_migration_rate",
+      "method": "ml_trend",
+      "n_calibration": 81,
+      "pop_bucket": "medium",
+      "quantile": 3.175626916042915,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "in_migration_rate",
+      "method": "ml_trend",
+      "n_calibration": 45,
+      "pop_bucket": "xlarge",
+      "quantile": 1.6745746095848917,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "in_migration_rate",
+      "method": "ml_trend",
+      "n_calibration": 90,
+      "pop_bucket": "xlarge",
+      "quantile": 1.2578132969628428,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "in_migration_rate",
       "method": "trend_ensemble",
       "n_calibration": 41,
       "pop_bucket": "medium",
@@ -876,6 +1344,42 @@
       "n_calibration": 90,
       "pop_bucket": "xlarge",
       "quantile": 2.0869546526526466,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "pct_professional",
+      "method": "ml_trend",
+      "n_calibration": 39,
+      "pop_bucket": "medium",
+      "quantile": 2.8488090936565995,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "pct_professional",
+      "method": "ml_trend",
+      "n_calibration": 78,
+      "pop_bucket": "medium",
+      "quantile": 2.426453466237069,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "pct_professional",
+      "method": "ml_trend",
+      "n_calibration": 45,
+      "pop_bucket": "xlarge",
+      "quantile": 1.975651517637041,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "pct_professional",
+      "method": "ml_trend",
+      "n_calibration": 90,
+      "pop_bucket": "xlarge",
+      "quantile": 1.373580983148964,
       "target_coverage": 0.9
     },
     {
@@ -917,6 +1421,42 @@
     {
       "h_bucket": "long",
       "indicator": "pct_service_occupations",
+      "method": "ml_trend",
+      "n_calibration": 39,
+      "pop_bucket": "medium",
+      "quantile": 4.516117550807432,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "pct_service_occupations",
+      "method": "ml_trend",
+      "n_calibration": 78,
+      "pop_bucket": "medium",
+      "quantile": 3.8178048966153093,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "pct_service_occupations",
+      "method": "ml_trend",
+      "n_calibration": 45,
+      "pop_bucket": "xlarge",
+      "quantile": 3.270538210565697,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "pct_service_occupations",
+      "method": "ml_trend",
+      "n_calibration": 90,
+      "pop_bucket": "xlarge",
+      "quantile": 1.9657080950978363,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "pct_service_occupations",
       "method": "trend_ensemble",
       "n_calibration": 40,
       "pop_bucket": "medium",
@@ -948,6 +1488,42 @@
       "n_calibration": 90,
       "pop_bucket": "xlarge",
       "quantile": 2.4779457314408493,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "vacancy_rate",
+      "method": "ml_trend",
+      "n_calibration": 41,
+      "pop_bucket": "medium",
+      "quantile": 4.424279909666471,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "vacancy_rate",
+      "method": "ml_trend",
+      "n_calibration": 82,
+      "pop_bucket": "medium",
+      "quantile": 2.4615062807334764,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "long",
+      "indicator": "vacancy_rate",
+      "method": "ml_trend",
+      "n_calibration": 45,
+      "pop_bucket": "xlarge",
+      "quantile": 4.896900858895801,
+      "target_coverage": 0.9
+    },
+    {
+      "h_bucket": "short",
+      "indicator": "vacancy_rate",
+      "method": "ml_trend",
+      "n_calibration": 90,
+      "pop_bucket": "xlarge",
+      "quantile": 2.47139379087357,
       "target_coverage": 0.9
     },
     {
@@ -989,74 +1565,74 @@
   ],
   "evaluation_coverage": {
     "B01002_001E": {
-      "ml_trend": 0.8820224719101124,
+      "ml_trend": 0.9606741573033708,
       "trend_ensemble": 0.9157303370786517
     },
     "B19013_001E": {
-      "ml_trend": 0.949438202247191,
+      "ml_trend": 0.9606741573033708,
       "multi_anchor": 0.9606741573033708,
       "trend_ensemble": 0.9719101123595506
     },
     "B20002_001E": {
-      "ml_trend": 0.9157303370786517,
+      "ml_trend": 0.9775280898876404,
       "trend_ensemble": 0.9719101123595506
     },
     "B25058_001E": {
-      "ml_trend": 0.6797752808988764,
+      "ml_trend": 0.9606741573033708,
       "multi_anchor": 0.9775280898876404,
       "trend_ensemble": 0.9606741573033708
     },
     "B25064_001E": {
-      "ml_trend": 0.5449438202247191,
+      "ml_trend": 0.898876404494382,
       "multi_anchor": 0.9719101123595506,
       "trend_ensemble": 0.9887640449438202
     },
     "B25071_001E": {
-      "ml_trend": 0.949438202247191,
+      "ml_trend": 0.9606741573033708,
       "trend_ensemble": 0.9606741573033708
     },
     "B25077_001E": {
-      "ml_trend": 0.8595505617977528,
+      "ml_trend": 0.9662921348314607,
       "multi_anchor": 0.9550561797752809,
       "trend_ensemble": 0.9438202247191011
     },
     "S1501_C02_014E": {
-      "ml_trend": 0.9438202247191011,
+      "ml_trend": 0.9550561797752809,
       "trend_ensemble": 0.9719101123595506
     },
     "S1501_C02_015E": {
-      "ml_trend": 0.9438202247191011,
+      "ml_trend": 0.9606741573033708,
       "trend_ensemble": 0.9775280898876404
     },
     "S1701_C03_001E": {
       "level_anchor": 0.9831460674157303,
-      "ml_trend": 0.9662921348314607,
+      "ml_trend": 0.9943820224719101,
       "multi_anchor": 0.9719101123595506,
       "trend_ensemble": 0.9887640449438202
     },
     "S2301_C04_001E": {
       "level_anchor": 0.9712643678160919,
-      "ml_trend": 0.9642857142857143,
+      "ml_trend": 0.9940476190476191,
       "trend_ensemble": 0.9827586206896551
     },
     "homeownership_rate": {
-      "ml_trend": 0.8089887640449438,
+      "ml_trend": 0.9157303370786517,
       "trend_ensemble": 0.8932584269662921
     },
     "in_migration_rate": {
-      "ml_trend": 0.8135593220338984,
+      "ml_trend": 0.943502824858757,
       "trend_ensemble": 0.8983050847457628
     },
     "pct_professional": {
-      "ml_trend": 0.8914285714285715,
+      "ml_trend": 0.9657142857142857,
       "trend_ensemble": 0.9318181818181818
     },
     "pct_service_occupations": {
-      "ml_trend": 0.5714285714285714,
+      "ml_trend": 0.9085714285714286,
       "trend_ensemble": 0.8693181818181818
     },
     "vacancy_rate": {
-      "ml_trend": 0.7808988764044944,
+      "ml_trend": 0.9157303370786517,
       "trend_ensemble": 0.9325842696629213
     }
   },
@@ -1116,7 +1692,7 @@
     },
     "S2301_C04_001E": {
       "level_anchor": 0.5229914949437464,
-      "ml_trend": 0.33197922127645413,
+      "ml_trend": 0.3335772183939146,
       "trend_ensemble": 0.3609045807417375
     },
     "homeownership_rate": {
@@ -1124,15 +1700,15 @@
       "trend_ensemble": 0.054123539964477885
     },
     "in_migration_rate": {
-      "ml_trend": 0.21705649460002963,
+      "ml_trend": 0.22100775069443485,
       "trend_ensemble": 0.29361484820474676
     },
     "pct_professional": {
-      "ml_trend": 0.069519889866855,
+      "ml_trend": 0.0701117612563626,
       "trend_ensemble": 0.09013875674959164
     },
     "pct_service_occupations": {
-      "ml_trend": 0.12586565978334913,
+      "ml_trend": 0.12482475933800595,
       "trend_ensemble": 0.15445113168630598
     },
     "vacancy_rate": {
@@ -3389,31 +3965,31 @@
       },
       {
         "extra": {
-          "b_raw": -0.04704669984770214,
+          "b_raw": -0.053843478623629114,
           "clamped": 0.0
         },
         "h_bucket": "short",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 457,
+        "n_folds": 460,
         "pop_bucket": "medium",
-        "value": -0.04704669984770214
+        "value": -0.053843478623629114
       },
       {
         "extra": {
-          "b_raw": -0.13331353710046664,
+          "b_raw": -0.14254322914833245,
           "clamped": 1.0
         },
         "h_bucket": "long",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 645,
+        "n_folds": 651,
         "pop_bucket": "medium",
         "value": -0.09531017980432493
       },
       {
         "extra": {
-          "b_raw": -0.09823530827616962,
+          "b_raw": -0.09685011465180846,
           "clamped": 1.0
         },
         "h_bucket": "short",
@@ -3425,7 +4001,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.23291636891406517,
+          "b_raw": -0.23682502326155844,
           "clamped": 1.0
         },
         "h_bucket": "long",
@@ -3437,7 +4013,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.16022212756036772,
+          "b_raw": -0.16512069098089446,
           "clamped": 1.0
         },
         "h_bucket": "short",
@@ -3449,7 +4025,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.2670987893097794,
+          "b_raw": -0.272343453004848,
           "clamped": 1.0
         },
         "h_bucket": "long",
@@ -3677,7 +4253,7 @@
       },
       {
         "extra": {
-          "b_raw": 0.03608066035261707,
+          "b_raw": 0.04208871042851756,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -3685,11 +4261,11 @@
         "method": "ml_trend",
         "n_folds": 484,
         "pop_bucket": "medium",
-        "value": 0.03608066035261707
+        "value": 0.04208871042851756
       },
       {
         "extra": {
-          "b_raw": 0.13372473418992434,
+          "b_raw": 0.13577946299285223,
           "clamped": 1.0
         },
         "h_bucket": "long",
@@ -3701,7 +4277,7 @@
       },
       {
         "extra": {
-          "b_raw": 0.0076978755298144925,
+          "b_raw": 0.004619753153321951,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -3709,11 +4285,11 @@
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": 0.0076978755298144925
+        "value": 0.004619753153321951
       },
       {
         "extra": {
-          "b_raw": 0.050085285638687804,
+          "b_raw": 0.0473671746923107,
           "clamped": 0.0
         },
         "h_bucket": "long",
@@ -3721,11 +4297,11 @@
         "method": "ml_trend",
         "n_folds": 765,
         "pop_bucket": "xlarge",
-        "value": 0.050085285638687804
+        "value": 0.0473671746923107
       },
       {
         "extra": {
-          "b_raw": 0.006015343996543712,
+          "b_raw": -0.009992622805041462,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -3733,11 +4309,11 @@
         "method": "ml_trend",
         "n_folds": 24,
         "pop_bucket": "large",
-        "value": 0.006015343996543712
+        "value": -0.009992622805041462
       },
       {
         "extra": {
-          "b_raw": 0.029570805162917723,
+          "b_raw": 0.011106900634564758,
           "clamped": 0.0
         },
         "h_bucket": "long",
@@ -3745,35 +4321,35 @@
         "method": "ml_trend",
         "n_folds": 34,
         "pop_bucket": "large",
-        "value": 0.029570805162917723
+        "value": 0.011106900634564758
       },
       {
         "extra": {
-          "b_raw": -0.020633782190605847,
+          "b_raw": -0.01975822492439761,
           "clamped": 0.0
         },
         "h_bucket": "short",
         "indicator": "pct_professional",
         "method": "ml_trend",
-        "n_folds": 474,
+        "n_folds": 476,
         "pop_bucket": "medium",
-        "value": -0.020633782190605847
+        "value": -0.01975822492439761
       },
       {
         "extra": {
-          "b_raw": -0.050786632524870465,
+          "b_raw": -0.04753212493815874,
           "clamped": 0.0
         },
         "h_bucket": "long",
         "indicator": "pct_professional",
         "method": "ml_trend",
-        "n_folds": 669,
+        "n_folds": 672,
         "pop_bucket": "medium",
-        "value": -0.050786632524870465
+        "value": -0.04753212493815874
       },
       {
         "extra": {
-          "b_raw": -0.01654465596277336,
+          "b_raw": -0.016483713621302937,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -3781,11 +4357,11 @@
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": -0.01654465596277336
+        "value": -0.016483713621302937
       },
       {
         "extra": {
-          "b_raw": -0.044303200578568847,
+          "b_raw": -0.044510179569535596,
           "clamped": 0.0
         },
         "h_bucket": "long",
@@ -3793,11 +4369,11 @@
         "method": "ml_trend",
         "n_folds": 765,
         "pop_bucket": "xlarge",
-        "value": -0.044303200578568847
+        "value": -0.044510179569535596
       },
       {
         "extra": {
-          "b_raw": -0.030834703475403777,
+          "b_raw": -0.03261106238891873,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -3805,11 +4381,11 @@
         "method": "ml_trend",
         "n_folds": 24,
         "pop_bucket": "large",
-        "value": -0.030834703475403777
+        "value": -0.03261106238891873
       },
       {
         "extra": {
-          "b_raw": -0.0647135453090858,
+          "b_raw": -0.06872790054413128,
           "clamped": 0.0
         },
         "h_bucket": "long",
@@ -3817,35 +4393,35 @@
         "method": "ml_trend",
         "n_folds": 34,
         "pop_bucket": "large",
-        "value": -0.0647135453090858
+        "value": -0.06872790054413128
       },
       {
         "extra": {
-          "b_raw": 0.02465229965475934,
+          "b_raw": 0.0234303926417926,
           "clamped": 0.0
         },
         "h_bucket": "short",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 474,
+        "n_folds": 476,
         "pop_bucket": "medium",
-        "value": 0.02465229965475934
+        "value": 0.0234303926417926
       },
       {
         "extra": {
-          "b_raw": 0.05939290448121106,
+          "b_raw": 0.06285402736313804,
           "clamped": 0.0
         },
         "h_bucket": "long",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 669,
+        "n_folds": 672,
         "pop_bucket": "medium",
-        "value": 0.05939290448121106
+        "value": 0.06285402736313804
       },
       {
         "extra": {
-          "b_raw": 0.02954806971368888,
+          "b_raw": 0.029145411739034715,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -3853,11 +4429,11 @@
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": 0.02954806971368888
+        "value": 0.029145411739034715
       },
       {
         "extra": {
-          "b_raw": 0.06468431546729926,
+          "b_raw": 0.06681297372864631,
           "clamped": 0.0
         },
         "h_bucket": "long",
@@ -3865,11 +4441,11 @@
         "method": "ml_trend",
         "n_folds": 765,
         "pop_bucket": "xlarge",
-        "value": 0.06468431546729926
+        "value": 0.06681297372864631
       },
       {
         "extra": {
-          "b_raw": 0.013793969741657704,
+          "b_raw": 0.010232926886351336,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -3877,11 +4453,11 @@
         "method": "ml_trend",
         "n_folds": 24,
         "pop_bucket": "large",
-        "value": 0.013793969741657704
+        "value": 0.010232926886351336
       },
       {
         "extra": {
-          "b_raw": 0.021169350415070887,
+          "b_raw": 0.021889945872150054,
           "clamped": 0.0
         },
         "h_bucket": "long",
@@ -3889,7 +4465,7 @@
         "method": "ml_trend",
         "n_folds": 34,
         "pop_bucket": "large",
-        "value": 0.021169350415070887
+        "value": 0.021889945872150054
       },
       {
         "extra": {
@@ -5117,19 +5693,19 @@
       },
       {
         "extra": {
-          "b_raw": -0.09753863272250533,
+          "b_raw": -0.10581785989417986,
           "clamped": 1.0
         },
         "h_bucket": "*",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 1102,
+        "n_folds": 1111,
         "pop_bucket": "medium",
         "value": -0.09531017980432493
       },
       {
         "extra": {
-          "b_raw": -0.17718627485700494,
+          "b_raw": -0.17890437142304122,
           "clamped": 1.0
         },
         "h_bucket": "*",
@@ -5141,7 +5717,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.22287396375829874,
+          "b_raw": -0.22797541354666037,
           "clamped": 1.0
         },
         "h_bucket": "*",
@@ -5261,19 +5837,19 @@
       },
       {
         "extra": {
-          "b_raw": 0.09329724767387926,
-          "clamped": 0.0
+          "b_raw": 0.09698876646493268,
+          "clamped": 1.0
         },
         "h_bucket": "*",
         "indicator": "in_migration_rate",
         "method": "ml_trend",
         "n_folds": 1169,
         "pop_bucket": "medium",
-        "value": 0.09329724767387926
+        "value": 0.09531017980432493
       },
       {
         "extra": {
-          "b_raw": 0.0325456676626023,
+          "b_raw": 0.02967858646928087,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -5281,11 +5857,11 @@
         "method": "ml_trend",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": 0.0325456676626023
+        "value": 0.02967858646928087
       },
       {
         "extra": {
-          "b_raw": 0.01982371778372848,
+          "b_raw": 0.0023760633492104608,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -5293,23 +5869,23 @@
         "method": "ml_trend",
         "n_folds": 58,
         "pop_bucket": "large",
-        "value": 0.01982371778372848
+        "value": 0.0023760633492104608
       },
       {
         "extra": {
-          "b_raw": -0.038282300890188546,
+          "b_raw": -0.036016117615379734,
           "clamped": 0.0
         },
         "h_bucket": "*",
         "indicator": "pct_professional",
         "method": "ml_trend",
-        "n_folds": 1143,
+        "n_folds": 1148,
         "pop_bucket": "medium",
-        "value": -0.038282300890188546
+        "value": -0.036016117615379734
       },
       {
         "extra": {
-          "b_raw": -0.0328169062547914,
+          "b_raw": -0.032913021246128986,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -5317,11 +5893,11 @@
         "method": "ml_trend",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": -0.0328169062547914
+        "value": -0.032913021246128986
       },
       {
         "extra": {
-          "b_raw": -0.05069471420549323,
+          "b_raw": -0.05378300199714678,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -5329,23 +5905,23 @@
         "method": "ml_trend",
         "n_folds": 58,
         "pop_bucket": "large",
-        "value": -0.05069471420549323
+        "value": -0.05378300199714678
       },
       {
         "extra": {
-          "b_raw": 0.04498603948756442,
+          "b_raw": 0.04650764223477529,
           "clamped": 0.0
         },
         "h_bucket": "*",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 1143,
+        "n_folds": 1148,
         "pop_bucket": "medium",
-        "value": 0.04498603948756442
+        "value": 0.04650764223477529
       },
       {
         "extra": {
-          "b_raw": 0.05014517929339152,
+          "b_raw": 0.05122639635363462,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -5353,11 +5929,11 @@
         "method": "ml_trend",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": 0.05014517929339152
+        "value": 0.05122639635363462
       },
       {
         "extra": {
-          "b_raw": 0.018117468757106812,
+          "b_raw": 0.01706635180906093,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -5365,7 +5941,7 @@
         "method": "ml_trend",
         "n_folds": 58,
         "pop_bucket": "large",
-        "value": 0.018117468757106812
+        "value": 0.01706635180906093
       },
       {
         "extra": {
@@ -5801,13 +6377,13 @@
       },
       {
         "extra": {
-          "b_raw": -0.14265409811220026,
+          "b_raw": -0.1472337999333908,
           "clamped": 1.0
         },
         "h_bucket": "*",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 2465,
+        "n_folds": 2474,
         "pop_bucket": "*",
         "value": -0.09531017980432493
       },
@@ -5849,7 +6425,7 @@
       },
       {
         "extra": {
-          "b_raw": 0.06030266763898779,
+          "b_raw": 0.060129634681742504,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -5857,31 +6433,31 @@
         "method": "ml_trend",
         "n_folds": 2532,
         "pop_bucket": "*",
-        "value": 0.06030266763898779
+        "value": 0.060129634681742504
       },
       {
         "extra": {
-          "b_raw": -0.03572347406380962,
+          "b_raw": -0.034813783299278686,
           "clamped": 0.0
         },
         "h_bucket": "*",
         "indicator": "pct_professional",
         "method": "ml_trend",
-        "n_folds": 2506,
+        "n_folds": 2511,
         "pop_bucket": "*",
-        "value": -0.03572347406380962
+        "value": -0.034813783299278686
       },
       {
         "extra": {
-          "b_raw": 0.04705080418997376,
+          "b_raw": 0.04827999559217075,
           "clamped": 0.0
         },
         "h_bucket": "*",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 2506,
+        "n_folds": 2511,
         "pop_bucket": "*",
-        "value": 0.04705080418997376
+        "value": 0.04827999559217075
       },
       {
         "extra": {
@@ -7353,17 +7929,17 @@
         "h_bucket": "short",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 457,
+        "n_folds": 460,
         "pop_bucket": "medium",
-        "value": 0.9146608315098468
+        "value": 0.9065217391304348
       },
       {
         "h_bucket": "long",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 645,
+        "n_folds": 651,
         "pop_bucket": "medium",
-        "value": 0.9255813953488372
+        "value": 0.9201228878648233
       },
       {
         "h_bucket": "short",
@@ -7547,7 +8123,7 @@
         "method": "ml_trend",
         "n_folds": 484,
         "pop_bucket": "medium",
-        "value": 0.9380165289256198
+        "value": 0.9194214876033058
       },
       {
         "h_bucket": "long",
@@ -7555,7 +8131,7 @@
         "method": "ml_trend",
         "n_folds": 685,
         "pop_bucket": "medium",
-        "value": 0.9357664233576642
+        "value": 0.9284671532846716
       },
       {
         "h_bucket": "short",
@@ -7563,7 +8139,7 @@
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": 0.8888888888888888
+        "value": 0.8722222222222222
       },
       {
         "h_bucket": "long",
@@ -7571,7 +8147,7 @@
         "method": "ml_trend",
         "n_folds": 765,
         "pop_bucket": "xlarge",
-        "value": 0.9464052287581699
+        "value": 0.9372549019607843
       },
       {
         "h_bucket": "short",
@@ -7584,6 +8160,54 @@
       {
         "h_bucket": "long",
         "indicator": "in_migration_rate",
+        "method": "ml_trend",
+        "n_folds": 34,
+        "pop_bucket": "large",
+        "value": 0.9411764705882353
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_professional",
+        "method": "ml_trend",
+        "n_folds": 476,
+        "pop_bucket": "medium",
+        "value": 0.9096638655462185
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_professional",
+        "method": "ml_trend",
+        "n_folds": 672,
+        "pop_bucket": "medium",
+        "value": 0.9181547619047619
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_professional",
+        "method": "ml_trend",
+        "n_folds": 540,
+        "pop_bucket": "xlarge",
+        "value": 0.9037037037037037
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_professional",
+        "method": "ml_trend",
+        "n_folds": 765,
+        "pop_bucket": "xlarge",
+        "value": 0.9294117647058824
+      },
+      {
+        "h_bucket": "short",
+        "indicator": "pct_professional",
+        "method": "ml_trend",
+        "n_folds": 24,
+        "pop_bucket": "large",
+        "value": 0.9166666666666666
+      },
+      {
+        "h_bucket": "long",
+        "indicator": "pct_professional",
         "method": "ml_trend",
         "n_folds": 34,
         "pop_bucket": "large",
@@ -7591,91 +8215,43 @@
       },
       {
         "h_bucket": "short",
-        "indicator": "pct_professional",
+        "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 474,
+        "n_folds": 476,
         "pop_bucket": "medium",
-        "value": 0.919831223628692
+        "value": 0.9432773109243697
       },
       {
         "h_bucket": "long",
-        "indicator": "pct_professional",
+        "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 669,
+        "n_folds": 672,
         "pop_bucket": "medium",
-        "value": 0.9312406576980568
+        "value": 0.9345238095238095
       },
       {
         "h_bucket": "short",
-        "indicator": "pct_professional",
+        "indicator": "pct_service_occupations",
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": 0.8981481481481481
+        "value": 0.8851851851851852
       },
       {
         "h_bucket": "long",
-        "indicator": "pct_professional",
+        "indicator": "pct_service_occupations",
         "method": "ml_trend",
         "n_folds": 765,
-        "pop_bucket": "xlarge",
-        "value": 0.9254901960784314
-      },
-      {
-        "h_bucket": "short",
-        "indicator": "pct_professional",
-        "method": "ml_trend",
-        "n_folds": 24,
-        "pop_bucket": "large",
-        "value": 0.875
-      },
-      {
-        "h_bucket": "long",
-        "indicator": "pct_professional",
-        "method": "ml_trend",
-        "n_folds": 34,
-        "pop_bucket": "large",
-        "value": 0.8823529411764706
-      },
-      {
-        "h_bucket": "short",
-        "indicator": "pct_service_occupations",
-        "method": "ml_trend",
-        "n_folds": 474,
-        "pop_bucket": "medium",
-        "value": 0.9388185654008439
-      },
-      {
-        "h_bucket": "long",
-        "indicator": "pct_service_occupations",
-        "method": "ml_trend",
-        "n_folds": 669,
-        "pop_bucket": "medium",
-        "value": 0.929745889387145
-      },
-      {
-        "h_bucket": "short",
-        "indicator": "pct_service_occupations",
-        "method": "ml_trend",
-        "n_folds": 540,
         "pop_bucket": "xlarge",
         "value": 0.9333333333333333
       },
       {
-        "h_bucket": "long",
-        "indicator": "pct_service_occupations",
-        "method": "ml_trend",
-        "n_folds": 765,
-        "pop_bucket": "xlarge",
-        "value": 0.9281045751633987
-      },
-      {
         "h_bucket": "short",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
         "n_folds": 24,
         "pop_bucket": "large",
-        "value": 0.875
+        "value": 0.9166666666666666
       },
       {
         "h_bucket": "long",
@@ -7683,7 +8259,7 @@
         "method": "ml_trend",
         "n_folds": 34,
         "pop_bucket": "large",
-        "value": 0.8823529411764706
+        "value": 0.8529411764705882
       },
       {
         "h_bucket": "short",
@@ -8505,9 +9081,9 @@
         "h_bucket": "*",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 1102,
+        "n_folds": 1111,
         "pop_bucket": "medium",
-        "value": 0.9373865698729582
+        "value": 0.9360936093609361
       },
       {
         "h_bucket": "*",
@@ -8515,7 +9091,7 @@
         "method": "ml_trend",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": 0.9371647509578545
+        "value": 0.9386973180076629
       },
       {
         "h_bucket": "*",
@@ -8523,7 +9099,7 @@
         "method": "ml_trend",
         "n_folds": 58,
         "pop_bucket": "large",
-        "value": 0.896551724137931
+        "value": 0.8620689655172413
       },
       {
         "h_bucket": "*",
@@ -8603,7 +9179,7 @@
         "method": "ml_trend",
         "n_folds": 1169,
         "pop_bucket": "medium",
-        "value": 0.9366980325064157
+        "value": 0.9247219846022241
       },
       {
         "h_bucket": "*",
@@ -8611,35 +9187,11 @@
         "method": "ml_trend",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": 0.9233716475095786
+        "value": 0.9019157088122606
       },
       {
         "h_bucket": "*",
         "indicator": "in_migration_rate",
-        "method": "ml_trend",
-        "n_folds": 58,
-        "pop_bucket": "large",
-        "value": 0.9310344827586207
-      },
-      {
-        "h_bucket": "*",
-        "indicator": "pct_professional",
-        "method": "ml_trend",
-        "n_folds": 1143,
-        "pop_bucket": "medium",
-        "value": 0.926509186351706
-      },
-      {
-        "h_bucket": "*",
-        "indicator": "pct_professional",
-        "method": "ml_trend",
-        "n_folds": 1305,
-        "pop_bucket": "xlarge",
-        "value": 0.8521072796934865
-      },
-      {
-        "h_bucket": "*",
-        "indicator": "pct_professional",
         "method": "ml_trend",
         "n_folds": 58,
         "pop_bucket": "large",
@@ -8647,11 +9199,35 @@
       },
       {
         "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "ml_trend",
+        "n_folds": 1148,
+        "pop_bucket": "medium",
+        "value": 0.9146341463414634
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "ml_trend",
+        "n_folds": 1305,
+        "pop_bucket": "xlarge",
+        "value": 0.8574712643678161
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "ml_trend",
+        "n_folds": 58,
+        "pop_bucket": "large",
+        "value": 0.9482758620689655
+      },
+      {
+        "h_bucket": "*",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 1143,
+        "n_folds": 1148,
         "pop_bucket": "medium",
-        "value": 0.9335083114610674
+        "value": 0.9381533101045296
       },
       {
         "h_bucket": "*",
@@ -8659,7 +9235,7 @@
         "method": "ml_trend",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": 0.9302681992337165
+        "value": 0.9409961685823754
       },
       {
         "h_bucket": "*",
@@ -8667,7 +9243,7 @@
         "method": "ml_trend",
         "n_folds": 58,
         "pop_bucket": "large",
-        "value": 0.9482758620689655
+        "value": 0.9310344827586207
       },
       {
         "h_bucket": "*",
@@ -8961,9 +9537,9 @@
         "h_bucket": "*",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 2465,
+        "n_folds": 2474,
         "pop_bucket": "*",
-        "value": 0.9058823529411765
+        "value": 0.9029911075181891
       },
       {
         "h_bucket": "*",
@@ -8995,23 +9571,23 @@
         "method": "ml_trend",
         "n_folds": 2532,
         "pop_bucket": "*",
-        "value": 0.9221958925750395
+        "value": 0.919826224328594
       },
       {
         "h_bucket": "*",
         "indicator": "pct_professional",
         "method": "ml_trend",
-        "n_folds": 2506,
+        "n_folds": 2511,
         "pop_bucket": "*",
-        "value": 0.928172386272945
+        "value": 0.921146953405018
       },
       {
         "h_bucket": "*",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 2506,
+        "n_folds": 2511,
         "pop_bucket": "*",
-        "value": 0.9305666400638468
+        "value": 0.9303066507367582
       },
       {
         "h_bucket": "*",
@@ -10475,17 +11051,17 @@
         "h_bucket": "short",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 457,
+        "n_folds": 460,
         "pop_bucket": "medium",
-        "value": 0.7833698030634574
+        "value": 0.7782608695652173
       },
       {
         "h_bucket": "long",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 645,
+        "n_folds": 651,
         "pop_bucket": "medium",
-        "value": 0.7410852713178294
+        "value": 0.7403993855606759
       },
       {
         "h_bucket": "short",
@@ -10493,7 +11069,7 @@
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": 0.8296296296296296
+        "value": 0.837037037037037
       },
       {
         "h_bucket": "long",
@@ -10501,7 +11077,7 @@
         "method": "ml_trend",
         "n_folds": 765,
         "pop_bucket": "xlarge",
-        "value": 0.6718954248366014
+        "value": 0.6666666666666666
       },
       {
         "h_bucket": "short",
@@ -10669,7 +11245,7 @@
         "method": "ml_trend",
         "n_folds": 484,
         "pop_bucket": "medium",
-        "value": 0.6921487603305785
+        "value": 0.6818181818181818
       },
       {
         "h_bucket": "long",
@@ -10677,7 +11253,7 @@
         "method": "ml_trend",
         "n_folds": 685,
         "pop_bucket": "medium",
-        "value": 0.6467153284671533
+        "value": 0.6087591240875913
       },
       {
         "h_bucket": "short",
@@ -10685,7 +11261,7 @@
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": 0.9888888888888889
+        "value": 0.9814814814814815
       },
       {
         "h_bucket": "long",
@@ -10693,7 +11269,7 @@
         "method": "ml_trend",
         "n_folds": 765,
         "pop_bucket": "xlarge",
-        "value": 0.9464052287581699
+        "value": 0.9372549019607843
       },
       {
         "h_bucket": "short",
@@ -10709,23 +11285,23 @@
         "method": "ml_trend",
         "n_folds": 34,
         "pop_bucket": "large",
-        "value": 0.9705882352941176
+        "value": 0.9411764705882353
       },
       {
         "h_bucket": "short",
         "indicator": "pct_professional",
         "method": "ml_trend",
-        "n_folds": 474,
+        "n_folds": 476,
         "pop_bucket": "medium",
-        "value": 0.6940928270042194
+        "value": 0.6743697478991597
       },
       {
         "h_bucket": "long",
         "indicator": "pct_professional",
         "method": "ml_trend",
-        "n_folds": 669,
+        "n_folds": 672,
         "pop_bucket": "medium",
-        "value": 0.6636771300448431
+        "value": 0.6622023809523809
       },
       {
         "h_bucket": "short",
@@ -10733,7 +11309,7 @@
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": 0.987037037037037
+        "value": 0.9851851851851852
       },
       {
         "h_bucket": "long",
@@ -10741,7 +11317,7 @@
         "method": "ml_trend",
         "n_folds": 765,
         "pop_bucket": "xlarge",
-        "value": 0.9777777777777777
+        "value": 0.9738562091503268
       },
       {
         "h_bucket": "short",
@@ -10749,7 +11325,7 @@
         "method": "ml_trend",
         "n_folds": 24,
         "pop_bucket": "large",
-        "value": 0.9583333333333334
+        "value": 1.0
       },
       {
         "h_bucket": "long",
@@ -10757,23 +11333,23 @@
         "method": "ml_trend",
         "n_folds": 34,
         "pop_bucket": "large",
-        "value": 0.8823529411764706
+        "value": 0.9117647058823529
       },
       {
         "h_bucket": "short",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 474,
+        "n_folds": 476,
         "pop_bucket": "medium",
-        "value": 0.6940928270042194
+        "value": 0.680672268907563
       },
       {
         "h_bucket": "long",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 669,
+        "n_folds": 672,
         "pop_bucket": "medium",
-        "value": 0.6307922272047832
+        "value": 0.6502976190476191
       },
       {
         "h_bucket": "short",
@@ -10781,7 +11357,7 @@
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": 0.987037037037037
+        "value": 0.9888888888888889
       },
       {
         "h_bucket": "long",
@@ -10789,7 +11365,7 @@
         "method": "ml_trend",
         "n_folds": 765,
         "pop_bucket": "xlarge",
-        "value": 0.9830065359477124
+        "value": 0.9790849673202614
       },
       {
         "h_bucket": "short",
@@ -10805,7 +11381,7 @@
         "method": "ml_trend",
         "n_folds": 34,
         "pop_bucket": "large",
-        "value": 0.8823529411764706
+        "value": 0.8529411764705882
       },
       {
         "h_bucket": "short",
@@ -11627,9 +12203,9 @@
         "h_bucket": "*",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 1102,
+        "n_folds": 1111,
         "pop_bucket": "medium",
-        "value": 0.7586206896551724
+        "value": 0.7560756075607561
       },
       {
         "h_bucket": "*",
@@ -11725,7 +12301,7 @@
         "method": "ml_trend",
         "n_folds": 1169,
         "pop_bucket": "medium",
-        "value": 0.6655260906757913
+        "value": 0.6390076988879384
       },
       {
         "h_bucket": "*",
@@ -11733,35 +12309,11 @@
         "method": "ml_trend",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": 0.963984674329502
+        "value": 0.9555555555555556
       },
       {
         "h_bucket": "*",
         "indicator": "in_migration_rate",
-        "method": "ml_trend",
-        "n_folds": 58,
-        "pop_bucket": "large",
-        "value": 0.9310344827586207
-      },
-      {
-        "h_bucket": "*",
-        "indicator": "pct_professional",
-        "method": "ml_trend",
-        "n_folds": 1143,
-        "pop_bucket": "medium",
-        "value": 0.6762904636920385
-      },
-      {
-        "h_bucket": "*",
-        "indicator": "pct_professional",
-        "method": "ml_trend",
-        "n_folds": 1305,
-        "pop_bucket": "xlarge",
-        "value": 0.9816091954022989
-      },
-      {
-        "h_bucket": "*",
-        "indicator": "pct_professional",
         "method": "ml_trend",
         "n_folds": 58,
         "pop_bucket": "large",
@@ -11769,11 +12321,35 @@
       },
       {
         "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "ml_trend",
+        "n_folds": 1148,
+        "pop_bucket": "medium",
+        "value": 0.6672473867595818
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "ml_trend",
+        "n_folds": 1305,
+        "pop_bucket": "xlarge",
+        "value": 0.978544061302682
+      },
+      {
+        "h_bucket": "*",
+        "indicator": "pct_professional",
+        "method": "ml_trend",
+        "n_folds": 58,
+        "pop_bucket": "large",
+        "value": 0.9482758620689655
+      },
+      {
+        "h_bucket": "*",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 1143,
+        "n_folds": 1148,
         "pop_bucket": "medium",
-        "value": 0.6570428696412949
+        "value": 0.6628919860627178
       },
       {
         "h_bucket": "*",
@@ -11781,7 +12357,7 @@
         "method": "ml_trend",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": 0.9846743295019157
+        "value": 0.9831417624521073
       },
       {
         "h_bucket": "*",
@@ -11789,7 +12365,7 @@
         "method": "ml_trend",
         "n_folds": 58,
         "pop_bucket": "large",
-        "value": 0.8448275862068966
+        "value": 0.8275862068965517
       },
       {
         "h_bucket": "*",
@@ -12083,9 +12659,9 @@
         "h_bucket": "*",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 2465,
+        "n_folds": 2474,
         "pop_bucket": "*",
-        "value": 0.7484787018255578
+        "value": 0.7473726758286177
       },
       {
         "h_bucket": "*",
@@ -12117,23 +12693,23 @@
         "method": "ml_trend",
         "n_folds": 2532,
         "pop_bucket": "*",
-        "value": 0.825434439178515
+        "value": 0.8084518167456556
       },
       {
         "h_bucket": "*",
         "indicator": "pct_professional",
         "method": "ml_trend",
-        "n_folds": 2506,
+        "n_folds": 2511,
         "pop_bucket": "*",
-        "value": 0.840782122905028
+        "value": 0.8355236957387495
       },
       {
         "h_bucket": "*",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 2506,
+        "n_folds": 2511,
         "pop_bucket": "*",
-        "value": 0.8320031923383878
+        "value": 0.8331342094782955
       },
       {
         "h_bucket": "*",
@@ -13597,17 +14173,17 @@
         "h_bucket": "short",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 457,
+        "n_folds": 460,
         "pop_bucket": "medium",
-        "value": 0.39254350607733496
+        "value": 0.39662062073014387
       },
       {
         "h_bucket": "long",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 645,
+        "n_folds": 651,
         "pop_bucket": "medium",
-        "value": 0.42412698858693804
+        "value": 0.4236247570724431
       },
       {
         "h_bucket": "short",
@@ -13615,7 +14191,7 @@
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": 0.20833571146598637
+        "value": 0.2066520451689336
       },
       {
         "h_bucket": "long",
@@ -13623,7 +14199,7 @@
         "method": "ml_trend",
         "n_folds": 765,
         "pop_bucket": "xlarge",
-        "value": 0.27473763202974466
+        "value": 0.27746696047754726
       },
       {
         "h_bucket": "short",
@@ -13631,7 +14207,7 @@
         "method": "ml_trend",
         "n_folds": 24,
         "pop_bucket": "large",
-        "value": 0.24565316491376707
+        "value": 0.24967853306815235
       },
       {
         "h_bucket": "long",
@@ -13639,7 +14215,7 @@
         "method": "ml_trend",
         "n_folds": 34,
         "pop_bucket": "large",
-        "value": 0.2762530607288516
+        "value": 0.27917371345414493
       },
       {
         "h_bucket": "short",
@@ -13791,7 +14367,7 @@
         "method": "ml_trend",
         "n_folds": 484,
         "pop_bucket": "medium",
-        "value": 0.2738497032892522
+        "value": 0.2773783343090003
       },
       {
         "h_bucket": "long",
@@ -13799,7 +14375,7 @@
         "method": "ml_trend",
         "n_folds": 685,
         "pop_bucket": "medium",
-        "value": 0.3160716412143173
+        "value": 0.3221825813501258
       },
       {
         "h_bucket": "short",
@@ -13807,7 +14383,7 @@
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": 0.08230947757786054
+        "value": 0.08436045668893115
       },
       {
         "h_bucket": "long",
@@ -13815,7 +14391,7 @@
         "method": "ml_trend",
         "n_folds": 765,
         "pop_bucket": "xlarge",
-        "value": 0.11439192058915022
+        "value": 0.11762225243599003
       },
       {
         "h_bucket": "short",
@@ -13823,7 +14399,7 @@
         "method": "ml_trend",
         "n_folds": 24,
         "pop_bucket": "large",
-        "value": 0.13798975697217153
+        "value": 0.14317560978542207
       },
       {
         "h_bucket": "long",
@@ -13831,23 +14407,23 @@
         "method": "ml_trend",
         "n_folds": 34,
         "pop_bucket": "large",
-        "value": 0.11328048899487608
+        "value": 0.11019577011540801
       },
       {
         "h_bucket": "short",
         "indicator": "pct_professional",
         "method": "ml_trend",
-        "n_folds": 474,
+        "n_folds": 476,
         "pop_bucket": "medium",
-        "value": 0.09819205496465391
+        "value": 0.09737372868560165
       },
       {
         "h_bucket": "long",
         "indicator": "pct_professional",
         "method": "ml_trend",
-        "n_folds": 669,
+        "n_folds": 672,
         "pop_bucket": "medium",
-        "value": 0.09307026377949157
+        "value": 0.09547102063120547
       },
       {
         "h_bucket": "short",
@@ -13855,7 +14431,7 @@
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": 0.03051818237967149
+        "value": 0.0307467680839875
       },
       {
         "h_bucket": "long",
@@ -13863,7 +14439,7 @@
         "method": "ml_trend",
         "n_folds": 765,
         "pop_bucket": "xlarge",
-        "value": 0.036666452591023864
+        "value": 0.036392269104775055
       },
       {
         "h_bucket": "short",
@@ -13871,7 +14447,7 @@
         "method": "ml_trend",
         "n_folds": 24,
         "pop_bucket": "large",
-        "value": 0.052959424338351914
+        "value": 0.049680345883781285
       },
       {
         "h_bucket": "long",
@@ -13879,23 +14455,23 @@
         "method": "ml_trend",
         "n_folds": 34,
         "pop_bucket": "large",
-        "value": 0.06591376558293653
+        "value": 0.059895306336938646
       },
       {
         "h_bucket": "short",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 474,
+        "n_folds": 476,
         "pop_bucket": "medium",
-        "value": 0.160939616846126
+        "value": 0.15959950281982993
       },
       {
         "h_bucket": "long",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 669,
+        "n_folds": 672,
         "pop_bucket": "medium",
-        "value": 0.17559902665807198
+        "value": 0.17357217585748427
       },
       {
         "h_bucket": "short",
@@ -13903,7 +14479,7 @@
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": 0.06524842807693251
+        "value": 0.06521727945980606
       },
       {
         "h_bucket": "long",
@@ -13911,7 +14487,7 @@
         "method": "ml_trend",
         "n_folds": 765,
         "pop_bucket": "xlarge",
-        "value": 0.07133280022591272
+        "value": 0.07081502490070686
       },
       {
         "h_bucket": "short",
@@ -13919,7 +14495,7 @@
         "method": "ml_trend",
         "n_folds": 24,
         "pop_bucket": "large",
-        "value": 0.11071831759229372
+        "value": 0.11276259152659346
       },
       {
         "h_bucket": "long",
@@ -13927,7 +14503,7 @@
         "method": "ml_trend",
         "n_folds": 34,
         "pop_bucket": "large",
-        "value": 0.09528859461159524
+        "value": 0.09640309364672409
       },
       {
         "h_bucket": "short",
@@ -14749,9 +15325,9 @@
         "h_bucket": "*",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 1102,
+        "n_folds": 1111,
         "pop_bucket": "medium",
-        "value": 0.41132372604284767
+        "value": 0.4126583456607573
       },
       {
         "h_bucket": "*",
@@ -14759,7 +15335,7 @@
         "method": "ml_trend",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": 0.2494143660499433
+        "value": 0.2506030900773424
       },
       {
         "h_bucket": "*",
@@ -14767,7 +15343,7 @@
         "method": "ml_trend",
         "n_folds": 58,
         "pop_bucket": "large",
-        "value": 0.26402152078824553
+        "value": 0.26736374533872603
       },
       {
         "h_bucket": "*",
@@ -14847,7 +15423,7 @@
         "method": "ml_trend",
         "n_folds": 1169,
         "pop_bucket": "medium",
-        "value": 0.2993138858802502
+        "value": 0.3044332505151005
       },
       {
         "h_bucket": "*",
@@ -14855,7 +15431,7 @@
         "method": "ml_trend",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": 0.10234355539957486
+        "value": 0.10514278344251494
       },
       {
         "h_bucket": "*",
@@ -14863,15 +15439,15 @@
         "method": "ml_trend",
         "n_folds": 58,
         "pop_bucket": "large",
-        "value": 0.12410313460273019
+        "value": 0.12490325837412133
       },
       {
         "h_bucket": "*",
         "indicator": "pct_professional",
         "method": "ml_trend",
-        "n_folds": 1143,
+        "n_folds": 1148,
         "pop_bucket": "medium",
-        "value": 0.09522769905147457
+        "value": 0.09626451241584422
       },
       {
         "h_bucket": "*",
@@ -14879,7 +15455,7 @@
         "method": "ml_trend",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": 0.03425643767561387
+        "value": 0.0341695156694356
       },
       {
         "h_bucket": "*",
@@ -14887,15 +15463,15 @@
         "method": "ml_trend",
         "n_folds": 58,
         "pop_bucket": "large",
-        "value": 0.06088854257815859
+        "value": 0.05589530005098912
       },
       {
         "h_bucket": "*",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 1143,
+        "n_folds": 1148,
         "pop_bucket": "medium",
-        "value": 0.16967357554805612
+        "value": 0.16791978541389294
       },
       {
         "h_bucket": "*",
@@ -14903,7 +15479,7 @@
         "method": "ml_trend",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": 0.06888034377425256
+        "value": 0.06855417547089981
       },
       {
         "h_bucket": "*",
@@ -14911,7 +15487,7 @@
         "method": "ml_trend",
         "n_folds": 58,
         "pop_bucket": "large",
-        "value": 0.10195690886223421
+        "value": 0.10348667821524168
       },
       {
         "h_bucket": "*",
@@ -15205,9 +15781,9 @@
         "h_bucket": "*",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 2465,
+        "n_folds": 2474,
         "pop_bucket": "*",
-        "value": 0.33197922127645413
+        "value": 0.3335772183939146
       },
       {
         "h_bucket": "*",
@@ -15239,23 +15815,23 @@
         "method": "ml_trend",
         "n_folds": 2532,
         "pop_bucket": "*",
-        "value": 0.21705649460002963
+        "value": 0.22100775069443485
       },
       {
         "h_bucket": "*",
         "indicator": "pct_professional",
         "method": "ml_trend",
-        "n_folds": 2506,
+        "n_folds": 2511,
         "pop_bucket": "*",
-        "value": 0.069519889866855
+        "value": 0.0701117612563626
       },
       {
         "h_bucket": "*",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 2506,
+        "n_folds": 2511,
         "pop_bucket": "*",
-        "value": 0.12586565978334913
+        "value": 0.12482475933800595
       },
       {
         "h_bucket": "*",
@@ -17617,34 +18193,34 @@
       },
       {
         "extra": {
-          "coverage_post": 0.9146608315098468,
-          "coverage_pre": 0.7833698030634574,
+          "coverage_post": 0.9065217391304348,
+          "coverage_pre": 0.7782608695652173,
           "factor": 1.5
         },
         "h_bucket": "short",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 457,
+        "n_folds": 460,
         "pop_bucket": "medium",
         "value": 1.9500000000000002
       },
       {
         "extra": {
-          "coverage_post": 0.9255813953488372,
-          "coverage_pre": 0.7410852713178294,
+          "coverage_post": 0.9201228878648233,
+          "coverage_pre": 0.7403993855606759,
           "factor": 2.0
         },
         "h_bucket": "long",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 645,
+        "n_folds": 651,
         "pop_bucket": "medium",
         "value": 2.6
       },
       {
         "extra": {
           "coverage_post": 0.9314814814814815,
-          "coverage_pre": 0.8296296296296296,
+          "coverage_pre": 0.837037037037037,
           "factor": 2.0
         },
         "h_bucket": "short",
@@ -17657,7 +18233,7 @@
       {
         "extra": {
           "coverage_post": 0.9163398692810457,
-          "coverage_pre": 0.6718954248366014,
+          "coverage_pre": 0.6666666666666666,
           "factor": 3.0
         },
         "h_bucket": "long",
@@ -17671,14 +18247,14 @@
         "extra": {
           "coverage_post": 0.9166666666666666,
           "coverage_pre": 0.8333333333333334,
-          "factor": 2.9375
+          "factor": 3.0
         },
         "h_bucket": "short",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
         "n_folds": 24,
         "pop_bucket": "large",
-        "value": 3.81875
+        "value": 3.9000000000000004
       },
       {
         "extra": {
@@ -17929,8 +18505,8 @@
       },
       {
         "extra": {
-          "coverage_post": 0.9380165289256198,
-          "coverage_pre": 0.6921487603305785,
+          "coverage_post": 0.9194214876033058,
+          "coverage_pre": 0.6818181818181818,
           "factor": 2.0
         },
         "h_bucket": "short",
@@ -17942,8 +18518,8 @@
       },
       {
         "extra": {
-          "coverage_post": 0.9357664233576642,
-          "coverage_pre": 0.6467153284671533,
+          "coverage_post": 0.9284671532846716,
+          "coverage_pre": 0.6087591240875913,
           "factor": 2.0
         },
         "h_bucket": "long",
@@ -17955,8 +18531,8 @@
       },
       {
         "extra": {
-          "coverage_post": 0.8888888888888888,
-          "coverage_pre": 0.9888888888888889,
+          "coverage_post": 0.8722222222222222,
+          "coverage_pre": 0.9814814814814815,
           "factor": 0.55
         },
         "h_bucket": "short",
@@ -17968,8 +18544,8 @@
       },
       {
         "extra": {
-          "coverage_post": 0.9464052287581699,
-          "coverage_pre": 0.9464052287581699,
+          "coverage_post": 0.9372549019607843,
+          "coverage_pre": 0.9372549019607843,
           "factor": 1.0
         },
         "h_bucket": "long",
@@ -17994,47 +18570,47 @@
       },
       {
         "extra": {
-          "coverage_post": 0.9117647058823529,
-          "coverage_pre": 0.9705882352941176,
-          "factor": 0.775
+          "coverage_post": 0.9411764705882353,
+          "coverage_pre": 0.9411764705882353,
+          "factor": 1.0
         },
         "h_bucket": "long",
         "indicator": "in_migration_rate",
         "method": "ml_trend",
         "n_folds": 34,
         "pop_bucket": "large",
-        "value": 1.0075
+        "value": 1.3
       },
       {
         "extra": {
-          "coverage_post": 0.919831223628692,
-          "coverage_pre": 0.6940928270042194,
+          "coverage_post": 0.9096638655462185,
+          "coverage_pre": 0.6743697478991597,
           "factor": 2.0
         },
         "h_bucket": "short",
         "indicator": "pct_professional",
         "method": "ml_trend",
-        "n_folds": 474,
+        "n_folds": 476,
         "pop_bucket": "medium",
         "value": 2.6
       },
       {
         "extra": {
-          "coverage_post": 0.9312406576980568,
-          "coverage_pre": 0.6636771300448431,
+          "coverage_post": 0.9181547619047619,
+          "coverage_pre": 0.6622023809523809,
           "factor": 2.0
         },
         "h_bucket": "long",
         "indicator": "pct_professional",
         "method": "ml_trend",
-        "n_folds": 669,
+        "n_folds": 672,
         "pop_bucket": "medium",
         "value": 2.6
       },
       {
         "extra": {
-          "coverage_post": 0.8981481481481481,
-          "coverage_pre": 0.987037037037037,
+          "coverage_post": 0.9037037037037037,
+          "coverage_pre": 0.9851851851851852,
           "factor": 0.55
         },
         "h_bucket": "short",
@@ -18046,8 +18622,8 @@
       },
       {
         "extra": {
-          "coverage_post": 0.9254901960784314,
-          "coverage_pre": 0.9777777777777777,
+          "coverage_post": 0.9294117647058824,
+          "coverage_pre": 0.9738562091503268,
           "factor": 0.775
         },
         "h_bucket": "long",
@@ -18059,21 +18635,21 @@
       },
       {
         "extra": {
-          "coverage_post": 0.875,
-          "coverage_pre": 0.9583333333333334,
-          "factor": 0.9719
+          "coverage_post": 0.9166666666666666,
+          "coverage_pre": 1.0,
+          "factor": 0.8875
         },
         "h_bucket": "short",
         "indicator": "pct_professional",
         "method": "ml_trend",
         "n_folds": 24,
         "pop_bucket": "large",
-        "value": 1.26347
+        "value": 1.15375
       },
       {
         "extra": {
-          "coverage_post": 0.8823529411764706,
-          "coverage_pre": 0.8823529411764706,
+          "coverage_post": 0.9117647058823529,
+          "coverage_pre": 0.9117647058823529,
           "factor": 1.0
         },
         "h_bucket": "long",
@@ -18085,47 +18661,47 @@
       },
       {
         "extra": {
-          "coverage_post": 0.9388185654008439,
-          "coverage_pre": 0.6940928270042194,
+          "coverage_post": 0.9432773109243697,
+          "coverage_pre": 0.680672268907563,
           "factor": 2.0
         },
         "h_bucket": "short",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 474,
+        "n_folds": 476,
         "pop_bucket": "medium",
         "value": 2.6
       },
       {
         "extra": {
-          "coverage_post": 0.929745889387145,
-          "coverage_pre": 0.6307922272047832,
+          "coverage_post": 0.9345238095238095,
+          "coverage_pre": 0.6502976190476191,
           "factor": 2.0
         },
         "h_bucket": "long",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 669,
+        "n_folds": 672,
         "pop_bucket": "medium",
         "value": 2.6
       },
       {
         "extra": {
-          "coverage_post": 0.9333333333333333,
-          "coverage_pre": 0.987037037037037,
-          "factor": 0.775
+          "coverage_post": 0.8851851851851852,
+          "coverage_pre": 0.9888888888888889,
+          "factor": 0.6625
         },
         "h_bucket": "short",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": 1.0075
+        "value": 0.86125
       },
       {
         "extra": {
-          "coverage_post": 0.9281045751633987,
-          "coverage_pre": 0.9830065359477124,
+          "coverage_post": 0.9333333333333333,
+          "coverage_pre": 0.9790849673202614,
           "factor": 0.775
         },
         "h_bucket": "long",
@@ -18137,21 +18713,21 @@
       },
       {
         "extra": {
-          "coverage_post": 0.875,
+          "coverage_post": 0.9166666666666666,
           "coverage_pre": 0.7916666666666666,
-          "factor": 1.25
+          "factor": 1.125
         },
         "h_bucket": "short",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
         "n_folds": 24,
         "pop_bucket": "large",
-        "value": 1.625
+        "value": 1.4625000000000001
       },
       {
         "extra": {
-          "coverage_post": 0.8823529411764706,
-          "coverage_pre": 0.8823529411764706,
+          "coverage_post": 0.8529411764705882,
+          "coverage_pre": 0.8529411764705882,
           "factor": 1.0
         },
         "h_bucket": "long",
@@ -19489,20 +20065,20 @@
       },
       {
         "extra": {
-          "coverage_post": 0.9373865698729582,
-          "coverage_pre": 0.7586206896551724,
+          "coverage_post": 0.9360936093609361,
+          "coverage_pre": 0.7560756075607561,
           "factor": 2.0
         },
         "h_bucket": "*",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 1102,
+        "n_folds": 1111,
         "pop_bucket": "medium",
         "value": 2.6
       },
       {
         "extra": {
-          "coverage_post": 0.9371647509578545,
+          "coverage_post": 0.9386973180076629,
           "coverage_pre": 0.7371647509578544,
           "factor": 3.0
         },
@@ -19515,7 +20091,7 @@
       },
       {
         "extra": {
-          "coverage_post": 0.896551724137931,
+          "coverage_post": 0.8620689655172413,
           "coverage_pre": 0.8103448275862069,
           "factor": 3.0
         },
@@ -19645,8 +20221,8 @@
       },
       {
         "extra": {
-          "coverage_post": 0.9366980325064157,
-          "coverage_pre": 0.6655260906757913,
+          "coverage_post": 0.9247219846022241,
+          "coverage_pre": 0.6390076988879384,
           "factor": 2.0
         },
         "h_bucket": "*",
@@ -19658,8 +20234,8 @@
       },
       {
         "extra": {
-          "coverage_post": 0.9233716475095786,
-          "coverage_pre": 0.963984674329502,
+          "coverage_post": 0.9019157088122606,
+          "coverage_pre": 0.9555555555555556,
           "factor": 0.775
         },
         "h_bucket": "*",
@@ -19671,8 +20247,8 @@
       },
       {
         "extra": {
-          "coverage_post": 0.9310344827586207,
-          "coverage_pre": 0.9310344827586207,
+          "coverage_post": 0.9137931034482759,
+          "coverage_pre": 0.9137931034482759,
           "factor": 1.0
         },
         "h_bucket": "*",
@@ -19684,21 +20260,21 @@
       },
       {
         "extra": {
-          "coverage_post": 0.926509186351706,
-          "coverage_pre": 0.6762904636920385,
+          "coverage_post": 0.9146341463414634,
+          "coverage_pre": 0.6672473867595818,
           "factor": 2.0
         },
         "h_bucket": "*",
         "indicator": "pct_professional",
         "method": "ml_trend",
-        "n_folds": 1143,
+        "n_folds": 1148,
         "pop_bucket": "medium",
         "value": 2.6
       },
       {
         "extra": {
-          "coverage_post": 0.8521072796934865,
-          "coverage_pre": 0.9816091954022989,
+          "coverage_post": 0.8574712643678161,
+          "coverage_pre": 0.978544061302682,
           "factor": 0.55
         },
         "h_bucket": "*",
@@ -19710,8 +20286,8 @@
       },
       {
         "extra": {
-          "coverage_post": 0.9137931034482759,
-          "coverage_pre": 0.9137931034482759,
+          "coverage_post": 0.9482758620689655,
+          "coverage_pre": 0.9482758620689655,
           "factor": 1.0
         },
         "h_bucket": "*",
@@ -19723,21 +20299,21 @@
       },
       {
         "extra": {
-          "coverage_post": 0.9335083114610674,
-          "coverage_pre": 0.6570428696412949,
+          "coverage_post": 0.9381533101045296,
+          "coverage_pre": 0.6628919860627178,
           "factor": 2.0
         },
         "h_bucket": "*",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 1143,
+        "n_folds": 1148,
         "pop_bucket": "medium",
         "value": 2.6
       },
       {
         "extra": {
-          "coverage_post": 0.9302681992337165,
-          "coverage_pre": 0.9846743295019157,
+          "coverage_post": 0.9409961685823754,
+          "coverage_pre": 0.9831417624521073,
           "factor": 0.775
         },
         "h_bucket": "*",
@@ -19749,16 +20325,16 @@
       },
       {
         "extra": {
-          "coverage_post": 0.9482758620689655,
-          "coverage_pre": 0.8448275862068966,
-          "factor": 1.5
+          "coverage_post": 0.9310344827586207,
+          "coverage_pre": 0.8275862068965517,
+          "factor": 1.25
         },
         "h_bucket": "*",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
         "n_folds": 58,
         "pop_bucket": "large",
-        "value": 1.9500000000000002
+        "value": 1.625
       },
       {
         "extra": {
@@ -20230,14 +20806,14 @@
       },
       {
         "extra": {
-          "coverage_post": 0.9058823529411765,
-          "coverage_pre": 0.7484787018255578,
+          "coverage_post": 0.9029911075181891,
+          "coverage_pre": 0.7473726758286177,
           "factor": 2.0
         },
         "h_bucket": "*",
         "indicator": "S2301_C04_001E",
         "method": "ml_trend",
-        "n_folds": 2465,
+        "n_folds": 2474,
         "pop_bucket": "*",
         "value": 2.6
       },
@@ -20282,8 +20858,8 @@
       },
       {
         "extra": {
-          "coverage_post": 0.9221958925750395,
-          "coverage_pre": 0.825434439178515,
+          "coverage_post": 0.919826224328594,
+          "coverage_pre": 0.8084518167456556,
           "factor": 1.5
         },
         "h_bucket": "*",
@@ -20295,27 +20871,27 @@
       },
       {
         "extra": {
-          "coverage_post": 0.928172386272945,
-          "coverage_pre": 0.840782122905028,
+          "coverage_post": 0.921146953405018,
+          "coverage_pre": 0.8355236957387495,
           "factor": 1.5
         },
         "h_bucket": "*",
         "indicator": "pct_professional",
         "method": "ml_trend",
-        "n_folds": 2506,
+        "n_folds": 2511,
         "pop_bucket": "*",
         "value": 1.9500000000000002
       },
       {
         "extra": {
-          "coverage_post": 0.9305666400638468,
-          "coverage_pre": 0.8320031923383878,
+          "coverage_post": 0.9303066507367582,
+          "coverage_pre": 0.8331342094782955,
           "factor": 1.5
         },
         "h_bucket": "*",
         "indicator": "pct_service_occupations",
         "method": "ml_trend",
-        "n_folds": 2506,
+        "n_folds": 2511,
         "pop_bucket": "*",
         "value": 1.9500000000000002
       },
