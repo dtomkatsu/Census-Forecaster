@@ -288,18 +288,34 @@ def _build_row(
     cross-indicator panel cells are NaN-filled when missing — the
     `HistGradientBoosting` learner natively handles missing values via its
     `is_missing` split branch.
+
+    When lag-1 is absent but lag-2 exists (e.g., anchor_year=2021 when the
+    2020 1-year ACS was not released due to COVID-19), lag-2 substitutes for
+    lag-1 and ``diff1`` is annualized over the 2-year gap so the feature
+    remains comparably scaled to the non-gap case.
     """
     y0 = panel.get(geoid, target_indicator, anchor_year)
     y1 = panel.get(geoid, target_indicator, anchor_year - 1)
+    y2 = panel.get(geoid, target_indicator, anchor_year - 2)
+
+    # Handle missing lag-1 year (e.g., 2020 ACS not released due to COVID-19).
+    # When lag-1 is absent but lag-2 is present, substitute lag-2 as the
+    # effective lag-1 and shift the lag-2 window one step further back.
+    # diff1 is then divided by the gap length (2) to keep it annualised.
+    _lag_gap = 1
+    if (y1 is None or y1 <= 0) and (y2 is not None and y2 > 0):
+        y1 = y2
+        y2 = panel.get(geoid, target_indicator, anchor_year - 3)
+        _lag_gap = 2
+
     if y0 is None or y0 <= 0 or y1 is None or y1 <= 0:
         return None
-    y2 = panel.get(geoid, target_indicator, anchor_year - 2)
 
     log0 = math.log(y0)
     log1 = math.log(y1)
     log2 = math.log(y2) if (y2 is not None and y2 > 0) else float("nan")
 
-    diff1 = log0 - log1
+    diff1 = (log0 - log1) / _lag_gap  # annualized over gap
     diff2 = (log1 - log2) if math.isfinite(log2) else float("nan")
     if math.isfinite(diff2):
         trailing = (diff1 + diff2) / 2.0
