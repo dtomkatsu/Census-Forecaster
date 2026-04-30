@@ -10,6 +10,8 @@ at the district level for Hawaii, including:
 - Policy impact analysis
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 import logging
@@ -20,7 +22,7 @@ import sys
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from src.tax.credits.ctc import calculate_ctc, get_ctc_summary_stats
+from tax_modeler.credits.ctc import calculate_ctc, get_ctc_summary_stats
 
 logger = logging.getLogger(__name__)
 

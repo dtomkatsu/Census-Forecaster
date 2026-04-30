@@ -11,14 +11,16 @@ This module provides functions to:
    - Taxable version: taxable_income (for SOI comparison)
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from pathlib import Path
 import logging
 from typing import Optional, Dict, Tuple
 
-from tax.adjustments.agi_adjustments import AGIAdjustmentEstimator
-from tax.units.taxable_income import TaxableIncomeCalculator
+from tax_modeler.adjustments.agi_adjustments import AGIAdjustmentEstimator
+from tax_modeler.units.taxable_income import TaxableIncomeCalculator
 
 logger = logging.getLogger(__name__)
 

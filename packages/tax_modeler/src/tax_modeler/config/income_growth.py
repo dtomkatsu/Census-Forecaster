@@ -15,6 +15,8 @@ Data Sources:
 - CPI: Bureau of Labor Statistics Consumer Price Index
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Dict, Any
 import logging
@@ -145,7 +147,7 @@ def build_growth_factors(project_root=None):
         return RESIDENT_GROWTH, NONRESIDENT_GROWTH
 
     try:
-        from src.projection.growth_rate_loader import load_all_rates
+        from tax_modeler.projection.growth_rate_loader import load_all_rates
         from pathlib import Path
 
         rates = load_all_rates(Path(project_root))

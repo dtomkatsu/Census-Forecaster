@@ -15,6 +15,8 @@ References:
 - Creedy (2003) - Survey reweighting with IPF
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 import logging

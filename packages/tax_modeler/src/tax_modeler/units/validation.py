@@ -5,6 +5,8 @@ This module provides validation functions for tax units to ensure data consisten
 and correctness throughout the tax unit construction process.
 """
 
+from __future__ import annotations
+
 from typing import Dict, List, Optional, Set, Tuple
 import pandas as pd
 from dataclasses import dataclass

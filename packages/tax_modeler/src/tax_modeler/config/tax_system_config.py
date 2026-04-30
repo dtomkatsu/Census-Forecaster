@@ -4,6 +4,8 @@ Centralized tax system configuration for Hawaii state income tax projections.
 Handles loading brackets, deductions, exemptions, and tax calculations for any year/scenario.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
@@ -415,7 +417,7 @@ class TaxCalculator:
         Returns:
             Dict with revenue statistics (includes credit breakdown)
         """
-        from src.tax.adjustments.hawaii_credits import HawaiiTaxCredits
+        from tax_modeler.adjustments.hawaii_credits import HawaiiTaxCredits
 
         liabilities = []
         weights = tax_units[weight_col].values

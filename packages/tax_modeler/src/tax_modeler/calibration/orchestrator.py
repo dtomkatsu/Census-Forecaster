@@ -15,6 +15,8 @@ Key Principle: Iterative feedback loop with validation after each step
 to ensure no calibration undermines another.
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 import logging
@@ -278,7 +280,7 @@ class CalibrationOrchestrator:
         logger.info("STEP 1: WEIGHT CALIBRATION")
         logger.info("="*80)
         
-        from src.tax.adjustments.comprehensive_weight_calibrator import apply_comprehensive_weight_calibration
+        from tax_modeler.adjustments.comprehensive_weight_calibrator import apply_comprehensive_weight_calibration
         
         result = df.copy()
         
@@ -297,7 +299,7 @@ class CalibrationOrchestrator:
                            f"{current_filers:>8,.0f} → {target_filers:>8,} (×{adj_factor:.3f})")
         
         # Recalculate taxes after weight changes
-        from src.tax.hawaii_calculator import HawaiiTaxCalculator
+        from tax_modeler.hawaii_calculator import HawaiiTaxCalculator
         calculator = HawaiiTaxCalculator()
         result = calculator.calculate_tax_units_batch(result)
         
@@ -309,7 +311,7 @@ class CalibrationOrchestrator:
         logger.info("STEP 2: INCOME DISTRIBUTION CALIBRATION")
         logger.info("="*80)
         
-        from src.tax.adjustments.income_distribution_calibrator import apply_income_distribution_calibration
+        from tax_modeler.adjustments.income_distribution_calibrator import apply_income_distribution_calibration
         
         result = apply_income_distribution_calibration(
             df,
@@ -326,7 +328,7 @@ class CalibrationOrchestrator:
         logger.info("STEP 3: SYNTHETIC TAIL CALIBRATION")
         logger.info("="*80)
         
-        from src.tax.adjustments.million_plus_reallocation import apply_million_plus_reallocation
+        from tax_modeler.adjustments.million_plus_reallocation import apply_million_plus_reallocation
         
         result = apply_million_plus_reallocation(
             df,
@@ -359,7 +361,7 @@ class CalibrationOrchestrator:
             logger.info(f"  $200k+ deductions: ${original_deductions/1e6:>8,.1f}M → ${new_deductions/1e6:>8,.1f}M (×0.85)")
         
         # Recalculate taxes after deduction changes (preserve synthetic filers)
-        from src.tax.hawaii_calculator import HawaiiTaxCalculator
+        from tax_modeler.hawaii_calculator import HawaiiTaxCalculator
         calculator = HawaiiTaxCalculator()
         result = calculator.calculate_tax_units_batch(result)
         
@@ -371,7 +373,7 @@ class CalibrationOrchestrator:
         logger.info("STEP 5: TAX GAP CLOSER")
         logger.info("="*80)
         
-        from src.tax.adjustments.final_gap_closer import apply_final_gap_closer
+        from tax_modeler.adjustments.final_gap_closer import apply_final_gap_closer
         
         result = apply_final_gap_closer(
             df,

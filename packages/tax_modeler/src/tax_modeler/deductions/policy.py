@@ -4,6 +4,8 @@ Hawaii Tax Policy Parameters for Deductions and Exemptions.
 Configurable policy parameters to enable revenue modeling of policy changes.
 """
 
+from __future__ import annotations
+
 from typing import Dict, Optional
 import json
 from pathlib import Path

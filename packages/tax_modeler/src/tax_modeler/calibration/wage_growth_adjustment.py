@@ -12,6 +12,8 @@ Key Features:
 - Fallback to overall wage growth for missing occupations
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from typing import Dict, Tuple, Optional, List
@@ -23,7 +25,7 @@ import sys
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.append(str(project_root))
 
-from src.data.bls_oes_loader import BLSOESLoader
+from tax_modeler.loaders.bls_oes_loader import BLSOESLoader
 
 logger = logging.getLogger(__name__)
 

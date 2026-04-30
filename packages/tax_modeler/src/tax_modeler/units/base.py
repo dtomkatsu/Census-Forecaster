@@ -4,6 +4,8 @@ Base module for tax unit construction.
 Contains the core TaxUnitConstructor class and base functionality.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import Dict, List, Optional, Tuple, Union
 import pandas as pd

@@ -2,10 +2,12 @@
 Tests for the relationships module.
 """
 
+from __future__ import annotations
+
 import pytest
 import pandas as pd
 import numpy as np
-from tax.units.relationships import identify_relationships, _are_spouses, _is_parent_child, _are_related
+from tax_modeler.units.relationships import identify_relationships, _are_spouses, _is_parent_child, _are_related
 
 # Test data
 TEST_HOUSEHOLD = pd.DataFrame([

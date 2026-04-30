@@ -5,6 +5,8 @@ This package provides validation functionality for tax unit classification,
 including machine learning-based validation of filing statuses.
 """
 
+from __future__ import annotations
+
 # Import base validation components first
 from .base_validator import (
     TaxUnitValidator,

@@ -18,6 +18,8 @@ Growth rate sources:
     - Capital gains: 5.0% nominal (long-run equity return)
 """
 
+from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 from typing import Dict, Optional

@@ -5,6 +5,8 @@ This module provides several alternative calibration approaches that make smalle
 more targeted adjustments to filing status distributions rather than massive changes.
 """
 
+from __future__ import annotations
+
 import random
 import hashlib
 import logging

@@ -8,6 +8,8 @@ grounded growth rate forecasts with confidence intervals.
 Also provides BLS OES log-linear trend analysis for wage growth validation.
 """
 
+from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 from pathlib import Path

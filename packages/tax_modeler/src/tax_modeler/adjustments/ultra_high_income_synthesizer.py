@@ -5,6 +5,8 @@ Adds realistic ultra-high-income filers ($5M+) to fill the gap in the $1M+ brack
 while preserving the existing filer count and effective rate calibration.
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 import logging

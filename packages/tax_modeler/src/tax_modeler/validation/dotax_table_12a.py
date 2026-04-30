@@ -5,6 +5,8 @@ Validates model tax liability against DOTAX Table 12A:
 "Tax Liability of Residents Before and After Tax Credits by AGI Class"
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from typing import Dict, Tuple

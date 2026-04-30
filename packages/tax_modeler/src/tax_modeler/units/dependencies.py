@@ -5,6 +5,8 @@ This module provides functions for identifying dependents and
 qualifying relatives for tax purposes.
 """
 
+from __future__ import annotations
+
 from typing import Dict, List, Optional, Set, Tuple, Union
 import pandas as pd
 import numpy as np

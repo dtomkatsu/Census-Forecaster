@@ -1,5 +1,7 @@
 """Tax system configuration package."""
 
+from __future__ import annotations
+
 from .tax_system_config import (
     TaxSystemConfig,
     TaxSystemRegistry,

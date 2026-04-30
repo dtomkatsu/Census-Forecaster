@@ -2,10 +2,12 @@
 Tests for the Head of Household status determination.
 """
 
+from __future__ import annotations
+
 import pytest
 import pandas as pd
 import numpy as np
-from tax.units.status.hoh import is_head_of_household, _is_unmarried, _has_qualifying_person, _paid_half_home_cost
+from tax_modeler.units.status.hoh import is_head_of_household, _is_unmarried, _has_qualifying_person, _paid_half_home_cost
 
 # Test data
 def create_test_household():

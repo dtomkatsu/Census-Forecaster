@@ -15,6 +15,8 @@ Filing status shares derived from DOTAX $400k+ data:
     MFJ ~69%, Single ~22%, HoH ~5%, MFS ~4%
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Tuple

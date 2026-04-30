@@ -5,6 +5,8 @@ This module contains logic for determining if a taxpayer qualifies for
 Married Filing Jointly status.
 """
 
+from __future__ import annotations
+
 import logging
 import pandas as pd
 from typing import Dict, List, Optional, Tuple, Union

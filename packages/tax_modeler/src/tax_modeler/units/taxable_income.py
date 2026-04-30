@@ -5,6 +5,8 @@ SOI tables use TAXABLE INCOME (after standard deduction), not total income.
 This module converts PUMS total income → AGI → Taxable Income to match SOI definitions.
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from typing import Dict, Optional
@@ -80,7 +82,7 @@ class TaxableIncomeCalculator:
             Tuple of (AGI, total_adjustments)
         """
         # Import here to avoid circular dependency
-        from tax.adjustments.agi_adjustments import AGIAdjustmentEstimator
+        from tax_modeler.adjustments.agi_adjustments import AGIAdjustmentEstimator
         
         estimator = AGIAdjustmentEstimator()
         adjustments = estimator.estimate_total_adjustments(

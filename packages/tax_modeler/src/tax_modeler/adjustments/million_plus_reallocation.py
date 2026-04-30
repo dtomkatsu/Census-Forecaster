@@ -8,6 +8,8 @@ This addresses the root cause: PUMS data is top-coded around $2M, missing
 the Pareto tail of ultra-wealthy earners who pay most of the tax.
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 import logging
@@ -189,7 +191,7 @@ class MillionPlusReallocator:
             
             # Calculate taxes for synthetic filers
             logger.info("\nCalculating taxes for synthetic filers...")
-            from src.tax.hawaii_calculator import HawaiiTaxCalculator
+            from tax_modeler.hawaii_calculator import HawaiiTaxCalculator
             calculator = HawaiiTaxCalculator()
             
             synthetic_mask = (result['is_synthetic_ultra_high'] == True)

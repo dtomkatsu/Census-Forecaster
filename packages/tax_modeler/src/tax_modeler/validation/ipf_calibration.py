@@ -10,6 +10,8 @@ IPF iteratively adjusts weights to satisfy multiple marginal constraints,
 finding a balanced solution that minimizes total deviation from both targets.
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 import logging

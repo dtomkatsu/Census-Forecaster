@@ -5,6 +5,8 @@ Systematically adjusts weights across ALL brackets to match DOTax filer counts
 while preserving income distributions and tax calculation accuracy.
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from typing import Dict, Tuple
@@ -30,7 +32,7 @@ class ComprehensiveWeightCalibrator:
     def _load_hybrid_targets(cls):
         """Load hybrid targets from detailed benchmarks + A2-2 high-income."""
         try:
-            from src.tax.validation.detailed_tax_calibration import load_detailed_benchmarks
+            from tax_modeler.validation.detailed_tax_calibration import load_detailed_benchmarks
             detailed_df = load_detailed_benchmarks()
         except (ImportError, FileNotFoundError) as e:
             logger.warning(f"Could not load detailed benchmarks: {e}")

@@ -7,6 +7,8 @@ Covers:
   - Integration regression tests against known revenue totals
   - Scenario isolation (SB 3125 backend changes don't affect unrelated scenarios)
 """
+from __future__ import annotations
+
 import math
 import pytest
 import pandas as pd
@@ -16,8 +18,8 @@ import sys
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.tax.config import TaxSystemConfig, TaxSystemRegistry, TaxCalculator
-from src.tax.adjustments.hawaii_credits import HawaiiTaxCredits
+from tax_modeler.config import TaxSystemConfig, TaxSystemRegistry, TaxCalculator
+from tax_modeler.adjustments.hawaii_credits import HawaiiTaxCredits
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────

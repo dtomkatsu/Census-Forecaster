@@ -5,6 +5,8 @@ Based on IRS SOI data for Hawaii (2022), this module estimates the adjustments
 that convert total income to AGI.
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from typing import Dict, Optional

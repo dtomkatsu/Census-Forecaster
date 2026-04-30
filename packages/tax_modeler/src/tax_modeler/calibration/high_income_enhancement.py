@@ -12,6 +12,8 @@ Key Features:
 - Re-calibrates to maintain DOTAX total
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from scipy.stats import pareto

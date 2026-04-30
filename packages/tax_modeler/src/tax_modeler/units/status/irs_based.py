@@ -8,6 +8,8 @@ Filing status probabilities are loaded from config/filing_status_rates.json.
 If the config file is missing, hardcoded fallbacks matching the original SOI values are used.
 """
 
+from __future__ import annotations
+
 import json
 import random
 import hashlib

@@ -2,10 +2,12 @@
 Tests for the income module.
 """
 
+from __future__ import annotations
+
 import pytest
 import pandas as pd
 import numpy as np
-from tax.units.income import calculate_person_income, calculate_tax_unit_income
+from tax_modeler.units.income import calculate_person_income, calculate_tax_unit_income
 
 # Test data
 TEST_PERSON = pd.Series({

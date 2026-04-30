@@ -5,6 +5,8 @@ This module contains logic for determining if a taxpayer qualifies for
 Head of Household filing status.
 """
 
+from __future__ import annotations
+
 import pandas as pd
 from typing import Dict, List, Optional, Tuple, Union
 

@@ -8,6 +8,8 @@ This approach prioritizes matching AGI totals (which drive revenue) over return 
 Key insight: Revenue = f(AGI, filing_status, ...), so matching AGI ensures revenue accuracy.
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 import logging

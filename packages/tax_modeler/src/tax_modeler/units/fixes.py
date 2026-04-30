@@ -9,6 +9,8 @@ This module provides fixes for the identified overcounting problems:
 5. Add deduplication logic
 """
 
+from __future__ import annotations
+
 import logging
 import pandas as pd
 from typing import Dict, List, Set, Tuple, Any, Optional

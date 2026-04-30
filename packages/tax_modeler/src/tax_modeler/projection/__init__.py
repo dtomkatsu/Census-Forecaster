@@ -7,6 +7,8 @@ This module provides income projection capabilities that combine:
 - Hierarchical matching strategies with confidence scoring
 """
 
+from __future__ import annotations
+
 from .ensemble import EnsembleProjector
 from .occupation_matcher import OccupationMatcher
 

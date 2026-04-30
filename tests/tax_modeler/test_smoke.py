@@ -1,6 +1,8 @@
 """
 Smoke tests for tax unit construction - focus on critical paths only.
 """
+from __future__ import annotations
+
 import pytest
 import pandas as pd
 import numpy as np
@@ -10,8 +12,8 @@ import sys
 # Add the src directory to the path
 sys.path.append(str(Path(__file__).parent / '..' / 'src'))
 
-from tax.units.constructor import TaxUnitConstructor
-from tax.units.base import FILING_STATUS
+from tax_modeler.units.constructor import TaxUnitConstructor
+from tax_modeler.units.base import FILING_STATUS
 
 def create_test_person(**overrides):
     """Create a test person with sensible defaults."""

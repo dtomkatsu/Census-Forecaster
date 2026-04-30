@@ -12,6 +12,8 @@ Strategy:
 4. Use lower initial weights for synthetic records
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 import logging

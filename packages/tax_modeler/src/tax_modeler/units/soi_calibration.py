@@ -12,6 +12,8 @@ Key Features:
 - Provides income-bracket-specific adjustments for high-earner accuracy
 """
 
+from __future__ import annotations
+
 import logging
 import pandas as pd
 import numpy as np

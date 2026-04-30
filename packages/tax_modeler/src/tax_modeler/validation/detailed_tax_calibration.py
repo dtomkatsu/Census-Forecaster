@@ -14,6 +14,8 @@ Key Features:
 Data Source: DOTAX SOI 2022 Table A-9 (A9-2, A9-3, A9-4)
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -131,7 +133,7 @@ def apply_detailed_tax_calibration(
     Returns:
         DataFrame with calibrated weights
     """
-    from src.tax.validation.ipf_calibration import iterative_proportional_fitting
+    from tax_modeler.validation.ipf_calibration import iterative_proportional_fitting
     
     # Load benchmarks
     benchmarks = load_detailed_benchmarks()

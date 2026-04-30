@@ -15,6 +15,8 @@ Data Sources:
 - Table A-2: Complete coverage including high-income (all AGI levels)
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -143,7 +145,7 @@ def apply_hybrid_tax_calibration(
     Returns:
         DataFrame with calibrated weights
     """
-    from src.tax.validation.ipf_calibration import iterative_proportional_fitting_2d
+    from tax_modeler.validation.ipf_calibration import iterative_proportional_fitting_2d
     
     # Load hybrid benchmarks
     benchmarks = load_hybrid_benchmarks()

@@ -4,6 +4,8 @@ SOI-based calibration for Hawaii tax model.
 Calibrates PUMS-based tax units to match Hawaii DOTAX SOI 2022 benchmarks.
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from typing import Dict, Tuple

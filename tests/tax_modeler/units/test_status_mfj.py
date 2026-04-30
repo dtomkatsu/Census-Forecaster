@@ -2,10 +2,12 @@
 Tests for the Married Filing Jointly status determination.
 """
 
+from __future__ import annotations
+
 import pytest
 import pandas as pd
 import numpy as np
-from tax.units.status.mfj import (
+from tax_modeler.units.status.mfj import (
     is_married_filing_jointly, 
     _are_married, 
     _are_citizens_or_residents,

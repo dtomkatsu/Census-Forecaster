@@ -5,6 +5,8 @@ This module provides functionality for analyzing tax credits at various geograph
 including state, county, PUMA, and legislative districts.
 """
 
+from __future__ import annotations
+
 from typing import Dict, List, Optional, Tuple, Union
 import pandas as pd
 import numpy as np

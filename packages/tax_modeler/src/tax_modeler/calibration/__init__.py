@@ -1,5 +1,7 @@
 """Tax calibration modules."""
 
+from __future__ import annotations
+
 from .orchestrator import (
     CalibrationOrchestrator,
     apply_systematic_calibration

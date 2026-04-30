@@ -5,6 +5,8 @@ This module implements nearest-neighbor imputation for districts without direct 
 using demographic and economic similarity metrics to find comparable districts.
 """
 
+from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Tuple

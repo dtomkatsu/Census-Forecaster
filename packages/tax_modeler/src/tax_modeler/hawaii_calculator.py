@@ -4,6 +4,8 @@ Hawaii State Tax Calculator for 2022 Tax Year
 This module calculates Hawaii state income tax based on 2022 tax tables.
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from pathlib import Path

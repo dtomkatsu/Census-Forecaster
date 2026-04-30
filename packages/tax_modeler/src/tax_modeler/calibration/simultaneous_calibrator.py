@@ -19,6 +19,8 @@ Design principles:
     - Synthetic ultra-high filers must be present BEFORE this calibrator runs
 """
 
+from __future__ import annotations
+
 import logging
 from typing import Dict, List, Optional, Tuple
 

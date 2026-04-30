@@ -8,6 +8,8 @@ Uses Pareto distribution to calibrate high-income tail (AGI >= $200k)
 to match DOTax distribution patterns.
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from typing import Dict, Tuple

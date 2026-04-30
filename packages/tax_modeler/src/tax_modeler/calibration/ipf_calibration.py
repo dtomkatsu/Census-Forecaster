@@ -18,6 +18,8 @@ Key Features:
 - Preserves PUMS microdata structure (only weights change)
 """
 
+from __future__ import annotations
+
 import logging
 import pandas as pd
 import numpy as np

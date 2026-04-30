@@ -10,6 +10,8 @@ Key difference from bracket_calibration.py:
 - agi_calibration.py: Uses AGI brackets (for overall income distribution matching Table 12A)
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 import logging
@@ -181,7 +183,7 @@ def apply_two_layer_calibration(tax_units: pd.DataFrame,
     Returns:
         DataFrame with both calibration layers applied
     """
-    from src.tax.units.status.bracket_calibration import apply_bracket_calibration
+    from tax_modeler.units.status.bracket_calibration import apply_bracket_calibration
     
     logger.info("\n" + "="*80)
     logger.info("TWO-LAYER CALIBRATION APPROACH")

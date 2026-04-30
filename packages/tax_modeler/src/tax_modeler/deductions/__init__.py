@@ -8,6 +8,8 @@ Calculates taxable income from AGI by applying:
 Supports policy modeling for revenue impact analysis.
 """
 
+from __future__ import annotations
+
 from .policy import DeductionPolicy
 from .calculator import TaxableIncomeCalculator
 from .parsers import parse_deduction_benchmarks, parse_exemption_benchmarks

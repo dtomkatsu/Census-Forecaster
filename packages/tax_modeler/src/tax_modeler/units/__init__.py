@@ -5,6 +5,8 @@ This package provides functionality for constructing tax units from PUMS data
 and analyzing their characteristics for tax policy modeling.
 """
 
+from __future__ import annotations
+
 """
 Tax unit construction and analysis module.
 
@@ -30,7 +32,7 @@ try:
 except ImportError:
     pass
 
-# Define what gets imported with 'from tax.units import *'
+# Define what gets imported with 'from tax_modeler.units import *'
 __all__ = [
     'TaxUnitConstructor',
     'MLTaxUnitValidator',

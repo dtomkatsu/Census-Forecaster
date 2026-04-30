@@ -24,6 +24,8 @@ Hawaii does not currently have a state CTC or EITC. If Hawaii were to enact
 one, those costs would come out of Hawaii net_revenue.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import Dict, List, Optional
 import pandas as pd

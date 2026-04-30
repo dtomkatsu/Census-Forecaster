@@ -1,5 +1,7 @@
 """Test script for CEX Data Loader."""
 
+from __future__ import annotations
+
 import sys
 import os
 import logging
@@ -15,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Import the loader
-from src.data.cex_loader import CEXLoader, CEXIncomeProfile
+from tax_modeler.loaders.cex_loader import CEXLoader, CEXIncomeProfile
 
 def test_cex_loader():
     """Test the CEX loader with real data."""

@@ -15,11 +15,13 @@ Approach:
 5. Weight to match 107,992 nonresident returns
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from typing import Dict, List
 import logging
-from config.income_growth import NONRESIDENT_GROWTH
+from tax_modeler.config.income_growth import NONRESIDENT_GROWTH
 
 
 logger = logging.getLogger(__name__)

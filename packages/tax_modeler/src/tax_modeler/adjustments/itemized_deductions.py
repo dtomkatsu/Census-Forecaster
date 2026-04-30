@@ -19,6 +19,8 @@ Note: State income taxes (SALT) are excluded because Hawaii taxable
 income should not deduct Hawaii income tax payments.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 from pathlib import Path

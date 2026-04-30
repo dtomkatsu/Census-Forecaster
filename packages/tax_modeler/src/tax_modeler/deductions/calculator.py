@@ -6,6 +6,8 @@ Calculates taxable income from AGI using benchmark assignment approach:
 3. Calculate: Taxable Income = AGI - Deductions - Exemptions
 """
 
+from __future__ import annotations
+
 import logging
 import random
 from pathlib import Path

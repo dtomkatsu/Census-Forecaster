@@ -2,6 +2,8 @@
 Tax validation utilities for comparing model outputs against benchmarks.
 """
 
+from __future__ import annotations
+
 from .dotax_table_12a import DotaxTable12AValidator, validate_against_table_12a
 from .hybrid_tax_calibration import (
     apply_hybrid_tax_calibration,

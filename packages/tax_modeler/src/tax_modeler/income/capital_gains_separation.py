@@ -6,6 +6,8 @@ This module applies capital gains percentages by AGI bracket to separate total i
 into regular income and capital gains components.
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from pathlib import Path

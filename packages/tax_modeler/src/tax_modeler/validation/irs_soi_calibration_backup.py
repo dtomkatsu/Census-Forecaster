@@ -11,6 +11,8 @@ finding a balanced solution that minimizes total deviation from both targets.
 This replaces the previous two-step approach with a single, more robust method.
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 import logging

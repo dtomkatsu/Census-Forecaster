@@ -6,10 +6,12 @@ for tax purposes, including adjustments for inflation and wage growth
 to project to 2026.
 """
 
+from __future__ import annotations
+
 from typing import Dict, List, Optional, Union
 import pandas as pd
 import numpy as np
-from src.config.income_growth import apply_income_growth
+from tax_modeler.config.income_growth import apply_income_growth
 
 
 def extract_person_income_components(person: pd.Series) -> Dict[str, float]:

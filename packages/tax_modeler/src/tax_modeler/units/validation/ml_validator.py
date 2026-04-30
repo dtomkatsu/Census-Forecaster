@@ -5,6 +5,8 @@ This module provides machine learning-based validation to identify potential
 misclassifications in tax unit filing statuses (Single, HoH, Joint).
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Any, Optional, Union

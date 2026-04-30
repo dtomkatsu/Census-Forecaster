@@ -5,6 +5,8 @@ This module provides methods to separate Maui and Kauai counties from the combin
 PUMA 0100 using population-based allocation enhanced with demographic factors.
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 import hashlib

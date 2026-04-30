@@ -4,6 +4,8 @@ Utility functions for tax unit construction.
 This module contains helper functions used throughout the tax unit construction process.
 """
 
+from __future__ import annotations
+
 from typing import Any, Dict, List, Optional, Tuple, Union
 import pandas as pd
 import numpy as np

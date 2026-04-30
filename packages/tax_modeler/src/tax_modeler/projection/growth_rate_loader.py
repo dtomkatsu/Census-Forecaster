@@ -16,11 +16,13 @@ Replaces these hardcoded values when data is available:
     - Population growth: -0.83%/yr working-age, +5.0%/yr seniors
 
 Usage:
-    from src.projection.growth_rate_loader import load_all_rates
+    from tax_modeler.projection.growth_rate_loader import load_all_rates
     rates = load_all_rates(project_root)
     # rates['fixed_rates'] → dict for SourceSpecificGrowthProjector
     # rates['inflation_resident'] → float for income_growth.py
 """
+
+from __future__ import annotations
 
 import logging
 from pathlib import Path

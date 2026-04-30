@@ -6,6 +6,8 @@ This script loads the raw PUMS data, applies cleaning and preprocessing steps,
 and saves the processed data for further analysis.
 """
 
+from __future__ import annotations
+
 import os
 import pandas as pd
 import logging

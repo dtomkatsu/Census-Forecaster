@@ -7,6 +7,8 @@ This module handles income-related calculations including:
 - Income growth adjustments
 """
 
+from __future__ import annotations
+
 from .capital_gains_separation import (
     apply_capital_gains_separation,
     get_capital_gains_summary,

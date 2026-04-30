@@ -5,6 +5,8 @@ Hold-out validation for time-series forecasts. Fits on earlier years,
 forecasts the held-out years, and computes accuracy metrics.
 """
 
+from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 from typing import Dict

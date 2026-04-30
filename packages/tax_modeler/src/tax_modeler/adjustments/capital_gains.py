@@ -10,6 +10,8 @@ Approach:
     3. Scale bracket totals to match Table 21 targets exactly
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from typing import Optional

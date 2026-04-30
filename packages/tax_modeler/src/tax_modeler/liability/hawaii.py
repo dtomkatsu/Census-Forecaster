@@ -20,6 +20,8 @@ Limitations / simplifications:
   - MFS tax units each pay tax on their own income (no income splitting).
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 import numpy as np

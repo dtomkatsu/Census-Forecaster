@@ -9,6 +9,8 @@ Major credits include:
 - Low-Income Household Renters Credit
 """
 
+from __future__ import annotations
+
 import math
 import pandas as pd
 import numpy as np

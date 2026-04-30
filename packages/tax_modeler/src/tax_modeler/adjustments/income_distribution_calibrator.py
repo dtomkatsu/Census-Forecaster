@@ -5,6 +5,8 @@ Systematically adjusts income distributions within AGI brackets to match
 DOTax effective tax rates using principled statistical methods.
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from typing import Dict, Tuple, Optional
@@ -14,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # Import AGI benchmarks from validation module
 try:
-    from src.tax.validation.agi_calibration import AGI_BENCHMARKS
+    from tax_modeler.validation.agi_calibration import AGI_BENCHMARKS
 except ImportError:
     # Fallback if import fails
     AGI_BENCHMARKS = [
@@ -415,7 +417,7 @@ class IncomeDistributionCalibrator:
             logger.info("")
             logger.info("Recalculating taxes with adjusted income distributions...")
             
-            from src.tax.hawaii_calculator import HawaiiTaxCalculator
+            from tax_modeler.hawaii_calculator import HawaiiTaxCalculator
             calculator = HawaiiTaxCalculator()
             
             result = calculator.calculate_tax_units_batch(result)

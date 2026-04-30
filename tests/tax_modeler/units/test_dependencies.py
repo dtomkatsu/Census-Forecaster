@@ -2,10 +2,12 @@
 Tests for the dependencies module.
 """
 
+from __future__ import annotations
+
 import pytest
 import pandas as pd
 import numpy as np
-from tax.units.dependencies import identify_dependents, _is_qualifying_child, _is_qualifying_relative
+from tax_modeler.units.dependencies import identify_dependents, _is_qualifying_child, _is_qualifying_relative
 
 # Test data
 def create_test_household():

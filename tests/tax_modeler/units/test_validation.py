@@ -2,6 +2,8 @@
 Tests for the tax unit validation module.
 """
 
+from __future__ import annotations
+
 import pytest
 import pandas as pd
 import sys
@@ -10,7 +12,7 @@ import os
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../src')))
 
-from tax.units.validation import TaxUnitValidator, ValidationIssue, ValidationSeverity
+from tax_modeler.units.validation import TaxUnitValidator, ValidationIssue, ValidationSeverity
 
 
 def test_validate_tax_unit_complete():

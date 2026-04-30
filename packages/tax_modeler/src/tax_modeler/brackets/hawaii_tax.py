@@ -5,6 +5,8 @@ This module handles Hawaii state income tax calculations using historical
 and projected tax brackets and standard deductions.
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from pathlib import Path

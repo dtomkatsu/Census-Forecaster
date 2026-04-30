@@ -6,6 +6,8 @@ to construct tax units from PUMS data with performance optimizations including b
 parallel execution, and memory efficiency.
 """
 
+from __future__ import annotations
+
 import logging
 import time
 import os
@@ -34,7 +36,7 @@ from .validation import (
 
 # Import IRS-based methods
 try:
-    from src.tax.units.status.irs_based import should_file_jointly_irs_method, calibrate_to_soi_totals
+    from tax_modeler.units.status.irs_based import should_file_jointly_irs_method, calibrate_to_soi_totals
 except ImportError:
     should_file_jointly_irs_method = None
     calibrate_to_soi_totals = None
@@ -790,7 +792,7 @@ class TaxUnitConstructor:
         Returns:
             Tuple of (joint_filers, mfs_filers) where each is a list of (person_id1, person_id2) tuples
         """
-        from src.tax.units.status.mfj import _are_married
+        from tax_modeler.units.status.mfj import _are_married
         
         joint_filers = []
         mfs_filers = []

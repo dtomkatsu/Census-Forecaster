@@ -5,6 +5,8 @@ Applies targeted adjustments to close remaining gap to <10% while
 preserving model structure and systematic calibrations.
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 import logging
@@ -172,7 +174,7 @@ class FinalGapCloser:
         if needs_calc.sum() > 0:
             logger.info(f"  Calculating taxes for {needs_calc.sum()} synthetic filers...")
             
-            from src.tax.brackets import load_tax_data
+            from tax_modeler.brackets import load_tax_data
             calculator = load_tax_data()
             
             # Recalculate for these filers
@@ -279,7 +281,7 @@ class FinalGapCloser:
         if recalculate_tax and 'total_deductions' in result.columns:
             logger.info("\nRecalculating taxes after deduction adjustments...")
             
-            from src.tax.hawaii_calculator import HawaiiTaxCalculator
+            from tax_modeler.hawaii_calculator import HawaiiTaxCalculator
             calculator = HawaiiTaxCalculator()
             result = calculator.calculate_tax_units_batch(result)
         

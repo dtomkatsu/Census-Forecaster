@@ -8,6 +8,8 @@ This module implements sophisticated calibration that matches BOTH:
 This ensures accurate representation across the full income distribution.
 """
 
+from __future__ import annotations
+
 import logging
 import pandas as pd
 import numpy as np

@@ -6,6 +6,8 @@ including rules for Single, Married Filing Jointly, Married Filing Separately,
 and Head of Household statuses.
 """
 
+from __future__ import annotations
+
 from .mfj import is_married_filing_jointly
 from .mfs import is_married_filing_separately
 from .hoh import is_head_of_household

@@ -12,6 +12,8 @@ The data distinguishes between residents and nonresidents, which is critical
 for accurate Hawaii tax modeling.
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from pathlib import Path

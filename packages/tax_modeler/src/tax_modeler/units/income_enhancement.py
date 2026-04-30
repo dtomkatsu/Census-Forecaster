@@ -13,6 +13,8 @@ Key Features:
 Expected Error Reduction: 15-25%
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Tuple
@@ -20,12 +22,12 @@ import logging
 from pathlib import Path
 from dataclasses import dataclass
 
-from src.data.statistical_matching import (
+from tax_modeler.loaders.statistical_matching import (
     StatisticalMatcher, MatchingConfig, MatchingMethod, MatchingQuality
 )
-from src.data.bls_oes_loader import BLSOESLoader, create_occupation_wage_lookup
-from src.data.cex_loader import CEXLoader
-from src.data.national_soi_puf_loader import NationalSOIPUFLoader
+from tax_modeler.loaders.bls_oes_loader import BLSOESLoader, create_occupation_wage_lookup
+from tax_modeler.loaders.cex_loader import CEXLoader
+from tax_modeler.loaders.national_soi_puf_loader import NationalSOIPUFLoader
 
 logger = logging.getLogger(__name__)
 
