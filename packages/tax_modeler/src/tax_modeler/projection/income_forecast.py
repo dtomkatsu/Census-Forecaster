@@ -180,6 +180,20 @@ def _load_cpi_honolulu_series() -> dict[int, float]:
     return {int(k): float(v) for k, v in d["values_by_year"].items()}
 
 
+@functools.lru_cache(maxsize=1)
+def _load_pce_deflator_series() -> dict[int, float]:
+    """Load and cache the BEA national PCE chain price index (2010-2024 in bundle).
+
+    BEA NIPA Table 2.3.4, line 1 (Personal consumption expenditures price index).
+    Annual, 2017=100. The national PCE price index is the appropriate deflator
+    for nonresident income forecasts (national-level cost of living).
+    """
+    pce_path = files("census_forecaster") / "data" / "anchors" / "pce_deflator.json"
+    with pce_path.open() as f:
+        d = json.load(f)
+    return {int(k): float(v) for k, v in d["values_by_year"].items()}
+
+
 # -----------------------------------------------------------------------------
 # Damped-trend price-index projection
 # -----------------------------------------------------------------------------
@@ -527,4 +541,55 @@ def get_hawaii_real_growth_factor(
         base_year=base_year,
         target_year=target_year,
         cpi_loader=_load_cpi_honolulu_series,
+    )
+
+
+@functools.lru_cache(maxsize=8)
+def get_national_real_growth_factor(
+    base_year: int,
+    target_year: int,
+    geoids: tuple[str, ...] = _NATIONAL_GEOIDS,
+) -> Optional[float]:
+    """Return national median-income real growth factor from base→target year.
+
+    "Real" means PCE-deflated (purchasing-power-adjusted). The factor
+    applied to a base-year income gives the equivalent target-year income
+    in constant base-year dollars.
+
+    Used by :func:`tax_modeler.config.income_growth.apply_income_growth`
+    for **nonresident** filers, whose income is earned outside Hawaii and
+    therefore tracks national rather than local trends.
+
+    Parameters
+    ----------
+    base_year:
+        Base year of the income value. Must have a B19013 observation in
+        the bundled panel for at least one of ``geoids``, and a PCE
+        deflator observation.
+    target_year:
+        The year to project to. Must be > ``base_year``.
+    geoids:
+        Tuple of county GEOIDs to use as the national basket. Defaults to
+        :data:`_NATIONAL_GEOIDS` (8 largest mainland US counties by 2020
+        population). Per-county forecasts are aggregated via inverse-
+        variance-weighted geometric mean of nominal growth ratios.
+
+    Returns
+    -------
+    float or None
+        Real growth factor (e.g. 1.05 for 5% real growth), or ``None``
+        if all county forecasts fail or the PCE projection fails.
+        Reasons logged at WARNING level.
+
+    Notes
+    -----
+    Result is memoised via ``@lru_cache``. Delegates to
+    :func:`_compute_real_growth_factor` with the national basket and the
+    PCE deflator loader.
+    """
+    return _compute_real_growth_factor(
+        geoids=geoids,
+        base_year=base_year,
+        target_year=target_year,
+        cpi_loader=_load_pce_deflator_series,
     )
