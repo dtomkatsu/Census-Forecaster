@@ -3,11 +3,14 @@ members = [
     "packages/common",
     "packages/census_forecaster",
     "packages/pums_estimator",
+    "packages/tax_modeler",
 ]
 
 [tool.uv.sources]
 census-common = { workspace = true }
 census-forecaster = { workspace = true }
+pums-estimator = { workspace = true }
+tax-modeler = { workspace = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

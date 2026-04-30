@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tax-modeler"
+version = "0.1.0"
+description = "Hawaii state income tax + federal EITC microsimulation, built on Census-Forecaster microdata."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Tom Katsumi", email = "dtomkatsu@gmail.com" }]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+keywords = ["tax", "eitc", "ctc", "hawaii", "microsimulation"]
+dependencies = [
+    "numpy>=1.21",
+    "pandas>=1.5",
+    "pyarrow>=12",
+    "scikit-learn>=1.1",
+    "openpyxl>=3.1",
+    "requests>=2.28",
+    "census-common",
+    "census-forecaster",
+    "pums-estimator",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov>=4.0"]
+ui = ["streamlit>=1.30"]
+geo = ["geopandas>=0.14"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tax_modeler"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/tax_modeler/data" = "tax_modeler/data"
