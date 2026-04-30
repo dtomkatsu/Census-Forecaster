@@ -15,14 +15,6 @@ monorepo:
 Tests that depend on the gitignored heavy data should skip when the
 relevant subdirectory is missing — see :func:`requires_dotax_raw` and
 :func:`requires_irs_external` for the standard skip-marker fixtures.
-
-Inherited-failure xfail mechanism
----------------------------------
-The :data:`KNOWN_FAILING_TESTS` set lists 20 tests that fail in the
-original ctc-and-eitc source repo (verified by re-running them against
-the source). The :func:`pytest_collection_modifyitems` hook tags each
-of them as ``xfail`` so CI stays green; ``pytest -rX`` will surface them
-as ``XFAIL`` so they remain visible as outstanding TODOs.
 """
 from __future__ import annotations
 
@@ -31,57 +23,6 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-
-
-# -----------------------------------------------------------------------------
-# Inherited-failure registry (xfail at collection time)
-# -----------------------------------------------------------------------------
-
-# Tests that fail for documented reasons unrelated to fixture bugs.
-# 13 of the original 20 inherited failures were fixture bugs (RELSHIPP
-# codes, missing WGTP, FILING_STATUS dict mismatches, missed
-# `apply_2026_growth=False`, etc.) and have been fixed in-place. The
-# remaining 7 fail because they pin specific dollar arithmetic against
-# Hawaii bracket data, or specific MFS-detection heuristics that the
-# constructor has since changed. Pinning the right expectations
-# requires deep tax-bracket review and is left to a future cleanup.
-KNOWN_FAILING_TESTS: set[str] = {
-    # HB 2306 / SB 3125 bracket-arithmetic spot checks. Test asserts
-    # diff of $2,400 when HB 2306 raises the top-3 brackets by 1pp on a
-    # $700k joint filer; calculator currently produces $1,524. Test was
-    # likely written against a different bracket structure than the one
-    # currently shipping.
-    "tests/tax_modeler/test_calculator_scenarios.py::TestBrackets::test_hb2306_low_income_no_change",
-    "tests/tax_modeler/test_calculator_scenarios.py::TestBrackets::test_hb2306_top_bracket_joint_700k",
-    "tests/tax_modeler/test_calculator_scenarios.py::TestSpotChecks::test_joint_700k_no_kids_net_tax",
-    "tests/tax_modeler/test_calculator_scenarios.py::TestSpotChecks::test_single_300k_no_kids_act46_vs_hb2306",
-    # MFS-detection heuristic: test expects the constructor to split a
-    # married couple into 2 separate units when one spouse has a
-    # significant business loss. The constructor classifies them as
-    # joint instead. The "right" answer depends on which spouse pays
-    # less tax under MFS vs joint, which involves running the full tax
-    # calc — heavier than the constructor wants to do.
-    "tests/tax_modeler/test_smoke.py::test_married_filing_separately",
-    "tests/tax_modeler/units/test_constructor.py::TestTaxUnitConstructor::test_create_rule_based_units",
-    "tests/tax_modeler/units/test_constructor.py::TestTaxUnitConstructor::test_process_household",
-}
-
-
-def pytest_collection_modifyitems(config, items):
-    """Tag KNOWN_FAILING_TESTS as xfail so CI stays green.
-
-    These are inherited from the ctc-and-eitc source repo where they
-    also fail; triaging them is a follow-up. Use ``pytest -rX`` to see
-    them in the test summary.
-    """
-    xfail_marker = pytest.mark.xfail(
-        reason="Pre-existing failure inherited from ctc-and-eitc source repo. "
-               "Tracked for triage in a follow-up cleanup task.",
-        strict=False,
-    )
-    for item in items:
-        if item.nodeid in KNOWN_FAILING_TESTS:
-            item.add_marker(xfail_marker)
 
 
 # -----------------------------------------------------------------------------

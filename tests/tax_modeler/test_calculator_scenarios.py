@@ -71,17 +71,35 @@ class TestBrackets:
         assert 6.0 <= result["marginal_rate"] <= 8.0
 
     def test_hb2306_top_bracket_joint_700k(self, calculator, act46, hb2306):
-        """HB 2306 top-3 rate +1pp should add ~$2,400 for a $700k joint filer."""
+        """HB 2306 top-3 rate +1pp should add ~$2,400 at $688,800 taxable joint.
+
+        HB 2306 HD1 also doubles the standard deduction in 2027 (joint
+        $8,800 → $16,000). To isolate the bracket-rate change, we
+        evaluate both scenarios at the same TAXABLE income by inflating
+        HB 2306's gross by the std-deduction delta ($7,200).
+        """
+        std_ded_delta = 16_000 - 8_800  # 2027 joint std ded - 2025 joint std ded
         base = calculator.calculate_tax(700_000, act46, "married_filing_jointly", 2)
-        hb = calculator.calculate_tax(700_000, hb2306, "married_filing_jointly", 2)
+        hb = calculator.calculate_tax(700_000 + std_ded_delta, hb2306, "married_filing_jointly", 2)
+        # Sanity: same taxable income in both branches.
+        assert base["taxable_income"] == pytest.approx(hb["taxable_income"], abs=1)
         diff = hb["tax_liability"] - base["tax_liability"]
-        # Three brackets get +1pp on top income slices; at $700k all three apply
+        # Three brackets get +1pp on top income slices; at $688,800 taxable
+        # the $450k-$550k and $550k-$650k slices contribute $1,000 each; the
+        # remaining $38,800 in the top bracket contributes ~$388 — total ≈ $2,388.
         assert diff == pytest.approx(2_400, abs=50)
 
     def test_hb2306_low_income_no_change(self, calculator, act46, hb2306):
-        """Below the affected brackets, HB 2306 should not change tax."""
+        """Below the affected brackets, HB 2306 should not change tax (rate-only).
+
+        Same matched-taxable-income approach as above: HB 2306 HD1
+        doubles the single std deduction in 2027 ($4,400 → $8,000), so
+        we inflate gross by $3,600 to keep taxable income equal.
+        """
+        std_ded_delta = 8_000 - 4_400  # 2027 single std ded - 2025 single std ded
         base = calculator.calculate_tax(80_000, act46, "single", 1)
-        hb = calculator.calculate_tax(80_000, hb2306, "single", 1)
+        hb = calculator.calculate_tax(80_000 + std_ded_delta, hb2306, "single", 1)
+        assert base["taxable_income"] == pytest.approx(hb["taxable_income"], abs=1)
         assert hb["tax_liability"] == pytest.approx(base["tax_liability"], abs=1)
 
     def test_sb3125_wider_low_brackets_lower_tax(self, calculator, act46, sb3125):
@@ -184,9 +202,15 @@ class TestCDCC:
 
 class TestSpotChecks:
     def test_joint_700k_no_kids_net_tax(self, calculator, act46, hb2306):
-        """Joint $700k, 0 deps: HB 2306 net tax should be ~$2,400 more than Act 46."""
+        """Joint $700k, 0 deps: HB 2306 +1pp on top brackets should add ~$2,400.
+
+        See ``test_hb2306_top_bracket_joint_700k`` for the std-deduction
+        offset rationale.
+        """
+        std_ded_delta = 16_000 - 8_800  # 2027 joint - 2025 joint std ded
         r_base = calculator.calculate_tax(700_000, act46, "married_filing_jointly", 2)
-        r_hb = calculator.calculate_tax(700_000, hb2306, "married_filing_jointly", 2)
+        r_hb = calculator.calculate_tax(700_000 + std_ded_delta, hb2306, "married_filing_jointly", 2)
+        assert r_base["taxable_income"] == pytest.approx(r_hb["taxable_income"], abs=1)
         diff = r_hb["tax_liability"] - r_base["tax_liability"]
         assert diff == pytest.approx(2_400, abs=100)
 
@@ -209,13 +233,20 @@ class TestSpotChecks:
         assert net < 0, f"Expected negative net tax (refund), got {net}"
 
     def test_single_300k_no_kids_act46_vs_hb2306(self, calculator, act46, hb2306):
-        """Single $300k, 0 deps: HB 2306 should have higher tax (taxable income enters +1pp bracket).
+        """Single $300k, 0 deps: HB 2306 +1pp on $225k+ brackets should add ~$694.
 
-        Single filer: std deduction=$9,400, exemption=$1,200 → taxable ≈ $294,400.
-        At $294,400 the 10% bracket (starts at $225k) applies → +1pp adds ~$694.
+        Single std deduction phase-in: $4,400 (2025) → $8,000 (2027). Pass
+        the $3,600 delta as extra gross to keep taxable income equal in both
+        scenarios. Act 46 single std ded = $4,400, exemption = $1,144,
+        so taxable at $300k gross = $294,456.
+
+        At $294,456 taxable: $225k-$275k slice gets +1pp (= +$500),
+        $275k-$294,456 slice gets +1pp (= +$194). Total = $694.
         """
+        std_ded_delta = 8_000 - 4_400  # 2027 single - 2025 single std ded
         base = calculator.calculate_tax(300_000, act46, "single", 1)
-        hb = calculator.calculate_tax(300_000, hb2306, "single", 1)
+        hb = calculator.calculate_tax(300_000 + std_ded_delta, hb2306, "single", 1)
+        assert base["taxable_income"] == pytest.approx(hb["taxable_income"], abs=1)
         diff = hb["tax_liability"] - base["tax_liability"]
         assert diff == pytest.approx(694, abs=10)
 

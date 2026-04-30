@@ -26,24 +26,27 @@ def create_test_data():
         # Household 3 - Single person
         {'SERIALNO': '3', 'SPORDER': '1', 'AGEP': 28, 'SEX': 1, 'MAR': 5, 'RELSHIPP': 20, 'WAGP': 50000, 'HINCP': 50000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
         
-        # Household 4 - Married couple filing separately (different incomes)
-        {'SERIALNO': '4', 'SPORDER': '1', 'AGEP': 40, 'SEX': 1, 'MAR': 1, 'RELSHIPP': 20, 'WAGP': 100000, 'HINCP': 100000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
-        {'SERIALNO': '4', 'SPORDER': '2', 'AGEP': 38, 'SEX': 2, 'MAR': 1, 'RELSHIPP': 21, 'WAGP': 5000, 'HINCP': 100000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
-        {'SERIALNO': '4', 'SPORDER': '3', 'AGEP': 12, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 22, 'WAGP': 0, 'HINCP': 100000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 6},
-        
-        # Household 5 - Married couple filing separately (non-resident alien)
-        {'SERIALNO': '5', 'SPORDER': '1', 'AGEP': 45, 'SEX': 1, 'MAR': 1, 'RELSHIPP': 20, 'WAGP': 80000, 'HINCP': 100000, 'CIT': 5, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
-        {'SERIALNO': '5', 'SPORDER': '2', 'AGEP': 43, 'SEX': 2, 'MAR': 1, 'RELSHIPP': 21, 'WAGP': 20000, 'HINCP': 100000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16}
+        # Household 4 - Married couple filing separately (income disparity)
+        # Combined $405k + 80x ratio + high/low pattern → MFS score ≈ 9 (>= 8 = guaranteed MFS).
+        # Also requires PINCP set (constructor's _should_file_separately reads PINCP, not WAGP).
+        {'SERIALNO': '4', 'SPORDER': '1', 'AGEP': 40, 'SEX': 1, 'MAR': 1, 'RELSHIPP': 20, 'WAGP': 400000, 'PINCP': 400000, 'HINCP': 405000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
+        {'SERIALNO': '4', 'SPORDER': '2', 'AGEP': 38, 'SEX': 2, 'MAR': 1, 'RELSHIPP': 21, 'WAGP':   5000, 'PINCP':   5000, 'HINCP': 405000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
+        {'SERIALNO': '4', 'SPORDER': '3', 'AGEP': 12, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 22, 'WAGP':      0, 'PINCP':      0, 'HINCP': 405000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 6},
+
+        # Household 5 - Married couple filing separately (ultra-high income + disparity).
+        # Combined $605k + 120x ratio → MFS score ≈ 10 (guaranteed MFS).
+        {'SERIALNO': '5', 'SPORDER': '1', 'AGEP': 45, 'SEX': 1, 'MAR': 1, 'RELSHIPP': 20, 'WAGP': 600000, 'PINCP': 600000, 'HINCP': 605000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
+        {'SERIALNO': '5', 'SPORDER': '2', 'AGEP': 43, 'SEX': 2, 'MAR': 1, 'RELSHIPP': 21, 'WAGP':   5000, 'PINCP':   5000, 'HINCP': 605000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
     ]
-    
+
     # Create household data — WGTP is required: TaxUnitConstructor skips
     # households with WGTP <= 0 (group-quarters / invalid sentinel).
     hh_data = [
-        {'SERIALNO': '1', 'HINCP': 100000, 'ADJINC': 1.0, 'WGTP': 100},  # Joint filers
-        {'SERIALNO': '2', 'HINCP':  50000, 'ADJINC': 1.0, 'WGTP': 100},  # Single parent
+        {'SERIALNO': '1', 'HINCP': 100000, 'ADJINC': 1.0, 'WGTP': 100},  # Joint filers + child
+        {'SERIALNO': '2', 'HINCP':  50000, 'ADJINC': 1.0, 'WGTP': 100},  # Single parent + child (HoH)
         {'SERIALNO': '3', 'HINCP':  50000, 'ADJINC': 1.0, 'WGTP': 100},  # Single person
-        {'SERIALNO': '4', 'HINCP': 100000, 'ADJINC': 1.0, 'WGTP': 100},  # MFS - income difference
-        {'SERIALNO': '5', 'HINCP': 100000, 'ADJINC': 1.0, 'WGTP': 100},  # MFS - non-resident alien
+        {'SERIALNO': '4', 'HINCP': 405000, 'ADJINC': 1.0, 'WGTP': 100},  # MFS - high income + disparity
+        {'SERIALNO': '5', 'HINCP': 605000, 'ADJINC': 1.0, 'WGTP': 100},  # MFS - ultra-high income + disparity
     ]
     
     # Create DataFrames
@@ -101,72 +104,75 @@ class TestTaxUnitConstructor:
         """Test creation of tax units using rule-based approach."""
         person_df, hh_df = create_test_data()
         constructor = TaxUnitConstructor(person_df, hh_df)
-        
+
         # Create tax units
         tax_units = constructor.create_rule_based_units()
-        
-        # Should create 7 tax units (1 joint, 1 single parent, 1 single person, 2 MFS couples)
-        assert len(tax_units) == 7
-        
+
+        # Should create 7 tax units (1 joint, 1 HoH, 1 single, 2 MFS pairs).
+        assert len(tax_units) == 7, (
+            f"Expected 7 units, got {len(tax_units)}: "
+            f"{tax_units[['hh_id', 'filing_status']].to_dict('records')}"
+        )
+
         # Check that all expected households are represented
         hh_ids = set(tax_units['hh_id'])
         assert '1' in hh_ids  # Joint filers
-        assert '2' in hh_ids  # Single parent
+        assert '2' in hh_ids  # Single parent (HoH)
         assert '3' in hh_ids  # Single person
-        assert '4' in hh_ids  # MFS - income difference
-        assert '5' in hh_ids  # MFS - non-resident alien
-        
-        # Check MFS tax units
-        mfs_units = tax_units[tax_units['filing_status'] == 'married_filing_separate']
-        assert len(mfs_units) == 4  # Should have 4 MFS tax units (one for each spouse in household 4 and 5)
-        
+        assert '4' in hh_ids  # MFS - high income + income disparity
+        assert '5' in hh_ids  # MFS - ultra-high income + income disparity
+
+        # Check MFS tax units. Constructor emits 'married_filing_separately'
+        # (the canonical IRS form, not the older 'married_filing_separate').
+        mfs_units = tax_units[tax_units['filing_status'] == 'married_filing_separately']
+        assert len(mfs_units) == 4  # 2 spouses × 2 households
+
         # Check that MFS units have the correct structure
         for _, unit in mfs_units.iterrows():
             assert 'primary_filer_id' in unit
             assert 'dependents' in unit
             assert isinstance(unit['dependents'], list)
-            
-        # Verify household 4 has 2 MFS filers with correct incomes
+
+        # Verify household 4 has 2 MFS filers
         hh4_units = tax_units[tax_units['hh_id'] == '4']
         assert len(hh4_units) == 2
-        assert all(status in ['married_filing_separate'] for status in hh4_units['filing_status'])
-        
-        # Verify household 5 has 2 MFS filers (non-resident alien case)
+        assert all(status == 'married_filing_separately' for status in hh4_units['filing_status'])
+
+        # Verify household 5 has 2 MFS filers
         hh5_units = tax_units[tax_units['hh_id'] == '5']
         assert len(hh5_units) == 2
-        assert all(status in ['married_filing_separate'] for status in hh5_units['filing_status'])
-        assert '3' in hh_ids
-        
-        # Check that household 1 has a joint filer
+        assert all(status == 'married_filing_separately' for status in hh5_units['filing_status'])
+
+        # Check that household 1 has a joint filer (canonical: married_filing_jointly)
         hh1_units = tax_units[tax_units['hh_id'] == '1']
-        assert any(status == 'joint' for status in hh1_units['filing_status'])
-        
+        assert any(status == 'married_filing_jointly' for status in hh1_units['filing_status'])
+
         # Check that household 2 has a head of household
         hh2_units = tax_units[tax_units['hh_id'] == '2']
         assert any(status == 'head_of_household' for status in hh2_units['filing_status'])
-        
+
         # Check that household 3 has a single filer
         hh3_units = tax_units[tax_units['hh_id'] == '3']
         assert any(status == 'single' for status in hh3_units['filing_status'])
-    
+
     def test_process_household(self):
         """Test processing of a single household."""
         person_df, hh_df = create_test_data()
         constructor = TaxUnitConstructor(person_df, hh_df)
-        
+
         # Get household 1 data
         hh1 = person_df[person_df.index.str.startswith('1_')]
-        
+
         # Process the household
         tax_units = constructor._process_household(hh1)
-        
+
         # Should create at least one tax unit
         assert len(tax_units) > 0
-        
-        # Check that the joint filer was created
-        joint_filers = [u for u in tax_units if u['filing_status'] == 'joint']
+
+        # Check that the joint filer was created (canonical: 'married_filing_jointly').
+        joint_filers = [u for u in tax_units if u['filing_status'] == 'married_filing_jointly']
         assert len(joint_filers) == 1
-        
+
         # Check that dependents are assigned correctly
         joint_filer = joint_filers[0]
         assert '1_3' in joint_filer['dependents']  # Child should be a dependent

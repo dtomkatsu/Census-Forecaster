@@ -175,49 +175,63 @@ def test_married_couple_joint():
     assert tax_units.iloc[0]['income'] == 80000
 
 def test_married_filing_separately():
-    """Test that married filing separately status is correctly identified."""
-    # Create household with married couple who should file separately
-    # due to one spouse having significant negative income (business loss)
-    # and the other having substantial positive income
-    hh_df = pd.DataFrame([create_test_household(NP=2, HINCP=100000)])
-    
+    """Test that married filing separately status is correctly identified.
+
+    The constructor's MFS detection (``_should_file_separately``) was
+    redesigned to match DOTAX 2022 benchmarks, which show that MFS is
+    primarily used by **high-income** couples for tax optimization
+    (avg AGI of MFS filers ≈ $196,726). Low-income couples (combined
+    income < $150k) always file jointly under the new logic.
+
+    To trigger MFS deterministically the fixture needs to score >= 8
+    on the multi-factor heuristic:
+
+      - $500k+ total income            → +3
+      - >20× income ratio (disparity)  → +4
+      - high earner + low earner       → +3
+
+    Combined score = 10 → guaranteed MFS.
+    """
+    # Create household with married couple where one spouse earns $500k
+    # and the other earns $5k — extreme disparity + ultra-high total
+    # income → MFS score >= 8 → guaranteed split.
+    hh_df = pd.DataFrame([create_test_household(NP=2, HINCP=505_000)])
+
     person_df = pd.DataFrame([
         create_test_person(
             SPORDER='1',
             RELSHIPP=20,  # Reference person
             MAR=1,  # Married
-            PINCP=100000,
-            WAGP=100000,  # High income
+            PINCP=500_000,
+            WAGP=500_000,  # Ultra-high income
             ADJINC=1000000,
-            DIS=1  # Has disability (for testing different status)
         ),
         create_test_person(
             SPORDER='2',
             RELSHIPP=21,  # Spouse
             MAR=1,  # Married
-            PINCP=-20000,  # Significant business loss
-            SEMP=-20000,  # Self-employment loss
+            PINCP=5_000,
+            WAGP=5_000,  # Very low income → 100× disparity
             SEX=2,  # Female
             ADJINC=1000000,
-            DIS=2  # No disability (different from spouse)
-        )
+        ),
     ])
-    
+
     # Create tax units
     constructor = TaxUnitConstructor(person_df, hh_df)
     tax_units = constructor.create_rule_based_units()
-    
+
     # Verify results - should create two separate returns
     assert len(tax_units) == 2, f"Expected 2 tax units, got {len(tax_units)}. Tax units: {tax_units}"
-    
-    # Both should be filing as single since they're filing separately
-    # (In the US tax system, when married filing separately, each return is essentially a single return)
-    assert all(tax_units['filing_status'] == FILING_STATUS['SINGLE']), \
-        f"Expected all tax units to be 'single', got {tax_units['filing_status'].unique()}"
-    
-    # Verify incomes - should be the individual incomes
-    incomes = sorted([t['income'] for t in tax_units.to_dict('records')])
-    assert incomes == [-20000, 100000], f"Expected incomes [-20000, 100000], got {incomes}"
+
+    # Both should be filing as 'married_filing_separately' (the constructor's
+    # canonical filing-status string for MFS).
+    assert all(tax_units['filing_status'] == FILING_STATUS['SEPARATE']), \
+        f"Expected all to be MFS, got {tax_units['filing_status'].unique()}"
+
+    # Verify incomes — should be the individual incomes (not pooled).
+    incomes = sorted(t['income'] for t in tax_units.to_dict('records'))
+    assert incomes == [5_000, 500_000], f"Expected [5000, 500000], got {incomes}"
 
 if __name__ == "__main__":
     # Run tests when executed directly
