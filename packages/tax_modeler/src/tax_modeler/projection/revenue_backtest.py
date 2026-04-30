@@ -1,46 +1,52 @@
 """Revenue walk-forward backtest.
 
 Wraps census_forecaster's ACS walk-forward harness
-(:mod:`census_forecaster.backtest.acs`) with a simplified Hawaii income-tax
-function.  For each fold the projected income is passed through
-``apply_hawaii_tax_brackets`` to produce a projected revenue, and the "actual"
-revenue is derived by applying the same function to the observed ACS income at
-the target year.
+(:mod:`census_forecaster.backtest.acs`) with Hawaii income-tax functions.
+For each fold the projected income is passed through the tax function to
+produce a projected revenue, and the "actual" revenue is derived by applying
+the same function to the observed ACS income at the target year.
 
 This gives a self-contained, DOTAX-data-free check that income-forecast
-quality translates to revenue-forecast quality — the end-to-end validation
-that Phases A and A.5 set up.
+quality translates to revenue-forecast quality.
 
-Why a surrogate tax function?
-------------------------------
-The full resident pipeline (PUMS → TaxUnitConstructor → HawaiiCalculator) is
-too heavy to instantiate inside a unit-level backtest.  A surrogate that has
-the right *shape* — piecewise-linear with marginal-rate jumps — is sufficient
-to verify:
+Tax functions (Phase D)
+------------------------
+Two tax-function families are available:
 
-1. The revenue CI is correctly propagated via the delta method.
-2. Ensemble income accuracy translates to better revenue accuracy than
-   carry-forward (the key ship gate).
-3. Revenue MAPE and CI coverage are finite and in a sane range.
+* **Real bracket schedule** (:mod:`tax_modeler.projection.hawaii_tax_real`) —
+  Phase D default.  Loads the 12-bracket Hawaii schedule from the bundled
+  ``hawaii_tax_brackets_master_all.csv`` for 2018-vintage (TY≤2024) and
+  2025-vintage (Act 46, TY≥2025) brackets.  ``hawaii_tax_weighted`` and
+  ``hawaii_marginal_weighted`` apply a filing-status-weighted average using
+  approximate DOTAX SOI 2022 distribution weights (single/MFS 52%, joint
+  37%, HoH 11%).  These are the *default* ``tax_fn`` / ``marginal_fn`` for
+  ``run_revenue_backtest``.
 
-The surrogate brackets are calibrated so that at Hawaii's current median HH
-income (~$83k) the effective rate is approximately 5%, which is in line with
-published DOTAX aggregate data.  They are NOT meant for tax planning.
+* **3-bracket surrogate** (``apply_hawaii_tax_brackets`` below) — retained
+  for backward compatibility and unit testing.  Uses a flat 4% bottom rate
+  on $0–$48k AGI, which under-estimates the real lower-bracket accumulation.
+  Pass ``tax_fn=apply_hawaii_tax_brackets`` to restore Phase B behaviour.
+
+DOTAX calibration context
+--------------------------
+At the 2022 Honolulu ACS median ($83,737), ``hawaii_tax_weighted`` gives an
+effective rate ~6.5% (before credits), vs DOTAX Table 12A $75k–$100k bracket
+average of $4,751.  See :mod:`hawaii_tax_real` for full discussion of the
+~15% gap (income-distribution effect within bracket + itemized deductions).
 
 Module layout
 -------------
 ``apply_hawaii_tax_brackets(income)``
-    Surrogate piecewise-linear tax function.
+    3-bracket surrogate (Phase B legacy; kept for backward compat).
+
+``marginal_rate(income)``
+    Surrogate marginal rate helper.
 
 ``run_revenue_backtest(series_by_key, anchors, ...)``
-    Walk-forward driver.  Internally calls each method's projector, converts
-    projected and actual income to revenue, and scores with
-    ``_summarise_rows`` from the backtest harness.
+    Walk-forward driver; defaults to ``hawaii_tax_weighted`` / ``hawaii_marginal_weighted``.
 
 ``revenue_mape_vs_income_mape(series_by_key, anchors, ...)``
-    Convenience diagnostic: returns a dict comparing revenue-level and
-    income-level MAPE for each method so callers can see the amplification
-    (or dampening) introduced by the tax function.
+    Diagnostic: income vs revenue MAPE amplification per method.
 """
 from __future__ import annotations
 
@@ -57,6 +63,10 @@ from census_forecaster.backtest.acs import (
     run_backtest,
 )
 from census_forecaster.acs.projection import effective_year
+from tax_modeler.projection.hawaii_tax_real import (
+    hawaii_tax_weighted,
+    hawaii_marginal_weighted,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -150,8 +160,8 @@ def run_revenue_backtest(
     horizon: int | None = None,
     horizons: Sequence[int] | None = None,
     methods: dict[str, ProjectorFn] | None = None,
-    tax_fn: Callable[[float], float] = apply_hawaii_tax_brackets,
-    marginal_fn: Callable[[float], float] = marginal_rate,
+    tax_fn: Callable[[float], float] = hawaii_tax_weighted,
+    marginal_fn: Callable[[float], float] = hawaii_marginal_weighted,
     conformal_quantiles: Sequence | None = None,
 ) -> dict[str, BacktestSummary]:
     """Run a revenue-level walk-forward backtest.
@@ -179,10 +189,13 @@ def run_revenue_backtest(
         Dict mapping method name → :data:`ProjectorFn`.  Defaults to
         ``DEFAULT_METHODS`` from ``census_forecaster.backtest.acs``.
     tax_fn:
-        Income → revenue function.  Default: ``apply_hawaii_tax_brackets``.
+        Income → revenue function.  Default: ``hawaii_tax_weighted`` (Phase D
+        real bracket schedule, filing-status-weighted).  Pass
+        ``tax_fn=apply_hawaii_tax_brackets`` to restore Phase B surrogate.
     marginal_fn:
         Income → marginal rate function (derivative of ``tax_fn``).
-        Used for delta-method SE propagation.  Default: ``marginal_rate``.
+        Used for delta-method SE propagation.  Default:
+        ``hawaii_marginal_weighted``.
     conformal_quantiles:
         Optional list of ``RevenueConformalRecord`` from Phase C.  When
         provided, the CI half-width is floored at ``q × se_revenue`` (in
@@ -299,8 +312,8 @@ def revenue_mape_vs_income_mape(
     horizon: int | None = None,
     horizons: Sequence[int] | None = None,
     methods: dict[str, ProjectorFn] | None = None,
-    tax_fn: Callable[[float], float] = apply_hawaii_tax_brackets,
-    marginal_fn: Callable[[float], float] = marginal_rate,
+    tax_fn: Callable[[float], float] = hawaii_tax_weighted,
+    marginal_fn: Callable[[float], float] = hawaii_marginal_weighted,
 ) -> dict[str, dict[str, float]]:
     """Return per-method ``{"income_mape": ..., "revenue_mape": ..., "amplification": ...}``.
 

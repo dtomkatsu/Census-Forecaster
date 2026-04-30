@@ -30,6 +30,7 @@ import math
 import pytest
 
 from common.models import AcsObservation
+from tax_modeler.projection.hawaii_tax_real import hawaii_tax_weighted
 from tax_modeler.projection.revenue_backtest import (
     apply_hawaii_tax_brackets,
     marginal_rate,
@@ -222,7 +223,7 @@ class TestRunRevenueBacktest:
 
     def test_projected_revenue_is_tax_of_projected_income(self, panel_flat):
         """For a flat series, carry-forward projects the last income;
-        the revenue row should equal tax(last_income)."""
+        the revenue row should equal the default tax_fn applied to that income."""
         from census_forecaster.backtest.acs import DEFAULT_METHODS
 
         # Restrict to carry_forward for determinism.
@@ -232,7 +233,8 @@ class TestRunRevenueBacktest:
         )
         row = summaries["carry_forward"].rows[0]
         # Last income in the flat series is 75_000 (constant).
-        expected_rev = apply_hawaii_tax_brackets(75_000.0)
+        # Default tax_fn is hawaii_tax_weighted (Phase D real brackets).
+        expected_rev = hawaii_tax_weighted(75_000.0)
         assert row.projected == pytest.approx(expected_rev, rel=1e-6)
         # Actual income at 2022 is also 75_000, so actual_revenue == expected_rev.
         assert row.actual == pytest.approx(expected_rev, rel=1e-6)

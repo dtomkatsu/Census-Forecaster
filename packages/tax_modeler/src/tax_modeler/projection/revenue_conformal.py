@@ -416,10 +416,11 @@ def run_calibrated_revenue_backtest(
         summaries — dict[method → BacktestSummary] on eval anchors,
             with conformal-floored CIs.
     """
-    from .revenue_backtest import run_revenue_backtest, apply_hawaii_tax_brackets, marginal_rate as _mr
+    from .revenue_backtest import run_revenue_backtest
+    from .hawaii_tax_real import hawaii_tax_weighted, hawaii_marginal_weighted
 
-    _tax = tax_fn or apply_hawaii_tax_brackets
-    _mr_fn = marginal_fn or _mr
+    _tax = tax_fn or hawaii_tax_weighted
+    _mr_fn = marginal_fn or hawaii_marginal_weighted
 
     # Step 1: calibrate
     records = calibrate_revenue_conformal(
