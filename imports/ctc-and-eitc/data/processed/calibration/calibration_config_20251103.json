@@ -1,0 +1,73 @@
+{
+  "metadata": {
+    "created": "2025-11-03T14:37:43.136960",
+    "purpose": "Hawaii Tax Model Calibration to FY 2025 Actuals",
+    "version": "2.0"
+  },
+  "base_year": {
+    "year": 2025,
+    "total_revenue": 3288.0,
+    "resident_revenue": 2998.656,
+    "nonresident_share": 0.088,
+    "note": "Using aggressive scenario base"
+  },
+  "targets": {
+    "year": 2026,
+    "resident_revenue": 3074,
+    "total_revenue": 3371,
+    "growth_rate": 0.025
+  },
+  "ensemble_weights": {
+    "fy_actual_2022_2024": {
+      "current_weight": 0.0,
+      "growth_rate": -0.0386869871043376,
+      "new_weight": 0.2,
+      "note": "fy_actual_2022_2024 from config"
+    },
+    "fy_2025_estimate": {
+      "current_weight": 0.0,
+      "growth_rate": 0.0024390243902439046,
+      "new_weight": 0.3,
+      "note": "fy_2025_estimate from config"
+    },
+    "dotax_2018_2021": {
+      "current_weight": 0.0,
+      "growth_rate": 0.111,
+      "new_weight": 0.2,
+      "note": "dotax_2018_2021 from config"
+    },
+    "bls_wage": {
+      "current_weight": 0.0,
+      "growth_rate": 0.055,
+      "new_weight": 0.2,
+      "note": "bls_wage from config"
+    },
+    "acs_income": {
+      "current_weight": 0.0,
+      "growth_rate": 0.062,
+      "new_weight": 0.05,
+      "note": "acs_income from config"
+    },
+    "demographics": {
+      "current_weight": 0.0,
+      "growth_rate": 0.011,
+      "new_weight": 0.05,
+      "note": "demographics from config"
+    }
+  },
+  "adjustments": {
+    "income_scaling": 0.9320800485142511,
+    "capital_gains_target_pct": 0.025,
+    "credit_reduction_rate": 0.1
+  },
+  "act46": {
+    "impact_total": -597,
+    "impact_rate": -0.199,
+    "applies_to": "primarily_residents"
+  },
+  "validation_thresholds": {
+    "revenue_tolerance": 0.05,
+    "growth_rate_tolerance": 0.01,
+    "act46_tolerance": 0.1
+  }
+}
