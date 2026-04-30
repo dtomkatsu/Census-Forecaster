@@ -112,6 +112,8 @@ DIRECT_INDICATORS: tuple[str, ...] = (
     # inconsistent. B01002_001E (median age) is the stable single-code
     # substitute — same demographic signal, no structural break.
     "B01002_001E",     # Median age (years)
+    # Income distribution (Phase H)
+    "B19082_005E",    # Top-quintile income share (% of aggregate HH income)
 )
 
 # Derived indicators: (output_name, numerator_codes, denominator_code).

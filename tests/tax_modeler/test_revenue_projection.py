@@ -63,6 +63,9 @@ def _make_projection(**kwargs) -> RevenueProjection:
         base_per_filer_revenue=4_769.80,
         income_growth_factor=1.338,
         revenue_growth_pct=38.4,
+        # Phase H fields — optional, default None
+        top_income_scale=None,
+        b19082_top_share_projected=None,
     )
     defaults.update(kwargs)
     return RevenueProjection(**defaults)
@@ -97,6 +100,15 @@ class TestRevenueProjectionDataclass:
         assert proj.base_per_filer_revenue > 0
         assert proj.income_growth_factor > 0
         assert math.isfinite(proj.revenue_growth_pct)
+        # Phase H fields: None by default (B19082 not in panel yet)
+        assert proj.top_income_scale is None
+        assert proj.b19082_top_share_projected is None
+
+    def test_phase_h_fields_accept_float(self):
+        """top_income_scale and b19082_top_share_projected accept float values."""
+        proj = _make_projection(top_income_scale=1.03, b19082_top_share_projected=0.521)
+        assert proj.top_income_scale == pytest.approx(1.03)
+        assert proj.b19082_top_share_projected == pytest.approx(0.521)
 
     def test_ci_ordering(self):
         proj = _make_projection(ci90_low=5_000.0, ci90_high=7_000.0)

@@ -6,6 +6,7 @@ Ties together the full pipeline:
 * **Phase E** — DOTAX-calibrated concentration model (per-filer revenue)
 * **Phase F** — concentration_marginal_fn for delta-method SE propagation
 * **Phase C** — optional split-conformal CI floor
+* **Phase H** — B19082_005E top-quintile share projection (when in panel)
 
 Usage
 -----
@@ -124,6 +125,15 @@ class RevenueProjection:
     revenue_growth_pct:
         ``(per_filer_revenue / base_per_filer_revenue − 1) × 100``.
         Revenue grows faster than income due to bracket creep.
+    top_income_scale:
+        B19082-derived scale factor applied to top-quintile brackets
+        (``projected_share / base_share``).  ``None`` when B19082_005E is
+        not in the bundled panel or ``use_b19082=False``.  When not ``None``
+        the top brackets (AGI ≥ $75k) grow by this ratio beyond the uniform
+        income growth — models top/median income divergence.
+    b19082_top_share_projected:
+        Projected B19082_005E top-quintile income share (fraction 0–1).
+        ``None`` when B19082 data is unavailable.
     """
     target_year: int
     geoid: str
@@ -144,6 +154,9 @@ class RevenueProjection:
     # Derived
     income_growth_factor: float
     revenue_growth_pct: float
+    # B19082 top-quintile divergence (Phase H)
+    top_income_scale: Optional[float]
+    b19082_top_share_projected: Optional[float]
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +171,7 @@ def project_revenue_per_filer(
     marginal_fn: Optional[Callable[[float], float]] = None,
     conformal_quantiles: Optional[Sequence] = None,
     anchor_year: Optional[int] = None,
+    use_b19082: bool = True,
 ) -> Optional[RevenueProjection]:
     """Project per-filer revenue to ``target_year`` using the bundled ACS panel.
 
@@ -205,6 +219,12 @@ def project_revenue_per_filer(
         Last ACS year to include in the training series.  Default: the
         latest 1-year ACS vintage in the panel for this geoid.  Set
         explicitly to reproduce a historical forecast.
+    use_b19082:
+        When ``True`` (default), attempt to load B19082_005E top-quintile
+        income share from the bundled panel and compute ``top_income_scale``
+        for the concentration model.  If B19082_005E is not yet in the
+        panel, this degrades gracefully to uniform income growth.
+        Set ``False`` to skip B19082 entirely and always use uniform growth.
 
     Returns
     -------
@@ -288,8 +308,41 @@ def project_revenue_per_filer(
 
     income_se = fp.se_total
 
-    # 4–5. Revenue + delta-method SE
-    per_filer_rev = fn(projected_income)
+    # 4. B19082 top-quintile divergence (Phase H)
+    top_income_scale: Optional[float] = None
+    b19082_top_share_projected: Optional[float] = None
+    if use_b19082 and tax_fn is None:
+        # Only apply B19082 when using the default concentration model;
+        # custom tax_fn callers opt out of the B19082 layer.
+        try:
+            from tax_modeler.projection.b19082_projection import (
+                compute_top_income_scale,
+                project_top_quintile_share,
+            )
+            top_income_scale = compute_top_income_scale(
+                target_year=target_year,
+                geoid=geoid,
+                anchor_year=anchor_year,
+            )
+            if top_income_scale is not None:
+                b19082_top_share_projected = project_top_quintile_share(
+                    target_year=target_year,
+                    geoid=geoid,
+                    anchor_year=anchor_year,
+                )
+        except Exception as exc:
+            logger.debug("B19082 computation failed (%s); using uniform growth", exc)
+            top_income_scale = None
+
+    # 5. Revenue + delta-method SE
+    if top_income_scale is not None:
+        # Use concentration model directly with top_income_scale
+        from tax_modeler.projection.revenue_concentration import expected_revenue_per_filer
+        per_filer_rev = expected_revenue_per_filer(
+            projected_income, top_income_scale=top_income_scale
+        )
+    else:
+        per_filer_rev = fn(projected_income)
     mr = mr_fn(projected_income)
     revenue_se = abs(mr) * income_se
 
@@ -333,6 +386,8 @@ def project_revenue_per_filer(
         base_per_filer_revenue=base_rev,
         income_growth_factor=income_growth_factor,
         revenue_growth_pct=revenue_growth_pct,
+        top_income_scale=top_income_scale,
+        b19082_top_share_projected=b19082_top_share_projected,
     )
     logger.info(
         "Revenue projection [%s/%s → %d]: income=%.0f (±%.0f) "
@@ -356,6 +411,7 @@ def project_revenue_2026(
     marginal_fn: Optional[Callable[[float], float]] = None,
     conformal_quantiles: Optional[Sequence] = None,
     anchor_year: Optional[int] = None,
+    use_b19082: bool = True,
 ) -> Optional[RevenueProjection]:
     """Project per-filer revenue to 2026 — the tax model primary target year.
 
@@ -368,7 +424,7 @@ def project_revenue_2026(
         Default ``"15003"`` (Honolulu County).
     method:
         Default ``"ensemble"``.
-    tax_fn, marginal_fn, conformal_quantiles, anchor_year:
+    tax_fn, marginal_fn, conformal_quantiles, anchor_year, use_b19082:
         Forwarded to :func:`project_revenue_per_filer`.
 
     Returns
@@ -383,6 +439,7 @@ def project_revenue_2026(
         marginal_fn=marginal_fn,
         conformal_quantiles=conformal_quantiles,
         anchor_year=anchor_year,
+        use_b19082=use_b19082,
     )
 
 

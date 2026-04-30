@@ -51,13 +51,16 @@ B19082 integration
 -------------------
 When B19082_005E (top quintile income share) is projected:
 
-    top_growth = projected_top_quintile_share / base_top_quintile_share
-                 × projected_median_income / base_median_income
+    top_income_scale = projected_top_quintile_share / base_top_quintile_share
 
-Pass ``top_income_scale=top_growth`` to scale the high-income brackets
-independently.  This models the empirically common case where top-income
-growth diverges from median income growth (technology booms, capital gains
-events, out-migration of high earners, etc.).
+Pass ``top_income_scale`` to scale the high-income brackets independently.
+Within ``expected_revenue_per_filer``, top brackets are scaled by
+``base_growth × top_income_scale``, giving total top-bracket growth equal
+to ``(proj_share / base_share) × (proj_median / base_median)`` — the
+product of the share shift and the median growth, which is the correct
+expression for absolute top-quintile income growth.  This models the
+empirically common case where top-income growth diverges from median income
+growth (technology booms, capital gains events, out-migration, etc.).
 
 Usage
 ------
@@ -202,8 +205,12 @@ def expected_revenue_per_filer(
         Optional separate scale factor for the top-quintile brackets (AGI
         ≥ $75k).  When provided, top brackets scale by
         ``top_income_scale × base_growth`` rather than ``base_growth``.
-        Derived from projected B19082_005E top-quintile income share:
-        ``top_income_scale = (top_share_projected / top_share_base) / base_growth``
+        Derived from projected B19082_005E top-quintile income share::
+
+            top_income_scale = top_share_projected / top_share_base
+
+        So the total top-bracket growth = ``(proj_share / base_share) × base_growth``,
+        the correct absolute growth when the share shifts.
         Omit (default None) to use the same growth factor for all brackets.
 
     Returns
