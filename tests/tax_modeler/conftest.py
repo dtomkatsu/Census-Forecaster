@@ -37,38 +37,33 @@ import pytest
 # Inherited-failure registry (xfail at collection time)
 # -----------------------------------------------------------------------------
 
-# These 20 tests were already failing in the ctc-and-eitc source repo at
-# the time of the big-bang import. Verified by running the tests against
-# /Users/dtomkatsu/ctc-and-eitc directly. Triaging these is a follow-up;
-# until then they're marked xfail so CI doesn't fail on imported breakage.
+# Tests that fail for documented reasons unrelated to fixture bugs.
+# 13 of the original 20 inherited failures were fixture bugs (RELSHIPP
+# codes, missing WGTP, FILING_STATUS dict mismatches, missed
+# `apply_2026_growth=False`, etc.) and have been fixed in-place. The
+# remaining 7 fail because they pin specific dollar arithmetic against
+# Hawaii bracket data, or specific MFS-detection heuristics that the
+# constructor has since changed. Pinning the right expectations
+# requires deep tax-bracket review and is left to a future cleanup.
 KNOWN_FAILING_TESTS: set[str] = {
-    # Calculator scenarios: HB2306 / SB3125 bracket assertions
+    # HB 2306 / SB 3125 bracket-arithmetic spot checks. Test asserts
+    # diff of $2,400 when HB 2306 raises the top-3 brackets by 1pp on a
+    # $700k joint filer; calculator currently produces $1,524. Test was
+    # likely written against a different bracket structure than the one
+    # currently shipping.
     "tests/tax_modeler/test_calculator_scenarios.py::TestBrackets::test_hb2306_low_income_no_change",
     "tests/tax_modeler/test_calculator_scenarios.py::TestBrackets::test_hb2306_top_bracket_joint_700k",
     "tests/tax_modeler/test_calculator_scenarios.py::TestSpotChecks::test_joint_700k_no_kids_net_tax",
     "tests/tax_modeler/test_calculator_scenarios.py::TestSpotChecks::test_single_300k_no_kids_act46_vs_hb2306",
-    # Smoke tests: tax-unit construction
-    "tests/tax_modeler/test_smoke.py::test_income_calculation",
-    "tests/tax_modeler/test_smoke.py::test_married_couple_joint",
+    # MFS-detection heuristic: test expects the constructor to split a
+    # married couple into 2 separate units when one spouse has a
+    # significant business loss. The constructor classifies them as
+    # joint instead. The "right" answer depends on which spouse pays
+    # less tax under MFS vs joint, which involves running the full tax
+    # calc — heavier than the constructor wants to do.
     "tests/tax_modeler/test_smoke.py::test_married_filing_separately",
-    "tests/tax_modeler/test_smoke.py::test_single_adult_household",
-    # Constructor unit tests
     "tests/tax_modeler/units/test_constructor.py::TestTaxUnitConstructor::test_create_rule_based_units",
     "tests/tax_modeler/units/test_constructor.py::TestTaxUnitConstructor::test_process_household",
-    # Dependency identification
-    "tests/tax_modeler/units/test_dependencies.py::TestDependencies::test_identify_dependents",
-    "tests/tax_modeler/units/test_dependencies.py::TestDependencies::test_is_qualifying_child_positive",
-    # Income calculation
-    "tests/tax_modeler/units/test_income.py::TestIncomeCalculations::test_calculate_person_income",
-    "tests/tax_modeler/units/test_income.py::TestIncomeCalculations::test_calculate_tax_unit_income",
-    "tests/tax_modeler/units/test_income.py::TestIncomeCalculations::test_income_with_adjustment",
-    # Head-of-household qualification
-    "tests/tax_modeler/units/test_status_hoh.py::TestHeadOfHousehold::test_has_qualifying_person_positive_child",
-    "tests/tax_modeler/units/test_status_hoh.py::TestHeadOfHousehold::test_has_qualifying_person_positive_relative",
-    "tests/tax_modeler/units/test_status_hoh.py::TestHeadOfHousehold::test_is_head_of_household_positive",
-    "tests/tax_modeler/units/test_status_hoh.py::TestHeadOfHousehold::test_paid_half_home_cost_positive",
-    # Validation
-    "tests/tax_modeler/units/test_validation.py::test_validate_tax_unit_invalid_status",
 }
 
 

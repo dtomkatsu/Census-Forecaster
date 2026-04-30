@@ -18,13 +18,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Filing status constants
+# Filing status constants — values match the strings emitted in the
+# ``filing_status`` column of the DataFrame returned by
+# ``TaxUnitConstructor.create_rule_based_units``. The shorter forms
+# (``'joint'``, ``'separate'``) are also produced in a sibling
+# ``filing_status_normalized`` column for callers (e.g. IPF calibration)
+# that prefer them.
 FILING_STATUS = {
     'SINGLE': 'single',
-    'JOINT': 'joint',
-    'SEPARATE': 'separate',
+    'JOINT': 'married_filing_jointly',
+    'SEPARATE': 'married_filing_separately',
     'HEAD_OF_HOUSEHOLD': 'head_of_household',
-    'QUALIFYING_WIDOW': 'qualifying_widow'
+    'QUALIFYING_WIDOW': 'qualifying_widow',
 }
 
 class TaxUnitConstructor:

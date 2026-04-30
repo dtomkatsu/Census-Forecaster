@@ -46,7 +46,8 @@ def create_test_household(**overrides):
         'NP': 2,
         'TYPE': 1,
         'TEN': 1,
-        'YBL': 2000
+        'YBL': 2000,
+        'WGTP': 100,  # Household weight — TaxUnitConstructor skips households with WGTP <= 0.
     }
     hh.update(overrides)
     return hh

@@ -9,25 +9,27 @@ import pandas as pd
 import numpy as np
 from tax_modeler.units.dependencies import identify_dependents, _is_qualifying_child, _is_qualifying_relative
 
-# Test data
+# Test data — RELSHIPP uses post-2018 PUMS integer codes:
+#   20 = Reference person, 21 = Spouse, 22-25 = Child/grandchild,
+#   27 = Parent, 30 = Other relative, 34 = Foster child, 36 = Roommate.
 def create_test_household():
     """Create a test household with various members."""
     # Create household members
     members = [
         # Primary filer (adult)
-        {'SERIALNO': '1', 'SPORDER': '1', 'AGEP': 35, 'SEX': 1, 'MAR': 5, 'RELSHIPP': '20', 'SCHL': 16, 'SCH': 0, 'WAGP': 50000},
+        {'SERIALNO': '1', 'SPORDER': '1', 'AGEP': 35, 'SEX': 1, 'MAR': 5, 'RELSHIPP': 20, 'SCHL': 16, 'SCH': 0, 'WAGP': 50000},
         # Spouse
-        {'SERIALNO': '1', 'SPORDER': '2', 'AGEP': 33, 'SEX': 2, 'MAR': 1, 'RELSHIPP': '21', 'SCHL': 16, 'SCH': 0, 'WAGP': 45000},
-        # Qualifying child 1 (under 19)
-        {'SERIALNO': '1', 'SPORDER': '3', 'AGEP': 10, 'SEX': 1, 'MAR': 0, 'RELSHIPP': '00', 'SCHL': 3, 'SCH': 1, 'WAGP': 0},
-        # Qualifying child 2 (student under 24)
-        {'SERIALNO': '1', 'SPORDER': '4', 'AGEP': 20, 'SEX': 2, 'MAR': 0, 'RELSHIPP': '00', 'SCHL': 16, 'SCH': 1, 'WAGP': 5000},
-        # Non-qualifying person (adult)
-        {'SERIALNO': '1', 'SPORDER': '5', 'AGEP': 25, 'SEX': 1, 'MAR': 0, 'RELSHIPP': '16', 'SCHL': 16, 'SCH': 0, 'WAGP': 30000},
+        {'SERIALNO': '1', 'SPORDER': '2', 'AGEP': 33, 'SEX': 2, 'MAR': 1, 'RELSHIPP': 21, 'SCHL': 16, 'SCH': 0, 'WAGP': 45000},
+        # Qualifying child 1 (under 19, biological child)
+        {'SERIALNO': '1', 'SPORDER': '3', 'AGEP': 10, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 22, 'SCHL': 3, 'SCH': 1, 'WAGP': 0},
+        # Qualifying child 2 (student under 24, biological child)
+        {'SERIALNO': '1', 'SPORDER': '4', 'AGEP': 20, 'SEX': 2, 'MAR': 0, 'RELSHIPP': 22, 'SCHL': 16, 'SCH': 1, 'WAGP': 5000},
+        # Non-qualifying person (unrelated adult, e.g., roommate)
+        {'SERIALNO': '1', 'SPORDER': '5', 'AGEP': 25, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 36, 'SCHL': 16, 'SCH': 0, 'WAGP': 30000},
         # Qualifying relative (elderly parent)
-        {'SERIALNO': '1', 'SPORDER': '6', 'AGEP': 70, 'SEX': 2, 'MAR': 3, 'RELSHIPP': '03', 'SCHL': 10, 'SCH': 0, 'WAGP': 10000},
+        {'SERIALNO': '1', 'SPORDER': '6', 'AGEP': 70, 'SEX': 2, 'MAR': 3, 'RELSHIPP': 27, 'SCHL': 10, 'SCH': 0, 'WAGP': 10000},
         # Foster child
-        {'SERIALNO': '1', 'SPORDER': '7', 'AGEP': 12, 'SEX': 1, 'MAR': 0, 'RELSHIPP': '05', 'SCHL': 4, 'SCH': 1, 'WAGP': 0}
+        {'SERIALNO': '1', 'SPORDER': '7', 'AGEP': 12, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 34, 'SCHL': 4, 'SCH': 1, 'WAGP': 0},
     ]
     
     # Create DataFrame and set index

@@ -36,13 +36,14 @@ def create_test_data():
         {'SERIALNO': '5', 'SPORDER': '2', 'AGEP': 43, 'SEX': 2, 'MAR': 1, 'RELSHIPP': 21, 'WAGP': 20000, 'HINCP': 100000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16}
     ]
     
-    # Create household data
+    # Create household data — WGTP is required: TaxUnitConstructor skips
+    # households with WGTP <= 0 (group-quarters / invalid sentinel).
     hh_data = [
-        {'SERIALNO': '1', 'HINCP': 100000, 'ADJINC': 1.0},  # Joint filers
-        {'SERIALNO': '2', 'HINCP': 50000, 'ADJINC': 1.0},   # Single parent
-        {'SERIALNO': '3', 'HINCP': 50000, 'ADJINC': 1.0},   # Single person
-        {'SERIALNO': '4', 'HINCP': 100000, 'ADJINC': 1.0},  # MFS - income difference
-        {'SERIALNO': '5', 'HINCP': 100000, 'ADJINC': 1.0}   # MFS - non-resident alien
+        {'SERIALNO': '1', 'HINCP': 100000, 'ADJINC': 1.0, 'WGTP': 100},  # Joint filers
+        {'SERIALNO': '2', 'HINCP':  50000, 'ADJINC': 1.0, 'WGTP': 100},  # Single parent
+        {'SERIALNO': '3', 'HINCP':  50000, 'ADJINC': 1.0, 'WGTP': 100},  # Single person
+        {'SERIALNO': '4', 'HINCP': 100000, 'ADJINC': 1.0, 'WGTP': 100},  # MFS - income difference
+        {'SERIALNO': '5', 'HINCP': 100000, 'ADJINC': 1.0, 'WGTP': 100},  # MFS - non-resident alien
     ]
     
     # Create DataFrames

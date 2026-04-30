@@ -62,7 +62,27 @@ class TaxUnitValidator:
                     tax_unit.get('filer_id'),
                     field
                 ))
-        
+
+        # Validate filing status — must be one of the recognized values.
+        valid_statuses = {
+            'single',
+            'married_filing_jointly',
+            'married_filing_separately',
+            'head_of_household',
+            'qualifying_widow',
+            # Common aliases / short forms emitted by some calibration paths:
+            'joint',
+            'married_filing_separate',
+        }
+        if 'filing_status' in tax_unit and tax_unit['filing_status'] not in valid_statuses:
+            issues.append(ValidationIssue(
+                f"Invalid filing status: {tax_unit['filing_status']!r}",
+                ValidationSeverity.ERROR,
+                tax_unit.get('filer_id'),
+                'filing_status',
+                {'valid_statuses': sorted(valid_statuses)},
+            ))
+
         # Check dependents
         if 'num_dependents' in tax_unit and 'dependents' in tax_unit:
             if not isinstance(tax_unit['dependents'], (list, set, tuple)):
