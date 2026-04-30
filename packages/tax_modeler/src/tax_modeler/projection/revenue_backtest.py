@@ -152,6 +152,7 @@ def run_revenue_backtest(
     methods: dict[str, ProjectorFn] | None = None,
     tax_fn: Callable[[float], float] = apply_hawaii_tax_brackets,
     marginal_fn: Callable[[float], float] = marginal_rate,
+    conformal_quantiles: Sequence | None = None,
 ) -> dict[str, BacktestSummary]:
     """Run a revenue-level walk-forward backtest.
 
@@ -182,13 +183,20 @@ def run_revenue_backtest(
     marginal_fn:
         Income → marginal rate function (derivative of ``tax_fn``).
         Used for delta-method SE propagation.  Default: ``marginal_rate``.
+    conformal_quantiles:
+        Optional list of ``RevenueConformalRecord`` from Phase C.  When
+        provided, the CI half-width is floored at ``q × se_revenue`` (in
+        addition to the Gaussian ``Z₉₀ × se_revenue``), providing the
+        marginal coverage guarantee.  Produced by
+        :func:`tax_modeler.projection.revenue_conformal.calibrate_revenue_conformal`.
 
     Returns
     -------
     dict[str, BacktestSummary]
         One summary per method.  ``BacktestRow.actual`` / ``.projected`` hold
         revenue values; ``.ci90_low`` / ``.ci90_high`` are the
-        delta-method-propagated revenue intervals.
+        delta-method-propagated (and optionally conformal-floored) revenue
+        intervals.
     """
     if methods is None:
         methods = DEFAULT_METHODS
@@ -238,9 +246,18 @@ def run_revenue_backtest(
                     se_sample_rev = abs(mr) * fp.se_sample
                     se_forecast_rev = abs(mr) * fp.se_forecast
 
-                    # Revenue 90% CI from propagated SE (symmetric Gaussian)
-                    from common.moe import ci_from_se
-                    ci_lo, ci_hi = ci_from_se(rev_est, se_rev)
+                    # Revenue 90% CI: delta-method Gaussian, with optional
+                    # conformal floor (Phase C) that widens CI when q > Z₉₀.
+                    if conformal_quantiles:
+                        from tax_modeler.projection.revenue_conformal import (
+                            apply_revenue_conformal_floor,
+                        )
+                        ci_lo, ci_hi = apply_revenue_conformal_floor(
+                            rev_est, se_rev, conformal_quantiles, name, h,
+                        )
+                    else:
+                        from common.moe import ci_from_se
+                        ci_lo, ci_hi = ci_from_se(rev_est, se_rev)
 
                     rows_by_method[name].append(BacktestRow(
                         geoid=geoid,
