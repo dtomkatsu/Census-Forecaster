@@ -195,24 +195,30 @@ def apply_income_growth(income: float, is_resident: bool) -> float:
     """
     Apply appropriate income growth to project to 2026.
 
-    For **residents**, this delegates to
-    :func:`tax_modeler.projection.income_forecast.get_hawaii_real_growth_factor`
-    which computes the real-growth factor from census_forecaster's
-    calibrated multi-anchor ensemble forecast of Hawaii median household
-    income (B19013) deflated by Honolulu CPI. If that fails for any
-    reason (missing data, ensemble returning None, etc.), the function
-    falls back to the hardcoded ``RESIDENT_GROWTH`` constant.
+    Both paths consult census_forecaster's calibrated multi-anchor
+    ensemble:
 
-    For **nonresidents**, the hardcoded ``NONRESIDENT_GROWTH`` constant
-    is used (Phase A.5 will extend the bridge to a national income
-    series for this case).
+    - **Residents** delegate to
+      :func:`tax_modeler.projection.income_forecast.get_hawaii_real_growth_factor`,
+      which uses Honolulu B19013 deflated by Honolulu CPI All-Items.
+    - **Nonresidents** delegate to
+      :func:`tax_modeler.projection.income_forecast.get_national_real_growth_factor`,
+      which uses an inverse-variance-weighted basket of large mainland
+      US counties' B19013 forecasts deflated by the national PCE chain
+      price index.
+
+    Either path falls back to the hardcoded ``RESIDENT_GROWTH`` /
+    ``NONRESIDENT_GROWTH`` constant if the ensemble returns ``None`` or
+    raises any exception (logged at WARNING). Setting
+    ``TAX_MODELER_USE_ENSEMBLE_GROWTH=0`` forces the hardcoded path on
+    both branches.
 
     Args:
-        income: Base year income (2023 for residents, 2022 for nonresidents)
-        is_resident: True for Hawaii residents, False for nonresidents
+        income: Base year income (2023 for residents, 2022 for nonresidents).
+        is_resident: True for Hawaii residents, False for nonresidents.
 
     Returns:
-        Projected 2026 income (real terms)
+        Projected 2026 income (real terms).
     """
     factors = get_growth_factors(is_resident)
 
@@ -232,7 +238,23 @@ def apply_income_growth(income: float, is_resident: bool) -> float:
         except Exception as e:  # pragma: no cover - defensive guard
             # Defensive: ensemble path must never break income calculation.
             logger.warning(
-                "Ensemble growth factor failed (%s); using hardcoded %.4f",
+                "Resident ensemble factor failed (%s); using hardcoded %.4f",
+                e, factors.real_growth,
+            )
+    else:
+        try:
+            from tax_modeler.projection.income_forecast import (
+                get_national_real_growth_factor,
+            )
+            ensemble_factor = get_national_real_growth_factor(
+                base_year=factors.base_year,
+                target_year=factors.target_year,
+            )
+            if ensemble_factor is not None:
+                return income * ensemble_factor
+        except Exception as e:  # pragma: no cover - defensive guard
+            logger.warning(
+                "Nonresident ensemble factor failed (%s); using hardcoded %.4f",
                 e, factors.real_growth,
             )
 

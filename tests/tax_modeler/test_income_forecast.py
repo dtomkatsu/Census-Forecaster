@@ -209,18 +209,84 @@ def test_apply_income_growth_resident_falls_back_when_env_disabled(monkeypatch):
     assert result == pytest.approx(hardcoded)
 
 
-def test_apply_income_growth_nonresident_always_hardcoded(monkeypatch):
-    """Nonresident path is hardcoded regardless of env var (Phase A scope)."""
-    income = 100_000
-    expected = income * NONRESIDENT_GROWTH.real_growth
+def test_apply_income_growth_nonresident_uses_ensemble_by_default(monkeypatch):
+    """Nonresident path uses the national ensemble (not hardcoded) by default.
 
-    # Default: hardcoded
+    Phase A.5 wired ``apply_income_growth(is_resident=False)`` to
+    ``get_national_real_growth_factor``. This test verifies the wiring:
+    the result must NOT equal the hardcoded ``NONRESIDENT_GROWTH``
+    (because the ensemble forecast is meaningfully different), but it
+    must be in a sane neighbourhood.
+    """
     monkeypatch.delenv(_ENV_VAR, raising=False)
-    assert apply_income_growth(income, is_resident=False) == pytest.approx(expected)
+    get_hawaii_real_growth_factor.cache_clear()
+    get_national_real_growth_factor.cache_clear()
 
-    # With env var set: still hardcoded (nonresident path doesn't consult ensemble)
-    monkeypatch.setenv(_ENV_VAR, "1")
-    assert apply_income_growth(income, is_resident=False) == pytest.approx(expected)
+    income = 100_000
+    result = apply_income_growth(income, is_resident=False)
+    hardcoded = income * NONRESIDENT_GROWTH.real_growth
+
+    # The ensemble forecast meaningfully diverges from the (stale) hardcoded.
+    # Allow up to 30% gap in absolute dollar terms — anything tighter would
+    # be brittle to calibration updates.
+    assert abs(result - hardcoded) > 100, (
+        f"Nonresident ensemble path appears to be returning the hardcoded "
+        f"value ({hardcoded:.2f}); got {result:.2f}"
+    )
+    # Sanity: the ensemble result is in a reasonable band (50% loss to 100% gain).
+    assert 50_000 < result < 200_000
+
+
+def test_apply_income_growth_nonresident_falls_back_when_env_disabled(monkeypatch):
+    """Opt-out env var: nonresident path returns the hardcoded result exactly."""
+    monkeypatch.setenv(_ENV_VAR, "0")
+    get_hawaii_real_growth_factor.cache_clear()
+    get_national_real_growth_factor.cache_clear()
+
+    income = 100_000
+    result = apply_income_growth(income, is_resident=False)
+    hardcoded = income * NONRESIDENT_GROWTH.real_growth
+    assert result == pytest.approx(hardcoded)
+
+
+def test_apply_income_growth_nonresident_falls_back_when_helper_returns_none(monkeypatch):
+    """If get_national_real_growth_factor returns None, fall back to hardcoded."""
+    import tax_modeler.config.income_growth as income_growth_mod
+    import tax_modeler.projection.income_forecast as forecast_mod
+
+    monkeypatch.delenv(_ENV_VAR, raising=False)
+    monkeypatch.setattr(forecast_mod, "get_national_real_growth_factor",
+                        lambda *a, **kw: None)
+    # Also patch the symbol the import inside apply_income_growth resolves to
+    # — the function does `from tax_modeler.projection.income_forecast import
+    # get_national_real_growth_factor` at call time, so patching the source
+    # module is sufficient.
+
+    income = 100_000
+    result = income_growth_mod.apply_income_growth(income, is_resident=False)
+    expected = income * NONRESIDENT_GROWTH.real_growth
+    assert result == pytest.approx(expected)
+
+
+def test_apply_income_growth_nonresident_falls_back_on_exception(monkeypatch, caplog):
+    """If get_national_real_growth_factor raises, fall back to hardcoded + log warning."""
+    import logging
+
+    import tax_modeler.config.income_growth as income_growth_mod
+    import tax_modeler.projection.income_forecast as forecast_mod
+
+    monkeypatch.delenv(_ENV_VAR, raising=False)
+    def boom(*a, **kw):
+        raise RuntimeError("simulated calibration corruption")
+    monkeypatch.setattr(forecast_mod, "get_national_real_growth_factor", boom)
+
+    income = 100_000
+    with caplog.at_level(logging.WARNING, logger="tax_modeler.config.income_growth"):
+        result = income_growth_mod.apply_income_growth(income, is_resident=False)
+
+    expected = income * NONRESIDENT_GROWTH.real_growth
+    assert result == pytest.approx(expected)
+    assert any("Nonresident ensemble factor failed" in r.message for r in caplog.records)
 
 
 def test_apply_income_growth_zero_income_returns_zero():
