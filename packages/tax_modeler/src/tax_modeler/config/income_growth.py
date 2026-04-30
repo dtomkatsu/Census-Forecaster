@@ -125,10 +125,15 @@ RESIDENT_GROWTH = GrowthFactors(
 NONRESIDENT_GROWTH = GrowthFactors(
     base_year=2022,
     target_year=2026,
-    nominal_growth=1.1248,    # 12.48% total wage growth (national average)
-    inflation=1.0681,         # 6.81% total CPI increase
-    real_growth=1.053,        # 5.3% real growth (1.1248 / 1.0681)
-    description="Nonresident Income Growth (2022 DOTAX → 2026)"
+    nominal_growth=1.2000,    # 20.0% total (~4.66%/yr)
+                              # Basis: Census-published 2022→2024 actual +12.27%
+                              # ($74,580→$83,730); 2024→2026 projected +6.9%
+                              # (3.4%/yr, CBO 2025-26 consensus for wage growth)
+    inflation=1.1062,         # 10.62% PCE over 4 yrs (~2.58%/yr)
+                              # Source: bundled pce_deflator.json damped-trend
+                              # projection (2022=112.391 observed → 2026≈124.3)
+    real_growth=1.0849,       # 8.49% real = 1.2000 / 1.1062 (~2.06%/yr)
+    description="National Nonresident Income Growth (2022 DOTAX → 2026) [updated Apr 2026]"
 )
 
 

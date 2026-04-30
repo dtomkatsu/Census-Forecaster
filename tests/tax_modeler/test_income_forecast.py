@@ -304,11 +304,11 @@ def test_apply_income_growth_zero_income_returns_zero():
 # index. Aggregation is inverse-variance weighted geometric mean of the
 # per-county nominal_growth ratios.
 #
-# Ship gate is RELAXED to 2pp/yr (vs Phase A's 1pp/yr) because the
-# hardcoded NONRESIDENT_GROWTH constant (5.3% real / 4yr = 1.30%/yr) is
-# known to be stale: published US Census median household income
-# 2022→2024 grew +12.27% nominal, PCE inflation +6.47% → ~+2.7%/yr real.
-# The ensemble's +2.34%/yr is closer to actual data than the hardcoded.
+# Ship gate is 1pp/yr, same as Phase A (resident path).
+# NONRESIDENT_GROWTH was updated Apr 2026 from stale 1.30%/yr to 2.06%/yr
+# real (basis: Census 2022→2024 actual +12.27% + CBO 2024→2026 consensus;
+# PCE from bundled pce_deflator.json damped-trend).  The ensemble's
+# +2.34%/yr now sits 0.28pp/yr above the hardcoded, well within 1pp/yr.
 
 # -----------------------------------------------------------------------------
 # End-to-end & ship gate
@@ -322,25 +322,26 @@ def test_national_factor_returns_non_none():
     assert 0.5 < f < 2.0
 
 
-def test_national_factor_within_2pp_per_year_of_hardcoded():
-    """Ship gate: ensemble within 2pp/yr of hardcoded NONRESIDENT_GROWTH.
+def test_national_factor_within_1pp_per_year_of_hardcoded():
+    """Ship gate: ensemble within 1pp/yr of hardcoded NONRESIDENT_GROWTH.
 
-    Hardcoded is 5.3% real over 4 years (~1.30%/yr). Ensemble is
-    expected to project a higher real-growth rate (~2.3%/yr) because
-    actual published median household income data 2022→2024 shows
-    ~2.7%/yr real growth — the hardcoded value is stale.
+    Hardcoded is 8.49% real over 4 years (~2.06%/yr), updated Apr 2026
+    from the stale 1.30%/yr value using Census 2022→2024 observed data
+    and CBO 2024→2026 consensus wage growth.  The ensemble (8-county
+    B19013 + PCE) is expected at ~2.34%/yr — gap ≈ 0.28pp/yr, well
+    within the 1pp/yr threshold.
 
-    A 2pp/yr threshold catches catastrophic divergence (e.g.,
-    calibration drifts to project >5% real annual income growth) while
-    accepting the known modest divergence from the stale hardcoded.
+    A 1pp/yr threshold matches Phase A's resident ship gate and catches
+    meaningful calibration drift (e.g., projection drifts to >5%/yr real
+    or collapses to near-zero).
     """
     f = get_national_real_growth_factor(2022, 2026)
     assert f is not None
     diff_per_year = abs(f - NONRESIDENT_GROWTH.real_growth) / 4
-    assert diff_per_year < 0.02, (
+    assert diff_per_year < 0.01, (
         f"ensemble factor {f:.4f} diverges from hardcoded "
         f"{NONRESIDENT_GROWTH.real_growth:.4f} by {diff_per_year * 100:.2f}pp/yr; "
-        "exceeds 2pp/yr ship gate"
+        "exceeds 1pp/yr ship gate"
     )
 
 
