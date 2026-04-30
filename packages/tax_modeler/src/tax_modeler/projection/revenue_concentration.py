@@ -95,6 +95,9 @@ Module layout
 ``make_concentration_adjusted_fn(tax_fn)``
     Returns a one-arg callable ``income → E[tax(Y)]`` for use as a
     ``tax_fn`` parameter in ``run_revenue_backtest``.
+``concentration_marginal_fn(projected_median_income, ...)``
+    Effective marginal d(E[tax(Y)])/d(median) via central finite difference.
+    Drop-in ``marginal_fn`` for delta-method SE propagation.
 """
 from __future__ import annotations
 
@@ -375,3 +378,65 @@ def top_quintile_revenue_fraction(
     if total_rev <= 0:
         return TOP_QUINTILE_REVENUE_SHARE_2022
     return top_rev / total_rev
+
+
+# ---------------------------------------------------------------------------
+# Effective marginal (for delta-method SE propagation)
+# ---------------------------------------------------------------------------
+
+def concentration_marginal_fn(
+    projected_median_income: float,
+    tax_fn: Optional[Callable[[float], float]] = None,
+    base_median_income: float = DOTAX_2022_MEDIAN_INCOME,
+    eps_fraction: float = 1e-5,
+) -> float:
+    """Effective marginal of ``expected_revenue_per_filer`` w.r.t. ``projected_median_income``.
+
+    Computes ``d(expected_revenue_per_filer) / d(projected_median_income)``
+    via central finite differences.  Used as the ``marginal_fn`` for
+    delta-method SE propagation when the concentration model is ``tax_fn``.
+
+    Analytically this equals::
+
+        sum_i n_i × (rep_i / base) × tax_fn'(rep_i × growth) / sum_i n_i
+
+    — a bracket-weighted effective marginal sensitivity.  Numerical
+    differentiation is used because it avoids re-implementing the bracket
+    derivative and is more stable near discontinuities.
+
+    At the 2022 base (median=$83,737), the effective marginal is approximately
+    0.04–0.06 — lower than ``hawaii_marginal_weighted($83,737)`` (~0.08)
+    because most filers are in lower-rate brackets even though the high-income
+    tail drives 81% of revenue.
+
+    Parameters
+    ----------
+    projected_median_income:
+        Income at which to evaluate the derivative.
+    tax_fn:
+        Passed through to :func:`expected_revenue_per_filer`.
+    base_median_income:
+        Passed through to :func:`expected_revenue_per_filer`.
+    eps_fraction:
+        Relative step size for central difference.  Default 1e-5 gives
+        sub-0.01% accuracy in smooth bracket regions.
+
+    Returns
+    -------
+    float
+        Effective marginal ≥ 0 ($ revenue change per $ median-income change).
+    """
+    if projected_median_income <= 0 or base_median_income <= 0:
+        return 0.0
+    h = max(projected_median_income * eps_fraction, 1.0)
+    f_plus = expected_revenue_per_filer(
+        projected_median_income + h,
+        tax_fn=tax_fn,
+        base_median_income=base_median_income,
+    )
+    f_minus = expected_revenue_per_filer(
+        projected_median_income - h,
+        tax_fn=tax_fn,
+        base_median_income=base_median_income,
+    )
+    return (f_plus - f_minus) / (2.0 * h)

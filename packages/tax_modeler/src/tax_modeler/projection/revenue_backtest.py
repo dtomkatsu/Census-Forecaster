@@ -9,30 +9,36 @@ the same function to the observed ACS income at the target year.
 This gives a self-contained, DOTAX-data-free check that income-forecast
 quality translates to revenue-forecast quality.
 
-Tax functions (Phase D)
-------------------------
-Two tax-function families are available:
+Tax functions (Phase E default)
+--------------------------------
+Three tax-function families are available, in order of accuracy:
+
+* **Concentration model** (:mod:`tax_modeler.projection.revenue_concentration`) —
+  **Phase E default**.  DOTAX Table 12A bracket-weighted estimate that
+  simultaneously captures itemized deductions, within-bracket income skew,
+  and filing-status mix.  At growth=1.0 reproduces the DOTAX 2022 per-filer
+  average of $4,770 within 0.004%.  ``make_concentration_adjusted_fn()``
+  is the default ``tax_fn``; ``concentration_marginal_fn`` is the default
+  ``marginal_fn`` (numerical derivative of the bracket-weighted function).
 
 * **Real bracket schedule** (:mod:`tax_modeler.projection.hawaii_tax_real`) —
-  Phase D default.  Loads the 12-bracket Hawaii schedule from the bundled
-  ``hawaii_tax_brackets_master_all.csv`` for 2018-vintage (TY≤2024) and
-  2025-vintage (Act 46, TY≥2025) brackets.  ``hawaii_tax_weighted`` and
-  ``hawaii_marginal_weighted`` apply a filing-status-weighted average using
-  approximate DOTAX SOI 2022 distribution weights (single/MFS 52%, joint
-  37%, HoH 11%).  These are the *default* ``tax_fn`` / ``marginal_fn`` for
-  ``run_revenue_backtest``.
+  Phase D point estimate.  ``hawaii_tax_weighted`` / ``hawaii_marginal_weighted``
+  apply the real 12-bracket schedule with filing-status weights.  Overcounts
+  revenue at the median (~15% gap vs DOTAX because it ignores the full income
+  distribution within brackets).  Pass explicitly to restore Phase D behaviour.
 
 * **3-bracket surrogate** (``apply_hawaii_tax_brackets`` below) — retained
   for backward compatibility and unit testing.  Uses a flat 4% bottom rate
-  on $0–$48k AGI, which under-estimates the real lower-bracket accumulation.
-  Pass ``tax_fn=apply_hawaii_tax_brackets`` to restore Phase B behaviour.
+  on $0–$48k AGI.  Pass ``tax_fn=apply_hawaii_tax_brackets`` to restore
+  Phase B behaviour.
 
 DOTAX calibration context
 --------------------------
-At the 2022 Honolulu ACS median ($83,737), ``hawaii_tax_weighted`` gives an
-effective rate ~6.5% (before credits), vs DOTAX Table 12A $75k–$100k bracket
-average of $4,751.  See :mod:`hawaii_tax_real` for full discussion of the
-~15% gap (income-distribution effect within bracket + itemized deductions).
+At the 2022 Honolulu ACS median ($83,737), the concentration model gives
+$4,770/filer (DOTAX actual), vs ``hawaii_tax_weighted`` at ~$5,600 (15%
+over-estimate from ignoring the within-bracket income distribution).  The
+concentration model is always the better default; the real-bracket point
+estimate is retained for comparison and single-household calculations.
 
 Module layout
 -------------
@@ -43,7 +49,7 @@ Module layout
     Surrogate marginal rate helper.
 
 ``run_revenue_backtest(series_by_key, anchors, ...)``
-    Walk-forward driver; defaults to ``hawaii_tax_weighted`` / ``hawaii_marginal_weighted``.
+    Walk-forward driver; defaults to concentration model (Phase E).
 
 ``revenue_mape_vs_income_mape(series_by_key, anchors, ...)``
     Diagnostic: income vs revenue MAPE amplification per method.
@@ -67,8 +73,21 @@ from tax_modeler.projection.hawaii_tax_real import (
     hawaii_tax_weighted,
     hawaii_marginal_weighted,
 )
+from tax_modeler.projection.revenue_concentration import (
+    make_concentration_adjusted_fn,
+    concentration_marginal_fn,
+)
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Phase E default tax / marginal functions
+# ---------------------------------------------------------------------------
+
+# Module-level singleton so the default is constructed once and cached.
+# Calling make_concentration_adjusted_fn() returns a closure over
+# hawaii_tax_weighted + DOTAX_2022_MEDIAN_INCOME — no expensive computation.
+_CONCENTRATION_TAX_FN: Callable[[float], float] = make_concentration_adjusted_fn()
 
 # ---------------------------------------------------------------------------
 # Surrogate Hawaii income-tax function
@@ -160,8 +179,8 @@ def run_revenue_backtest(
     horizon: int | None = None,
     horizons: Sequence[int] | None = None,
     methods: dict[str, ProjectorFn] | None = None,
-    tax_fn: Callable[[float], float] = hawaii_tax_weighted,
-    marginal_fn: Callable[[float], float] = hawaii_marginal_weighted,
+    tax_fn: Callable[[float], float] = _CONCENTRATION_TAX_FN,
+    marginal_fn: Callable[[float], float] = concentration_marginal_fn,
     conformal_quantiles: Sequence | None = None,
 ) -> dict[str, BacktestSummary]:
     """Run a revenue-level walk-forward backtest.
@@ -189,13 +208,17 @@ def run_revenue_backtest(
         Dict mapping method name → :data:`ProjectorFn`.  Defaults to
         ``DEFAULT_METHODS`` from ``census_forecaster.backtest.acs``.
     tax_fn:
-        Income → revenue function.  Default: ``hawaii_tax_weighted`` (Phase D
-        real bracket schedule, filing-status-weighted).  Pass
-        ``tax_fn=apply_hawaii_tax_brackets`` to restore Phase B surrogate.
+        Income → revenue function.  Default: Phase E concentration model
+        (``make_concentration_adjusted_fn()``), which is calibrated to the
+        DOTAX 2022 bracket distribution and reproduces the $4,770/filer
+        average within 0.004%.  Pass ``tax_fn=hawaii_tax_weighted`` to
+        restore Phase D behaviour, or ``tax_fn=apply_hawaii_tax_brackets``
+        for the Phase B surrogate.
     marginal_fn:
-        Income → marginal rate function (derivative of ``tax_fn``).
-        Used for delta-method SE propagation.  Default:
-        ``hawaii_marginal_weighted``.
+        Income → effective marginal function (derivative of ``tax_fn``
+        w.r.t. projected median income).  Used for delta-method SE
+        propagation.  Default: ``concentration_marginal_fn`` (numerical
+        derivative of the concentration model).
     conformal_quantiles:
         Optional list of ``RevenueConformalRecord`` from Phase C.  When
         provided, the CI half-width is floored at ``q × se_revenue`` (in
@@ -312,8 +335,8 @@ def revenue_mape_vs_income_mape(
     horizon: int | None = None,
     horizons: Sequence[int] | None = None,
     methods: dict[str, ProjectorFn] | None = None,
-    tax_fn: Callable[[float], float] = hawaii_tax_weighted,
-    marginal_fn: Callable[[float], float] = hawaii_marginal_weighted,
+    tax_fn: Callable[[float], float] = _CONCENTRATION_TAX_FN,
+    marginal_fn: Callable[[float], float] = concentration_marginal_fn,
 ) -> dict[str, dict[str, float]]:
     """Return per-method ``{"income_mape": ..., "revenue_mape": ..., "amplification": ...}``.
 

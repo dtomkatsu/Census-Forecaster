@@ -1,4 +1,4 @@
-"""Phase E — DOTAX-calibrated income concentration model tests.
+"""Phase E/F — DOTAX-calibrated income concentration model tests.
 
 Tests for :mod:`tax_modeler.projection.revenue_concentration`.
 
@@ -18,6 +18,7 @@ Test organisation
 6. ``TestBracketCreepEffect`` — bracket creep as income grows.
 7. ``TestB19082Interface`` — top_income_scale parameter for B19082 integration.
 8. ``TestRevenueBacktestIntegration`` — concentration-adjusted fn in backtest.
+9. ``TestConcentrationMarginalFn`` — effective marginal / delta-method helper.
 """
 from __future__ import annotations
 
@@ -31,6 +32,7 @@ from tax_modeler.projection.revenue_concentration import (
     TOP_QUINTILE_REVENUE_SHARE_2022,
     _TOP_QUINTILE_BRACKET_START,
     BracketEntry,
+    concentration_marginal_fn,
     concentration_multiplier,
     expected_revenue_per_filer,
     make_concentration_adjusted_fn,
@@ -517,3 +519,91 @@ class TestRevenueBacktestIntegration:
         )
         assert summaries["ensemble"].mean_abs_pct_error < \
                summaries["carry_forward"].mean_abs_pct_error
+
+
+# ---------------------------------------------------------------------------
+# 9. concentration_marginal_fn — effective marginal for SE propagation
+# ---------------------------------------------------------------------------
+
+class TestConcentrationMarginalFn:
+    """Tests for concentration_marginal_fn (Phase F delta-method helper)."""
+
+    def test_positive_at_median(self):
+        """Marginal is strictly positive at the 2022 base income."""
+        mr = concentration_marginal_fn(DOTAX_2022_MEDIAN_INCOME)
+        assert mr > 0, f"Marginal {mr} should be positive at median income"
+
+    def test_finite_at_median(self):
+        mr = concentration_marginal_fn(DOTAX_2022_MEDIAN_INCOME)
+        assert math.isfinite(mr), f"Non-finite marginal {mr} at median"
+
+    def test_zero_income_returns_zero(self):
+        assert concentration_marginal_fn(0.0) == 0.0
+        assert concentration_marginal_fn(-1.0) == 0.0
+
+    def test_less_than_one(self):
+        """Effective marginal is a rate, must be in (0, 1) for any income."""
+        for income in [50_000, 83_737, 150_000, 300_000]:
+            mr = concentration_marginal_fn(income)
+            assert 0 < mr < 1.0, (
+                f"Marginal {mr:.4f} at {income} outside (0, 1)"
+            )
+
+    def test_consistent_with_central_difference(self):
+        """Value matches an independent finite difference with different step."""
+        income = 90_000.0
+        mr_fn = concentration_marginal_fn(income)  # uses eps_fraction=1e-5
+        h = 500.0  # independent step
+        mr_manual = (
+            expected_revenue_per_filer(income + h)
+            - expected_revenue_per_filer(income - h)
+        ) / (2 * h)
+        assert abs(mr_fn - mr_manual) < 1e-4, (
+            f"concentration_marginal_fn {mr_fn:.6f} disagrees with "
+            f"manual diff {mr_manual:.6f} (diff={abs(mr_fn-mr_manual):.2e})"
+        )
+
+    def test_increases_with_income(self):
+        """Effective marginal is non-decreasing in income (progressive model)."""
+        incomes = [40_000, 70_000, 100_000, 150_000, 250_000]
+        marginals = [concentration_marginal_fn(y) for y in incomes]
+        for i in range(1, len(marginals)):
+            assert marginals[i] >= marginals[i - 1] - 1e-6, (
+                f"Marginal not non-decreasing: "
+                f"{incomes[i-1]}→{incomes[i]}: "
+                f"{marginals[i-1]:.5f}→{marginals[i]:.5f}"
+            )
+
+    def test_se_propagation_positive(self):
+        """Delta-method SE propagation: se_rev = marginal × se_income > 0."""
+        income = DOTAX_2022_MEDIAN_INCOME
+        se_income = 5_000.0
+        mr = concentration_marginal_fn(income)
+        se_rev = abs(mr) * se_income
+        assert se_rev > 0, f"SE propagation produced {se_rev}"
+        assert math.isfinite(se_rev)
+
+    def test_custom_base_median_respected(self):
+        """Different base_median_income changes the effective marginal."""
+        income = 90_000.0
+        mr_default = concentration_marginal_fn(income)
+        mr_50k_base = concentration_marginal_fn(income, base_median_income=50_000.0)
+        # Different base → different growth factor → different result
+        assert mr_default != pytest.approx(mr_50k_base, rel=0.01), (
+            "Different base_median_income should give different marginals"
+        )
+
+    def test_custom_tax_fn_respected(self):
+        """Flat-rate tax_fn gives zero marginal (no bracket structure)."""
+        # For a flat rate, d(rate × income × growth)/d(income) = rate × (mean_rep/base)
+        # which is a constant independent of income (given fixed base).
+        flat_rate = 0.05
+        flat_fn = lambda y: flat_rate * y
+        mr = concentration_marginal_fn(DOTAX_2022_MEDIAN_INCOME, tax_fn=flat_fn)
+        # For flat tax: marginal = flat_rate × mean(rep_income) / base_median
+        total_w = sum(b.n_returns * b.rep_income for b in DOTAX_2022_BRACKETS)
+        total_n = sum(b.n_returns for b in DOTAX_2022_BRACKETS)
+        expected_mr = flat_rate * (total_w / total_n) / DOTAX_2022_MEDIAN_INCOME
+        assert abs(mr - expected_mr) < 1e-6, (
+            f"Flat-tax marginal {mr:.6f} should equal {expected_mr:.6f}"
+        )

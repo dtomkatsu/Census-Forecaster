@@ -496,17 +496,28 @@ class TestRevenueBacktestIntegration:
             ]
         }
 
-    def test_default_tax_fn_is_real_weighted(self, panel_growing):
-        """The default tax_fn for run_revenue_backtest is now hawaii_tax_weighted."""
+    def test_default_tax_fn_is_concentration_model(self, panel_growing):
+        """The default tax_fn for run_revenue_backtest is the Phase E concentration model.
+
+        Phase F promoted the DOTAX-calibrated bracket-weighted model
+        (make_concentration_adjusted_fn) as the pipeline default.  At the
+        2022 base median ($83,737) it returns $4,770 (DOTAX actual), vs
+        hawaii_tax_weighted's $5,609 (15% over-estimate).
+        """
         import inspect
         from tax_modeler.projection.revenue_backtest import run_revenue_backtest
+        from tax_modeler.projection.revenue_concentration import expected_revenue_per_filer
         sig = inspect.signature(run_revenue_backtest)
         default_fn = sig.parameters["tax_fn"].default
-        # Verify: default fn produces same value as hawaii_tax_weighted
         test_income = 83_737.0
+        # Default must match the concentration model, not the point estimate
         assert default_fn(test_income) == pytest.approx(
-            hawaii_tax_weighted(test_income), rel=1e-9
-        ), "Default tax_fn is not hawaii_tax_weighted"
+            expected_revenue_per_filer(test_income), rel=1e-9
+        ), "Default tax_fn should be Phase E concentration model"
+        # And must differ from the Phase D point estimate
+        assert default_fn(test_income) != pytest.approx(
+            hawaii_tax_weighted(test_income), rel=0.01
+        ), "Default must not be hawaii_tax_weighted (Phase D point estimate)"
 
     def test_run_with_real_brackets_produces_results(self, panel_growing):
         """Running backtest with default (real) tax function returns valid summaries."""
