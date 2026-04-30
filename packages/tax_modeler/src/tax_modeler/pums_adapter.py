@@ -1,19 +1,28 @@
 """Bridge from tax_modeler's PUMS API onto :mod:`pums_estimator.fetch_pums`.
 
-The original ctc-and-eitc project shipped its own ``src/data/pums_loader.py``
-(now living at :mod:`tax_modeler.loaders.pums_loader`) which fetched PUMS
-files directly from the Census API and applied tax-specific column renames.
+This module exposes a **simple** PUMS-as-DataFrame helper that delegates
+to :func:`pums_estimator.fetch_pums` (the workspace's canonical PUMS
+fetcher). It re-shapes :class:`pums_estimator.PumsRecord` instances into
+the wide pandas DataFrame layout that ``tax_modeler.units`` expects.
 
-Inside the Census-Forecaster monorepo, PUMS fetching is owned by the
-:mod:`pums_estimator` package, which provides a leaner :func:`fetch_pums`
-helper plus a :class:`PumsRecord` value object. This adapter re-shapes
-``PumsRecord`` instances into the wide pandas DataFrame layout that
-``tax_modeler.units`` expects, so callers can migrate off the legacy
-``PUMSDataLoader`` class incrementally.
+When to use which PUMS entry point:
 
-Use this module as the **preferred new API**. The legacy
-``tax_modeler.loaders.pums_loader.PUMSDataLoader`` is still importable for
-back-compat but will be removed in a future tax_modeler release.
+  - **Use this adapter** for typical needs: "give me Hawaii PUMS for
+    year Y as a DataFrame I can pass to tax-unit construction." It's
+    one function call, no batching machinery to reason about, and
+    delegates caching to ``pums_estimator``.
+
+  - **Use** :class:`tax_modeler.loaders.pums_loader.PUMSDataLoader`
+    when you need its specific features that don't exist in
+    ``pums_estimator``: incremental batched loading
+    (``load_households_batch``), explicit person-vs-household column
+    splits, PUMS vintage column-rename handling (``STATE`` →
+    ``ST``), and the ``create_tax_units`` shortcut. These are
+    important for full-population pipeline runs but overkill for
+    most analysis.
+
+The two paths coexist intentionally — they cover different use cases.
+Both are exported at the package level via :mod:`tax_modeler.__init__`.
 """
 from __future__ import annotations
 

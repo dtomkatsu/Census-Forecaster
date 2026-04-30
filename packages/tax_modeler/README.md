@@ -75,12 +75,26 @@ Optional extras:
 - `tax-modeler[ui]` — pulls Streamlit for the UI demo
 - `tax-modeler[geo]` — pulls geopandas for shapefile-based analysis
 
-## Reused infrastructure
+## Two entry points each for PUMS and projection
+
+The simple "give me a DataFrame / scalar" use cases delegate to the
+monorepo's `pums_estimator` / `census_forecaster` packages via thin
+adapters. The full-fat loaders from ctc-and-eitc are kept alongside
+because they have functionality the simple adapters don't:
+
+| Task | Simple adapter (preferred) | Full-fat loader (advanced) |
+|---|---|---|
+| Load Hawaii PUMS | `tax_modeler.load_hawaii_pums(year)` (delegates to `pums_estimator.fetch_pums`) | `tax_modeler.PUMSDataLoader().load_data(...)` — incremental batched loads, vintage column handling, `create_tax_units` shortcut |
+| Income growth factor | `tax_modeler.project_income_growth(history, target_year)` (delegates to `census_forecaster.fit_damped_trend`) | `tax_modeler.EnsembleProjector(...)` — BLS OES wage blending, occupation matching, tax-unit-vectorized `project_income` |
+
+For one-off analysis use the simple helpers; for full-population
+pipeline runs use the full-fat loaders. Both are exported at the
+package level — `from tax_modeler import load_hawaii_pums, PUMSDataLoader`.
+
+## Other reused infrastructure
 
 | ctc-and-eitc original | Replaced by |
 |---|---|
-| `src/data/PUMSDataLoader` | `pums_estimator.fetch_pums` (via `pums_adapter.py`) |
-| `src/projection/EnsembleProjector` | `census_forecaster.project_acs_ensemble` (via `projection_adapter.py`) |
 | `src/config/income_growth_factors.py` | `census_forecaster.macro_anchor_projection` |
 | Local FIPS parsing | `common.geography.state_fips`, `common.geography.county_fips` |
 

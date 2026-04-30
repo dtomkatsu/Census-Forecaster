@@ -65,9 +65,14 @@ from .validation import (
 from .revenue import RevenueEstimator, estimate_revenue
 from .analysis import GeographicAnalyzer
 
-# --- Adapters (preferred new API; bridges to other monorepo packages) -------
+# --- PUMS / projection (two entry points each) ------------------------------
+# Simple "scalar / DataFrame" helpers — bridge to monorepo workspace packages.
 from .pums_adapter import load_hawaii_pums
 from .projection_adapter import project_income_growth
+# Full-fat loaders kept from the original ctc-and-eitc — needed for batched
+# population loading and tax-unit-vectorized income projection.
+from .loaders.pums_loader import PUMSDataLoader, load_pums_data
+from .projection import EnsembleProjector, OccupationMatcher
 
 __version__ = "0.1.0"
 
@@ -115,7 +120,14 @@ __all__ = [
     "RevenueEstimator",
     "estimate_revenue",
     "GeographicAnalyzer",
-    # Adapters
+    # PUMS — simple adapter (preferred for one-shot loads)
     "load_hawaii_pums",
+    # PUMS — full-fat loader (use for batched / full-population pipelines)
+    "PUMSDataLoader",
+    "load_pums_data",
+    # Projection — simple scalar growth factor
     "project_income_growth",
+    # Projection — full ensemble (BLS OES + occupation matching)
+    "EnsembleProjector",
+    "OccupationMatcher",
 ]

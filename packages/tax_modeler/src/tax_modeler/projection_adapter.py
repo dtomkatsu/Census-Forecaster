@@ -1,19 +1,28 @@
 """Bridge from tax_modeler's income-projection API onto :mod:`census_forecaster`.
 
-The original ctc-and-eitc project shipped its own ``src/projection/ensemble.py``
-(``EnsembleProjector``, now living at :mod:`tax_modeler.projection.ensemble`)
-that combined ACS trends with BLS OES wage growth to project tax-unit income
-forward.
+This module exposes a **simple** scalar-growth-factor helper that
+delegates to :mod:`census_forecaster`'s damped-trend / AR(1) / macro-
+anchor ensemble. It's a thin wrapper for callers that just want
+"how much should I scale 2022 income to get a 2026 estimate?".
 
-Inside the Census-Forecaster monorepo, the same statistical machinery already
-exists in :mod:`census_forecaster` as the ACS ensemble (damped-trend +
-AR(1) + macro-anchor blending). This adapter exposes a small surface for
-tax_modeler callers that just want a one-year scalar growth factor for a
-given series, delegating the heavy lifting to ``census_forecaster``.
+When to use which projection entry point:
 
-Use this module as the **preferred new API**. The legacy
-``tax_modeler.projection.ensemble.EnsembleProjector`` is still importable for
-back-compat but will be removed in a future tax_modeler release.
+  - **Use this adapter** for the simple "one-step scalar growth factor
+    for an indicator's level series" use case. It doesn't need BLS OES
+    wage data, occupation matching, or PUMS-specific reweighting.
+
+  - **Use** :class:`tax_modeler.projection.EnsembleProjector` when you
+    need its specific features that don't exist in
+    ``census_forecaster``: BLS OES wage-growth blending,
+    occupation-code matching, hierarchical confidence scoring across
+    multiple PUMS-row groups, and tax-unit-vectorized projection
+    (``project_income`` returns a fully-projected DataFrame rather
+    than a scalar). These are essential when you're projecting a
+    full PUMS-derived calibration panel forward, but overkill for
+    one-off level adjustments.
+
+The two paths coexist intentionally — they cover different use cases.
+Both are exported at the package level via :mod:`tax_modeler.__init__`.
 """
 from __future__ import annotations
 
