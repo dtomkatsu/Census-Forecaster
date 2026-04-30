@@ -7,10 +7,7 @@ import pytest
 import pandas as pd
 import numpy as np
 from pathlib import Path
-import sys
 
-# Add the src directory to the path
-sys.path.append(str(Path(__file__).parent / '..' / 'src'))
 
 from tax_modeler.units.constructor import TaxUnitConstructor
 from tax_modeler.units.base import FILING_STATUS

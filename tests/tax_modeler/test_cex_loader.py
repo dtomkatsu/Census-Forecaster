@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import sys
 import os
 import logging
 import pandas as pd
 import numpy as np
+import pytest
 from pathlib import Path
 
-# Add src to path
-sys.path.append(str(Path(__file__).parent.parent))
+# Skip the whole module if pyreadstat (extras: cex) is not installed.
+pytest.importorskip("pyreadstat", reason="install with `tax-modeler[cex]`")
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -19,12 +19,19 @@ logger = logging.getLogger(__name__)
 # Import the loader
 from tax_modeler.loaders.cex_loader import CEXLoader, CEXIncomeProfile
 
-def test_cex_loader():
-    """Test the CEX loader with real data."""
+def test_cex_loader(requires_irs_external):
+    """Test the CEX loader with real data.
+
+    The CEX data lives under ``data/tax_modeler/external/cex/`` (along
+    with the IRS national SOI Excel files) and is fetched on demand via
+    ``python -m tax_modeler.scripts.fetch_irs_soi``. The
+    ``requires_irs_external`` conftest fixture skips this test on a
+    fresh clone where the external data hasn't been fetched.
+    """
     print("Testing CEX Loader with real data...")
-    
-    # Initialize the loader
-    data_dir = Path('data/external/cex')
+
+    # Initialize the loader against the monorepo-resolved path
+    data_dir = requires_irs_external / "cex"
     loader = CEXLoader(data_dir=data_dir)
     
     # Test loading family data

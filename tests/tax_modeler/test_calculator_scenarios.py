@@ -13,20 +13,23 @@ import math
 import pytest
 import pandas as pd
 from pathlib import Path
-import sys
 
-PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
-
+import tax_modeler as _tm
 from tax_modeler.config import TaxSystemConfig, TaxSystemRegistry, TaxCalculator
 from tax_modeler.adjustments.hawaii_credits import HawaiiTaxCredits
+
+# `TaxCalculator(project_root)` reads `project_root/data/raw/*.csv`. The
+# small bracket + deduction master CSVs that the calculator needs ship
+# inside the wheel under tax_modeler/data/raw/, so resolve project_root
+# to the package directory.
+_PACKAGE_ROOT = Path(_tm.__file__).resolve().parent
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture(scope="session")
 def calculator():
-    return TaxCalculator(PROJECT_ROOT)
+    return TaxCalculator(_PACKAGE_ROOT)
 
 
 @pytest.fixture(scope="session")

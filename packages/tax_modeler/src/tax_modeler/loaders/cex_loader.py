@@ -25,9 +25,16 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 import logging
 from dataclasses import dataclass
-import pyreadstat
 import re
 import os
+
+# pyreadstat is needed only for SAS XPT inputs. Make it optional so the
+# rest of tax_modeler imports cleanly without it; CEXLoader methods that
+# actually read XPT files raise a clear ImportError at call time.
+try:
+    import pyreadstat
+except ImportError:  # pragma: no cover
+    pyreadstat = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
