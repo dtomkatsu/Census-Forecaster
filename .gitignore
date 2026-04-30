@@ -26,3 +26,13 @@ env/
 # Caches written by the package at runtime
 data/cache/
 *.cache.json
+
+# tax_modeler heavy data — fetched on demand via:
+#   uv run python -m tax_modeler.scripts.fetch_dotax_soi
+#   uv run python -m tax_modeler.scripts.fetch_irs_soi
+data/tax_modeler/raw/
+data/tax_modeler/external/
+data/tax_modeler/processed/
+!data/tax_modeler/raw/.gitkeep
+!data/tax_modeler/external/.gitkeep
+!data/tax_modeler/processed/.gitkeep
