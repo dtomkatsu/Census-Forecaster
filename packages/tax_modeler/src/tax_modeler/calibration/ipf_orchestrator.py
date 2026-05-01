@@ -325,6 +325,133 @@ class IPFCalibrationOrchestrator:
         
         return result
     
+    # ------------------------------------------------------------------
+    # rake()-backed calibration
+    # ------------------------------------------------------------------
+
+    def calibrate_via_rake(
+        self,
+        df: pd.DataFrame,
+        calibrate_filer_counts: bool = True,
+        calibrate_tax_totals: bool = True,
+        calibrate_filing_status: bool = True,
+    ) -> pd.DataFrame:
+        """
+        IPF calibration backed by pums_estimator.estimation.rake.rake().
+
+        The canonical Deming-Stephan engine from ``pums_estimator`` is used
+        for the two pure population-count margins (filer counts by AGI bracket
+        and filing-status distribution).  The tax-total margin is applied
+        afterwards as a separate weighted-sum scaling step, because
+        ``rake()`` can only match ``Σ w_i`` per category — not
+        ``Σ (w_i × tax_i)``.
+
+        Parameters
+        ----------
+        df:
+            Input DataFrame with columns ``weight``, ``agi``, ``filing_status``.
+            Column ``hi_state_tax`` is required when *calibrate_tax_totals* is True.
+        calibrate_filer_counts:
+            Rake to DOTAX filer-count targets by AGI bracket.
+        calibrate_tax_totals:
+            Scale weights to DOTAX tax-total targets by AGI bracket
+            (post-rake weighted-sum step).
+        calibrate_filing_status:
+            Rake to DOTAX filing-status distribution.
+
+        Returns
+        -------
+        pd.DataFrame
+            Calibrated DataFrame with the same schema as *df*.
+        """
+        from pums_estimator.estimation.rake import rake as _rake  # lazy cross-package import
+
+        result = df.copy()
+        margins: Dict[str, Dict[str, float]] = {}
+        temp_cols: List[str] = []
+
+        # --- filer-count margin ------------------------------------------
+        if calibrate_filer_counts:
+            bracket_keys = list(self.DOTAX_FILER_TARGETS.keys())
+
+            def _bracket_idx(agi: float) -> int:
+                for i, (lo, hi) in enumerate(bracket_keys):
+                    if lo <= agi < hi:
+                        return i
+                return len(bracket_keys) - 1
+
+            result["_bracket_idx"] = result["agi"].map(_bracket_idx)
+            temp_cols.append("_bracket_idx")
+            margins["_bracket_idx"] = {
+                str(i): count
+                for i, count in enumerate(self.DOTAX_FILER_TARGETS.values())
+            }
+
+        # --- filing-status margin ----------------------------------------
+        _FS_CODE: Dict[str, int] = {
+            "single": 0,
+            "married_filing_jointly": 1,
+            "head_of_household": 2,
+            "married_filing_separately": 3,
+        }
+        if calibrate_filing_status:
+            result["_fs_code"] = result["filing_status"].map(_FS_CODE)
+            temp_cols.append("_fs_code")
+            margins["_fs_code"] = {
+                str(code): self.DOTAX_FILING_STATUS_TARGETS[fs]
+                for fs, code in _FS_CODE.items()
+            }
+
+        # --- delegate to rake() ------------------------------------------
+        if margins:
+            # Lightweight records satisfying rake()'s duck-typed interface.
+            class _TaxRecord:
+                __slots__ = ("weight", "variables")
+                def __init__(self, w: float, v: Dict) -> None:
+                    self.weight = w
+                    self.variables = v
+
+            class _Controls:
+                __slots__ = ("margins",)
+                def __init__(self, m: Dict) -> None:
+                    self.margins = m
+
+            margin_cols = list(margins)
+            weight_arr = result["weight"].to_numpy(dtype=float)
+            var_arrays = {col: result[col].to_numpy() for col in margin_cols}
+
+            records = [
+                _TaxRecord(
+                    float(weight_arr[i]),
+                    {col: float(var_arrays[col][i]) for col in margin_cols},
+                )
+                for i in range(len(result))
+            ]
+
+            new_weights = _rake(
+                records,
+                _Controls(margins),
+                max_iter=self.max_iterations,
+                tol=self.tolerance,
+            )
+            result["weight"] = new_weights
+            logger.info(
+                "pums_estimator rake() complete: %d records, "
+                "weight sum %.0f → %.0f",
+                len(result),
+                df["weight"].sum(),
+                result["weight"].sum(),
+            )
+
+        # --- tax-total step (weighted-sum constraint, not a count rake) --
+        if calibrate_tax_totals:
+            result = self.ipf_adjust_weights_to_tax_totals(
+                result, self.DOTAX_TAX_TARGETS
+            )
+
+        result.drop(columns=temp_cols, inplace=True, errors="ignore")
+        return result
+
     def _validate_filer_counts(self, df: pd.DataFrame) -> Dict[str, float]:
         """Validate filer counts and return deviation metrics."""
         current_counts = {}
@@ -466,7 +593,7 @@ def apply_ipf_calibration(df: pd.DataFrame,
                           calibrate_filing_status: bool = True) -> pd.DataFrame:
     """
     Convenience function to apply IPF calibration.
-    
+
     Args:
         df: Input DataFrame with tax units
         max_iterations: Maximum IPF iterations (default: 20)
@@ -474,7 +601,7 @@ def apply_ipf_calibration(df: pd.DataFrame,
         calibrate_filer_counts: Whether to calibrate to filer counts
         calibrate_tax_totals: Whether to calibrate to tax totals
         calibrate_filing_status: Whether to calibrate to filing status
-        
+
     Returns:
         Calibrated DataFrame
     """
@@ -482,10 +609,49 @@ def apply_ipf_calibration(df: pd.DataFrame,
         max_iterations=max_iterations,
         tolerance=tolerance
     )
-    
+
     return orchestrator.calibrate_ipf(
         df,
         calibrate_filer_counts=calibrate_filer_counts,
         calibrate_tax_totals=calibrate_tax_totals,
         calibrate_filing_status=calibrate_filing_status
+    )
+
+
+def apply_ipf_calibration_via_rake(
+    df: pd.DataFrame,
+    max_iterations: int = 100,
+    tolerance: float = 1e-4,
+    calibrate_filer_counts: bool = True,
+    calibrate_tax_totals: bool = True,
+    calibrate_filing_status: bool = True,
+) -> pd.DataFrame:
+    """
+    IPF calibration using pums_estimator's canonical rake() engine.
+
+    Delegates filer-count and filing-status margins to
+    ``pums_estimator.estimation.rake.rake()``, then applies the tax-total
+    adjustment as a separate step.
+
+    Args:
+        df: Input DataFrame with columns 'weight', 'agi', 'filing_status'.
+            Also requires 'hi_state_tax' when calibrate_tax_totals is True.
+        max_iterations: Passed to rake() as max_iter (default: 100).
+        tolerance: Convergence tolerance passed to rake() (default: 1e-4).
+        calibrate_filer_counts: Rake to DOTAX filer-count targets by AGI bracket.
+        calibrate_tax_totals: Scale weights to DOTAX tax-total targets by AGI bracket.
+        calibrate_filing_status: Rake to DOTAX filing-status distribution.
+
+    Returns:
+        Calibrated DataFrame.
+    """
+    orchestrator = IPFCalibrationOrchestrator(
+        max_iterations=max_iterations,
+        tolerance=tolerance,
+    )
+    return orchestrator.calibrate_via_rake(
+        df,
+        calibrate_filer_counts=calibrate_filer_counts,
+        calibrate_tax_totals=calibrate_tax_totals,
+        calibrate_filing_status=calibrate_filing_status,
     )

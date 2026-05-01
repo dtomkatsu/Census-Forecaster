@@ -368,6 +368,49 @@ class ItemizedDeductionEstimator:
         }
 
 
+def scale_deduction_params_for_target_year(
+    target_year: int,
+    geoid: str = "15003",
+) -> dict:
+    """Return deduction params with ``mortgage_interest_tiers`` scaled to ``target_year``.
+
+    Loads the base params from config/deduction_params.json (or hardcoded
+    fallbacks), then scales the mortgage interest tiers by the B25077
+    (median home value) nominal growth factor from census_forecaster.
+
+    Use this when constructing :class:`ItemizedDeductionEstimator` for a
+    projected tax year rather than the 2022 SOI calibration year.
+
+    Parameters
+    ----------
+    target_year:
+        Tax year to project deduction parameters to.
+    geoid:
+        Hawaii county FIPS for the B25077 lookup. Defaults to Honolulu
+        (15003). Pass a specific county FIPS for county-differentiated
+        deduction scaling.
+
+    Returns
+    -------
+    dict
+        Deep copy of the loaded params dict with mortgage tiers scaled
+        forward. Fallback to the original params if the B25077 forecast
+        is unavailable.
+
+    Example
+    -------
+    ::
+
+        params = scale_deduction_params_for_target_year(2026, geoid="15001")
+        estimator = ItemizedDeductionEstimator.__new__(ItemizedDeductionEstimator)
+        # (populate estimator fields from params as needed)
+    """
+    from tax_modeler.projection.acs_supplement_forecast import scale_mortgage_deductions
+
+    base_params = _load_params()
+    return scale_mortgage_deductions(base_params, target_year, geoid)
+
+
 def estimate_deduction(agi: float, filing_status: str,
                       standard_deduction: float,
                       age: Optional[int] = None) -> Dict[str, float]:

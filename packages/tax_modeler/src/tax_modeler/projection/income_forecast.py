@@ -98,6 +98,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_HAWAII_GEOID: str = "15003"
 DEFAULT_INCOME_INDICATOR: str = "B19013_001E"
 
+# BLS series IDs for the preferred CPI path (bundled monthly panel).
+# Honolulu Urban All-Items (bimonthly): more precise than the annual JSON.
+_HONOLULU_BLS_SERIES_ID: str = "CUURS49ASA0"
+
 # 8 largest mainland US counties (excluding Hawaii / Alaska) by 2020 pop.
 # Each has a full 14-obs B19013_001E series in the bundled panel.
 _NATIONAL_GEOIDS: tuple[str, ...] = (
@@ -178,6 +182,61 @@ def _load_cpi_honolulu_series() -> dict[int, float]:
     with cpi_path.open() as f:
         d = json.load(f)
     return {int(k): float(v) for k, v in d["values_by_year"].items()}
+
+
+@functools.lru_cache(maxsize=1)
+def _load_bls_panel() -> dict[str, list]:
+    """Load the bundled monthly BLS CPI panel (55 series, updated quarterly).
+
+    Returns the inner ``series`` dict: ``{series_id: [{year, period, value}, ...]}``.
+    The panel ships inside the census_forecaster wheel and is always available
+    without network access. Its latest fetch date determines how far into the
+    current year observed data extends (typically within 2-3 months of real-time).
+    """
+    from importlib.resources import files
+    import json
+    panel_path = files("census_forecaster") / "data" / "bls_panel" / "cpi_panel.json"
+    with panel_path.open() as f:
+        d = json.load(f)
+    return d.get("series", {})
+
+
+def _bls_cpi_ratio(series_id: str, base_year: int, target_year: int) -> Optional[float]:
+    """Compute Dec→Dec CPI ratio using the bundled monthly BLS panel.
+
+    Preferred over the annual-JSON path because:
+    - Monthly data extends ~2-3 months past real-time vs annual-JSON's Dec cutoff.
+    - ``project_forward_full`` (damped compound) is better calibrated than
+      ``project_damped_trend`` on annual data.
+
+    Returns ``target_cpi / base_cpi`` (e.g. 1.093 for 9.3% cumulative inflation),
+    or ``None`` if the series or either date is unavailable.
+    """
+    from datetime import date
+    from census_forecaster.bls.projection import compute_cpi_ratio
+
+    panel = _load_bls_panel()
+    if series_id not in panel:
+        logger.debug("BLS panel missing series %s", series_id)
+        return None
+
+    cpi_data = {series_id: panel[series_id]}
+    baseline_date = date(base_year, 12, 1)
+    target_date = date(target_year, 12, 1)
+
+    result = compute_cpi_ratio(cpi_data, series_id, baseline_date, target_date)
+    if result["method"] == "unavailable" or not (result["ratio"] > 0):
+        logger.warning(
+            "compute_cpi_ratio unavailable for %s (%d→%d)", series_id, base_year, target_year
+        )
+        return None
+
+    logger.debug(
+        "BLS panel CPI ratio %s (%d→%d Dec): %.4f [method=%s, horizon=%s mo]",
+        series_id, base_year, target_year,
+        result["ratio"], result["method"], result["horizon_months"],
+    )
+    return result["ratio"]
 
 
 @functools.lru_cache(maxsize=1)
@@ -455,24 +514,39 @@ def _compute_real_growth_factor(
     nominal_growth = math.exp(log_ratio_combined)
 
     # Deflate by price-index ratio.
-    cpi_by_year = cpi_loader()
-    cpi_base = cpi_by_year.get(base_year)
-    if cpi_base is None:
-        logger.warning(
-            "No price-index data for base_year=%s (have %s..%s)",
-            base_year, min(cpi_by_year), max(cpi_by_year),
-        )
-        return None
-    try:
-        cpi_target = _project_cpi(cpi_by_year, target_year)
-    except (KeyError, RuntimeError) as e:
-        logger.warning("Price-index projection failed: %s", e)
-        return None
+    # For the Honolulu CPI path: prefer the bundled monthly BLS panel
+    # (through the panel's fetch date, typically within 2-3 months of real-time)
+    # over the annual-JSON path (ends at 2024). Fall back to the annual path if
+    # the BLS panel returns None. For the PCE/national path there is no BLS
+    # equivalent, so go directly to the annual-JSON path.
+    inflation_factor: Optional[float] = None
+    if cpi_loader is _load_cpi_honolulu_series:
+        inflation_factor = _bls_cpi_ratio(_HONOLULU_BLS_SERIES_ID, base_year, target_year)
+        if inflation_factor is None:
+            logger.debug(
+                "BLS panel CPI unavailable for %s→%s; falling back to annual JSON",
+                base_year, target_year,
+            )
 
-    inflation_factor = cpi_target / cpi_base
-    if inflation_factor <= 0:
-        logger.warning("Non-positive inflation factor %.4f", inflation_factor)
-        return None
+    if inflation_factor is None:
+        cpi_by_year = cpi_loader()
+        cpi_base = cpi_by_year.get(base_year)
+        if cpi_base is None:
+            logger.warning(
+                "No price-index data for base_year=%s (have %s..%s)",
+                base_year, min(cpi_by_year), max(cpi_by_year),
+            )
+            return None
+        try:
+            cpi_target = _project_cpi(cpi_by_year, target_year)
+        except (KeyError, RuntimeError) as e:
+            logger.warning("Price-index projection failed: %s", e)
+            return None
+
+        inflation_factor = cpi_target / cpi_base
+        if inflation_factor <= 0:
+            logger.warning("Non-positive inflation factor %.4f", inflation_factor)
+            return None
 
     real_growth = nominal_growth / inflation_factor
 

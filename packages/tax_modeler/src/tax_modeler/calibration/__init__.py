@@ -8,7 +8,8 @@ from .orchestrator import (
 )
 from .ipf_orchestrator import (
     IPFCalibrationOrchestrator,
-    apply_ipf_calibration
+    apply_ipf_calibration,
+    apply_ipf_calibration_via_rake,
 )
 from .dotax_soi_parser import DOTAXSOIParser
 from .ipf_calibration import IPFCalibrator, create_benchmarks_from_dotax, calibrate_pums_with_ipf
@@ -23,6 +24,7 @@ __all__ = [
     'apply_systematic_calibration',
     'IPFCalibrationOrchestrator',
     'apply_ipf_calibration',
+    'apply_ipf_calibration_via_rake',
     'DOTAXSOIParser',
     'IPFCalibrator',
     'create_benchmarks_from_dotax',

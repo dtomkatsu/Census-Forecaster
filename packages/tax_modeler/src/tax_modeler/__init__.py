@@ -39,6 +39,7 @@ from .calibration import (
     apply_systematic_calibration,
     IPFCalibrationOrchestrator,
     apply_ipf_calibration,
+    apply_ipf_calibration_via_rake,
     DOTAXSOIParser,
     IPFCalibrator,
 )
@@ -48,6 +49,7 @@ from .adjustments import (
     estimate_agi_from_total_income,
     calculate_hawaii_credits,
     estimate_deduction,
+    scale_deduction_params_for_target_year,
 )
 from .adjustments.hawaii_credits import HawaiiTaxCredits
 from .adjustments.pareto_calibration import ParetoIncomeCalibrator
@@ -72,7 +74,14 @@ from .projection_adapter import project_income_growth
 # Full-fat loaders kept from the original ctc-and-eitc — needed for batched
 # population loading and tax-unit-vectorized income projection.
 from .loaders.pums_loader import PUMSDataLoader, load_pums_data
-from .projection import EnsembleProjector, OccupationMatcher
+from .projection import (
+    EnsembleProjector,
+    OccupationMatcher,
+    project_tax_units_forward,
+    AcsSupplement,
+    project_acs_supplement,
+    scale_mortgage_deductions,
+)
 
 __version__ = "0.1.0"
 
@@ -102,12 +111,14 @@ __all__ = [
     "apply_systematic_calibration",
     "IPFCalibrationOrchestrator",
     "apply_ipf_calibration",
+    "apply_ipf_calibration_via_rake",
     "DOTAXSOIParser",
     "IPFCalibrator",
     # Adjustments
     "estimate_agi_from_total_income",
     "calculate_hawaii_credits",
     "estimate_deduction",
+    "scale_deduction_params_for_target_year",
     "HawaiiTaxCredits",
     "ParetoIncomeCalibrator",
     "UltraHighIncomeSynthesizer",
@@ -130,4 +141,10 @@ __all__ = [
     # Projection — full ensemble (BLS OES + occupation matching)
     "EnsembleProjector",
     "OccupationMatcher",
+    # Projection — forward micro-simulation (census_forecaster → scaled tax units)
+    "project_tax_units_forward",
+    # Projection — ACS housing/poverty supplement (B25064/B25077/S1701)
+    "AcsSupplement",
+    "project_acs_supplement",
+    "scale_mortgage_deductions",
 ]

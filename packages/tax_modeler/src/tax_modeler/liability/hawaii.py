@@ -15,7 +15,11 @@ Sources:
 Limitations / simplifications:
   - AGI proxy: uses the tax unit's `income` field (PINCP * ADJINC), which
     omits above-the-line deductions (IRA, HSA, student loan interest, etc.)
-  - Itemized deductions are not modeled; standard deduction is always used.
+  - Itemized deductions: standard deduction is used by default. Pass
+    ``deduction_params`` (from ``scale_deduction_params_for_target_year``) to
+    ``calculate_hawaii_tax`` / ``calculate_hawaii_tax_for_units`` to enable
+    expected-value itemized deductions (mortgage interest, charitable,
+    medical, real estate) with Hawaii's Pease limitation applied.
   - Hawaii tax credits beyond the low-income refundable credit are not modeled.
   - MFS tax units each pay tax on their own income (no income splitting).
 """
@@ -23,7 +27,7 @@ Limitations / simplifications:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
@@ -124,26 +128,184 @@ class HawaiiTaxParameters:
 
 HAWAII_2023 = HawaiiTaxParameters()
 
+# ---------------------------------------------------------------------------
+# Year-specific schedules (Act 46 phase-in)
+# ---------------------------------------------------------------------------
+
+# Personal exemption per unit, step-function by effective tax year.
+# Matches TaxSystemRegistry.PERSONAL_EXEMPTIONS in config/tax_system_config.py.
+_PERSONAL_EXEMPTION_SCHEDULE: List[Tuple[int, float]] = [
+    (2018, 1_144.0),  # pre-Act-46 (applies for TY≤2024)
+    (2025, 1_200.0),  # Act 46 phase-in (TY2025+)
+]
+
+# Maps liability module filing-status strings → hawaii_tax_real module strings.
+_FS_REAL_MAP: Dict[str, str] = {
+    'single':                    'Single_Married_Separate',
+    'married_filing_separately': 'Single_Married_Separate',
+    'married_filing_jointly':    'Joint_Surviving_Spouse',
+    'head_of_household':         'Head_of_Household',
+}
+
+
+def _personal_exemption_for_year(tax_year: int) -> float:
+    """Step-function lookup for personal exemption amount by tax year."""
+    best = _PERSONAL_EXEMPTION_SCHEDULE[0][1]
+    for yr, amt in _PERSONAL_EXEMPTION_SCHEDULE:
+        if yr <= tax_year:
+            best = amt
+        else:
+            break
+    return best
+
+
+# ---------------------------------------------------------------------------
+# Deterministic itemized deduction helper
+# ---------------------------------------------------------------------------
+
+def _expected_itemized_deductions(
+    agi: float,
+    filing_status: str,
+    deduction_params: dict,
+) -> float:
+    """Compute expected-value itemized deductions from ``deduction_params``.
+
+    Uses expected values rather than Monte Carlo draws so the result is
+    deterministic and suitable for projection pipelines.  Every stochastic
+    step in :class:`ItemizedDeductionEstimator` (homeownership probability,
+    charitable claim rate, medical claim rate) is replaced by its probability-
+    weighted expectation.
+
+    Parameters
+    ----------
+    agi:
+        Filer's Adjusted Gross Income.
+    filing_status:
+        One of ``'single'``, ``'married_filing_jointly'``,
+        ``'married_filing_separately'``, ``'head_of_household'``.
+    deduction_params:
+        Raw params dict from :func:`tax_modeler.adjustments.itemized_deductions._load_params`
+        (or a scaled copy from ``scale_deduction_params_for_target_year``).
+
+    Returns
+    -------
+    float
+        Expected total itemized deductions after Hawaii's Pease limitation,
+        before comparing to the standard deduction. Always ≥ 0.
+    """
+    is_joint = filing_status in ("married_filing_jointly", "qualifying_widow")
+
+    # --- Mortgage interest (expected over homeownership probability) ----------
+    ho_cfg = deduction_params["homeownership"]
+    if is_joint:
+        ho = ho_cfg["joint"]
+    elif filing_status == "head_of_household":
+        ho = ho_cfg["hoh"]
+    else:
+        ho = ho_cfg["other"]
+    p_own = min(ho["cap"], ho["base"] + (agi / ho["income_scale"]) * ho["slope"])
+
+    mort = deduction_params["mortgage_interest_tiers"]
+    base_interest = mort["default_base_interest"]
+    for tier in mort["tiers"]:
+        if agi < tier["max_agi"]:
+            base_interest = tier["base_interest"]
+            break
+    if is_joint:
+        base_interest *= mort.get("joint_multiplier", 1.0)
+    expected_mortgage = p_own * base_interest
+
+    # --- Charitable contributions --------------------------------------------
+    charit = deduction_params["charitable_giving"]
+    giving_rate = charit["default_rate"]
+    for tier in charit["rates_by_agi"]:
+        if agi < tier["max_agi"]:
+            giving_rate = tier["rate"]
+            break
+    expected_charitable = charit["claim_rate"] * agi * giving_rate
+
+    # --- Medical expenses (non-elderly claim rate as conservative estimate) --
+    med = deduction_params["medical_expenses"]
+    threshold = agi * med["agi_threshold"]
+    expected_medical = med["claim_rate_other"] * max(
+        0.0, agi * med["expense_pct_other"] - threshold
+    )
+
+    # --- Real estate taxes ---------------------------------------------------
+    re = deduction_params["real_estate_taxes"]
+    re_amount = re["default_amount"]
+    for tier in re["tiers"]:
+        if agi < tier["max_agi"]:
+            re_amount = tier["amount"]
+            break
+
+    total = expected_mortgage + expected_charitable + expected_medical + re_amount
+
+    # --- Hawaii Pease limitation (HRS § 235-2.4(f)) --------------------------
+    pease_threshold = 83_400 if filing_status == "married_filing_separately" else 166_800
+    if agi > pease_threshold:
+        reduction = 0.03 * (agi - pease_threshold)
+        total -= min(reduction, 0.80 * total)
+
+    return max(0.0, total)
+
+
+def _resolve_effective_deduction(
+    agi: float,
+    filing_status: str,
+    standard_deduction: float,
+    deduction_params: Optional[dict],
+) -> float:
+    """Return the greater of the standard deduction and expected itemized deductions.
+
+    When ``deduction_params`` is ``None``, returns ``standard_deduction`` unchanged
+    (preserving the existing "standard deduction always" behaviour for base-year
+    calculations).  When params are provided, itemized deductions are computed
+    deterministically via :func:`_expected_itemized_deductions` and the larger
+    amount is returned.
+    """
+    if deduction_params is None:
+        return standard_deduction
+    itemized = _expected_itemized_deductions(agi, filing_status, deduction_params)
+    return max(standard_deduction, itemized)
+
 
 # ---------------------------------------------------------------------------
 # Core calculation
 # ---------------------------------------------------------------------------
 
-def calculate_hawaii_tax(tax_unit: Dict, params: HawaiiTaxParameters = HAWAII_2023) -> Dict[str, float]:
+def calculate_hawaii_tax(
+    tax_unit: Dict,
+    params: HawaiiTaxParameters = HAWAII_2023,
+    tax_year: int = 2023,
+    deduction_params: Optional[dict] = None,
+) -> Dict[str, float]:
     """
     Calculate Hawaii state income tax liability for a single tax unit.
+
+    For ``tax_year >= 2024``, brackets and standard deductions are sourced from
+    ``projection.hawaii_tax_real`` (Act 46 multi-vintage CSV schedules), so the
+    function correctly applies doubled thresholds (TY2025+) and the scheduled
+    standard-deduction phase-in.  The 2023 parameters (``params``) are used for
+    TY ≤ 2023.
 
     Args:
         tax_unit: Dictionary with:
             - filing_status: str
             - income: float  (Hawaii AGI proxy — PINCP * ADJINC, total income)
             - num_dependents: int
-        params: HawaiiTaxParameters (defaults to 2023)
+        params: HawaiiTaxParameters (defaults to 2023; used only for TY ≤ 2023)
+        tax_year: Tax year for bracket/deduction vintage selection (default 2023).
+        deduction_params: When provided, expected-value itemized deductions are
+            computed via :func:`_expected_itemized_deductions` and used in place of
+            the standard deduction for filers where itemizing reduces taxable income.
+            Pass scaled params from ``scale_deduction_params_for_target_year`` when
+            projecting forward; omit (``None``) to use the standard deduction only.
 
     Returns:
         Dictionary with:
             - hi_agi: Hawaii Adjusted Gross Income (proxy)
-            - hi_standard_deduction: Standard deduction applied
+            - hi_standard_deduction: Standard deduction applied (or itemized if higher)
             - hi_personal_exemptions: Total personal exemption amount
             - hi_taxable_income: Taxable income after deductions/exemptions
             - hi_tax_before_credits: Tax from bracket calculation
@@ -166,25 +328,52 @@ def calculate_hawaii_tax(tax_unit: Dict, params: HawaiiTaxParameters = HAWAII_20
 
     result['hi_agi'] = agi
 
-    # Standard deduction
-    std_ded = params.standard_deduction.get(filing_status, params.standard_deduction['single'])
-    result['hi_standard_deduction'] = std_ded
-
     # Personal exemptions: taxpayer + spouse (if joint) + dependents
+    # Exemption amount is year-specific (Act 46 raised it to $1,200 for TY2025+)
+    exemption_per_unit = (
+        _personal_exemption_for_year(tax_year)
+        if tax_year >= 2024
+        else params.personal_exemption_per_unit
+    )
     num_exemptions = _count_exemptions(filing_status, num_dependents)
-    exemption_amount = num_exemptions * params.personal_exemption_per_unit
+    exemption_amount = num_exemptions * exemption_per_unit
     result['hi_personal_exemptions'] = exemption_amount
 
-    # Taxable income (cannot be negative)
-    taxable_income = max(0.0, agi - std_ded - exemption_amount)
-    result['hi_taxable_income'] = taxable_income
+    if tax_year >= 2024:
+        # Route through hawaii_tax_real for year-specific brackets + deductions.
+        # Lazy import avoids a circular dependency (projection imports liability).
+        from tax_modeler.projection.hawaii_tax_real import (  # noqa: PLC0415
+            _deduction_for_year,
+            hawaii_tax_real,
+        )
+        real_fs = _FS_REAL_MAP.get(filing_status, 'Single_Married_Separate')
+        std_ded = _deduction_for_year(tax_year, real_fs)
+        effective_ded = _resolve_effective_deduction(
+            agi, filing_status, std_ded, deduction_params
+        )
+        result['hi_standard_deduction'] = effective_ded
+        taxable_income = max(0.0, agi - effective_ded - exemption_amount)
+        result['hi_taxable_income'] = taxable_income
+        # Pass (agi − exemption) to hawaii_tax_real; its internal deduction
+        # subtraction then yields max(agi − effective_ded − exemption, 0).
+        # When itemizing we must override the standard-deduction subtraction
+        # inside hawaii_tax_real, so we adjust the income passed in.
+        income_for_real = agi - exemption_amount - (effective_ded - std_ded)
+        tax_before_credits = hawaii_tax_real(income_for_real, tax_year, real_fs)
+    else:
+        std_ded = params.standard_deduction.get(filing_status, params.standard_deduction['single'])
+        effective_ded = _resolve_effective_deduction(
+            agi, filing_status, std_ded, deduction_params
+        )
+        result['hi_standard_deduction'] = effective_ded
+        taxable_income = max(0.0, agi - effective_ded - exemption_amount)
+        result['hi_taxable_income'] = taxable_income
+        brackets = params.brackets.get(filing_status, params.brackets['single'])
+        tax_before_credits = _apply_brackets(taxable_income, brackets)
 
-    # Bracket tax
-    brackets = params.brackets.get(filing_status, params.brackets['single'])
-    tax_before_credits = _apply_brackets(taxable_income, brackets)
     result['hi_tax_before_credits'] = tax_before_credits
 
-    # Low-income refundable credit
+    # Low-income refundable credit (Schedule X, TY2023 thresholds)
     threshold = params.low_income_threshold.get(filing_status, 20_000)
     if agi <= threshold:
         low_income_credit = num_exemptions * params.low_income_credit_per_exemption
@@ -239,7 +428,11 @@ def _apply_brackets(taxable_income: float, brackets: List[Tuple[float, float]]) 
     return round(total_tax, 2)
 
 
-def calculate_hawaii_tax_for_units(tax_units_df: pd.DataFrame) -> pd.DataFrame:
+def calculate_hawaii_tax_for_units(
+    tax_units_df: pd.DataFrame,
+    tax_year: int = 2023,
+    deduction_params: Optional[dict] = None,
+) -> pd.DataFrame:
     """
     Calculate Hawaii income tax for all tax units in a DataFrame.
 
@@ -248,6 +441,13 @@ def calculate_hawaii_tax_for_units(tax_units_df: pd.DataFrame) -> pd.DataFrame:
 
     Args:
         tax_units_df: DataFrame of tax units.
+        tax_year: Tax year for bracket/deduction vintage (default 2023).
+                  Pass ``tax_year=target_year`` from projection code so that
+                  TY2025+ projections use Act 46 doubled thresholds.
+        deduction_params: When provided, expected-value itemized deductions are
+            computed and used in place of the standard deduction for filers where
+            itemizing reduces taxable income.  Pass scaled params from
+            ``scale_deduction_params_for_target_year`` when projecting forward.
 
     Returns:
         DataFrame with Hawaii tax columns added.
@@ -255,7 +455,7 @@ def calculate_hawaii_tax_for_units(tax_units_df: pd.DataFrame) -> pd.DataFrame:
     results = []
     for _, row in tax_units_df.iterrows():
         unit = row.to_dict()
-        hi_tax = calculate_hawaii_tax(unit)
+        hi_tax = calculate_hawaii_tax(unit, tax_year=tax_year, deduction_params=deduction_params)
         unit.update(hi_tax)
         results.append(unit)
     return pd.DataFrame(results)

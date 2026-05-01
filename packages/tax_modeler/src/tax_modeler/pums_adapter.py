@@ -14,12 +14,13 @@ When to use which PUMS entry point:
 
   - **Use** :class:`tax_modeler.loaders.pums_loader.PUMSDataLoader`
     when you need its specific features that don't exist in
-    ``pums_estimator``: incremental batched loading
-    (``load_households_batch``), explicit person-vs-household column
-    splits, PUMS vintage column-rename handling (``STATE`` →
-    ``ST``), and the ``create_tax_units`` shortcut. These are
-    important for full-population pipeline runs but overkill for
-    most analysis.
+    ``pums_estimator``: incremental batched loading from local
+    parquet/CSV files (``load_households_batch``), explicit
+    person-vs-household column splits, and PUMS vintage column-rename
+    handling (``STATE`` → ``ST``). These are important for full-
+    population pipeline runs but overkill for most analysis. To
+    construct tax units from loaded data use
+    :class:`tax_modeler.units.base.TaxUnitConstructor`.
 
 The two paths coexist intentionally — they cover different use cases.
 Both are exported at the package level via :mod:`tax_modeler.__init__`.

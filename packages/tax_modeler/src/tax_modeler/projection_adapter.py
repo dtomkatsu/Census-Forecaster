@@ -1,9 +1,9 @@
 """Bridge from tax_modeler's income-projection API onto :mod:`census_forecaster`.
 
 This module exposes a **simple** scalar-growth-factor helper that
-delegates to :mod:`census_forecaster`'s damped-trend / AR(1) / macro-
-anchor ensemble. It's a thin wrapper for callers that just want
-"how much should I scale 2022 income to get a 2026 estimate?".
+delegates to :mod:`census_forecaster`'s multi-source ensemble
+(``project_ensemble_multi``). It's a thin wrapper for callers that just
+want "how much should I scale 2022 income to get a 2026 estimate?".
 
 When to use which projection entry point:
 
@@ -28,10 +28,7 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from census_forecaster import (
-    fit_damped_trend,
-    project_damped_trend,
-)
+from census_forecaster.acs.ensemble import project_ensemble_multi
 from common.models import AcsObservation
 
 
@@ -41,15 +38,18 @@ def project_income_growth(
 ) -> float:
     """Return a one-step scalar growth factor for ``target_year``.
 
-    Fits a damped-trend model to ``history`` (must already be sorted
-    ascending by year), projects forward to ``target_year``, and returns
-    the ratio of the projected level to the most recent observed level.
+    Runs the census_forecaster multi-source ensemble
+    (``project_ensemble_multi``: damped trend + AR(1) + CPI/PCE/QCEW
+    anchors + v3 bias-correction) on ``history`` and returns the ratio
+    of the projected level to the most recent observed level.
 
     Parameters
     ----------
     history:
         Sequence of :class:`common.models.AcsObservation` values. Must be
         non-empty and end at a year strictly less than ``target_year``.
+        Observations must carry ``geoid`` and ``indicator`` fields so that
+        ``project_ensemble_multi`` can look up multi-source anchors.
     target_year:
         Year to project to (inclusive). Must be > ``history[-1].year``.
 
@@ -63,6 +63,8 @@ def project_income_growth(
     ------
     ValueError
         If ``history`` is empty or ``target_year`` is not in the future.
+    RuntimeError
+        If ``project_ensemble_multi`` returns ``None`` (insufficient data).
     """
     if not history:
         raise ValueError("project_income_growth: history must be non-empty")
@@ -73,9 +75,9 @@ def project_income_growth(
             f"than history[-1].year={last.year}"
         )
 
-    h = target_year - last.year
-    fit = fit_damped_trend(list(history))
-    projection = project_damped_trend(fit, h=h)
-    if not projection:
-        raise RuntimeError("project_damped_trend returned empty result")
-    return projection[-1].point / last.estimate
+    fp = project_ensemble_multi(list(history), target_year)
+    if fp is None:
+        raise RuntimeError(
+            f"project_ensemble_multi returned None for target_year={target_year}"
+        )
+    return fp.point / last.estimate
