@@ -8,7 +8,10 @@ of tax credits and benefits.
 from __future__ import annotations
 
 from .geographic import GeographicAnalyzer
+from .puma_crosswalk import assign_geography, load_crosswalk
 
 __all__ = [
-    'GeographicAnalyzer'
+    'GeographicAnalyzer',
+    'assign_geography',
+    'load_crosswalk',
 ]

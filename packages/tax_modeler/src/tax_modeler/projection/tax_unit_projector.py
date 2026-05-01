@@ -306,6 +306,18 @@ def project_tax_units_forward(
     # with occupation codes AND BLS wage-growth data.
     use_bls_path = pums_persons_df is not None and bls_oes_data is not None
 
+    # --- Auto-assign geography if PUMA is present but county is absent ------
+    # TaxUnitConstructor preserves the PUMA column from PUMS records; use the
+    # crosswalk to derive county (and legislative districts) before we try to
+    # resolve per-county growth factors below.
+    if "PUMA" in tax_units_df.columns and "county" not in tax_units_df.columns:
+        from tax_modeler.analysis.puma_crosswalk import assign_geography
+        logger.info(
+            "project_tax_units_forward: PUMA column detected without county — "
+            "auto-assigning geography via assign_geography()"
+        )
+        tax_units_df = assign_geography(tax_units_df)
+
     # --- Per-county growth factors (with CI) — scalar path only -------------
     county_growth: Dict[str, _GrowthFactorResult] = {}
     has_county = "county" in tax_units_df.columns
