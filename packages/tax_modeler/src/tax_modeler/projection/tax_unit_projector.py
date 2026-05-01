@@ -485,6 +485,29 @@ def project_tax_units_forward(
     from tax_modeler.credits.eitc import calculate_eitc_for_tax_units
     df = calculate_eitc_for_tax_units(df)
 
+    # --- Poverty rate correction on EITC (S1701 signal) ----------------------
+    # project_acs_supplement results are lru_cache'd from the deduction step,
+    # so these calls are cache hits — no additional network or disk I/O.
+    from tax_modeler.adjustments.eitc_poverty_scaling import scale_eitc_for_poverty
+    from tax_modeler.projection.acs_supplement_forecast import project_acs_supplement
+
+    county_poverty_factors: Dict[str, float] = {}
+    if has_county:
+        for county in df["county"].dropna().unique():
+            geoid = _resolve_geoid(str(county), geoid_lookup) or _STATE_PROXY_GEOID
+            supp = project_acs_supplement(target_year, geoid=geoid, anchor_year=anchor_year)
+            if supp.poverty_rate_growth_factor is not None:
+                county_poverty_factors[county] = supp.poverty_rate_growth_factor
+
+    state_supp = project_acs_supplement(target_year, geoid=_STATE_PROXY_GEOID, anchor_year=anchor_year)
+    state_poverty_factor = state_supp.poverty_rate_growth_factor
+
+    df = scale_eitc_for_poverty(
+        df,
+        county_poverty_factors=county_poverty_factors,
+        default_factor=state_poverty_factor,
+    )
+
     # --- Metadata columns ----------------------------------------------------
     df["projection_year"] = target_year
     df["projection_base_year"] = anchor_year if anchor_year is not None else _DEFAULT_BASE_YEAR

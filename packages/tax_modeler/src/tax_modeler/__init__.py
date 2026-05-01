@@ -50,6 +50,7 @@ from .adjustments import (
     calculate_hawaii_credits,
     estimate_deduction,
     scale_deduction_params_for_target_year,
+    scale_eitc_for_poverty,
 )
 from .adjustments.hawaii_credits import HawaiiTaxCredits
 from .adjustments.pareto_calibration import ParetoIncomeCalibrator
@@ -119,6 +120,7 @@ __all__ = [
     "calculate_hawaii_credits",
     "estimate_deduction",
     "scale_deduction_params_for_target_year",
+    "scale_eitc_for_poverty",
     "HawaiiTaxCredits",
     "ParetoIncomeCalibrator",
     "UltraHighIncomeSynthesizer",
