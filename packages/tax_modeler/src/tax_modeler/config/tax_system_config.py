@@ -115,6 +115,58 @@ class TaxSystemRegistry:
         )
 
     @classmethod
+    def get_act46_system(cls, year: int) -> TaxSystemConfig:
+        """Act 46 baseline for any tax year >= 2025.
+
+        Selects the Act 46 bracket vintage that applies to ``year`` per the
+        statutory phase-in schedule: 2025 brackets for TY 2025-2026, 2027
+        brackets for TY 2027-2028, 2029 brackets for TY 2029+.
+        Standard deductions follow the year-by-year schedule in
+        hawaii_standard_deductions_by_year.csv.
+        """
+        if year < 2025:
+            raise ValueError(f"get_act46_system requires year >= 2025, got {year}")
+        if year < 2027:
+            bracket_year = 2025
+        elif year < 2029:
+            bracket_year = 2027
+        else:
+            bracket_year = 2029
+        return TaxSystemConfig(
+            name=f"act46_{year}",
+            year=year,
+            bracket_year=bracket_year,
+            standard_deduction_year=year,
+            personal_exemption=cls.PERSONAL_EXEMPTIONS.get(year, 1200),
+            description=f"Act 46 (2024) — TY {year} (bracket vintage {bracket_year})",
+        )
+
+    @classmethod
+    def get_sb3125_cd1_system(cls, year: int) -> TaxSystemConfig:
+        """SB 3125 CD1 (2026 conference draft) — overrides Act 46 brackets for TY 2027+.
+
+        Bracket scenario tag ``sb3125_cd1`` selects the rows added to
+        hawaii_tax_brackets_master_all.csv from the bill text:
+          - year=2027 schedule applies TY 2027-2028 (bill: "after Dec 31, 2026")
+          - year=2029 schedule applies TY 2029+      (bill: "after Dec 31, 2028")
+
+        Standard deductions are NOT amended by the bill — they follow the
+        Act 46 phase-in already in the deductions CSV.
+        """
+        if year < 2027:
+            raise ValueError(f"SB 3125 CD1 brackets only apply to year >= 2027, got {year}")
+        bracket_year = 2027 if year < 2029 else 2029
+        return TaxSystemConfig(
+            name=f"sb3125_cd1_{year}",
+            year=year,
+            bracket_year=bracket_year,
+            standard_deduction_year=year,
+            personal_exemption=cls.PERSONAL_EXEMPTIONS.get(year, 1200),
+            description=f"SB 3125 CD1 — TY {year} (lower mid-bracket rates, new 13% top bracket)",
+            bracket_scenario='sb3125_cd1',
+        )
+
+    @classmethod
     def get_sb3125_original_2027_system(cls) -> TaxSystemConfig:
         """SB3125 original proposal (2026 session, before SD1 amendments).
 
@@ -201,8 +253,9 @@ class TaxCalculator:
     def __init__(self, project_root: Optional[Path] = None):
         """Initialize calculator with data file paths."""
         if project_root is None:
-            project_root = Path(__file__).parent.parent.parent.parent
-        
+            # Bundled data lives inside the package: tax_modeler/data/raw/...
+            project_root = Path(__file__).parent.parent
+
         self.project_root = project_root
         self.brackets_path = project_root / "data/raw/hawaii_tax_brackets_master_all.csv"
         self.deductions_path = project_root / "data/raw/hawaii_standard_deductions_by_year.csv"
