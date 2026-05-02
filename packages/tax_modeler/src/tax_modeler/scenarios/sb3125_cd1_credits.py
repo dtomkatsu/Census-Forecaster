@@ -106,6 +106,41 @@ TCRA_BILL_REPEAL_YEAR = 2029  # Bill: Act 261 Part II takes effect 1/1/2029
 TCRA_ACT46_REPEAL_YEAR = 2030 # Baseline (Act 46): repeal was 1/1/2030
 
 # ---------------------------------------------------------------------------
+# REEC demand decay scenarios (post-OBBBA federal Section 25D termination)
+# ---------------------------------------------------------------------------
+# OBBBA (PL 119-21, July 2025) terminated the federal residential solar
+# credit (Section 25D) effective 12/31/2025. SEIA forecasts US residential
+# solar -19% in 2026, commercial -13%; then modest recovery as state credits
+# become more decisive at the margin.
+#
+# Hawaii context tempers SEIA's national figures:
+#   - Hawaii has the highest electricity prices in the US ($0.42/kWh) -> solar
+#     economics survive without federal credit at meaningful levels.
+#   - Large lease/PPA share (Sunrun, etc.) uses Section 48E (intact through
+#     12/31/2027) rather than Section 25D, so a portion is unaffected.
+#   - 2025 saw a +37% pull-forward in HECO interconnection applications
+#     (Jul-Dec 2025) -> some 2026-2027 demand was already pulled into 2025.
+#
+# Three scenarios, applied as a multiplicative factor to the projected REEC
+# baseline (residential + commercial combined):
+REEC_DEMAND_SCENARIOS: dict[str, dict[int, float]] = {
+    # No federal-credit adjustment (assumes pre-OBBBA demand persists).
+    # Conservative for revenue (overstates baseline -> overstates cap savings).
+    "pre_obbba": {y: 1.00 for y in range(2024, 2032)},
+
+    # SEIA-anchored, Hawaii-tempered. Recommended default.
+    # 2026 -10% (vs SEIA's -19%; Hawaii leases shielded), gradual recovery.
+    "obbba_mid": {2024: 1.00, 2025: 1.10, 2026: 0.90, 2027: 0.92,
+                  2028: 0.95, 2029: 0.98, 2030: 1.00, 2031: 1.00},
+
+    # SEIA national figures applied directly + extended decay.
+    # Severe case: Hawaii REEC declines as solar economics deteriorate.
+    "obbba_severe": {2024: 1.00, 2025: 1.10, 2026: 0.81, 2027: 0.79,
+                     2028: 0.80, 2029: 0.85, 2030: 0.90, 2031: 0.95},
+}
+DEFAULT_REEC_DEMAND_SCENARIO = "obbba_mid"
+
+# ---------------------------------------------------------------------------
 # Growth factors
 # ---------------------------------------------------------------------------
 
@@ -151,26 +186,65 @@ def _reec_eligible_individual_M() -> float:
     return sum(claim * elig for _, claim, elig in REEC_INDIVIDUAL_BY_AGI_BIN)
 
 
-def _reec_baseline_M(target_year: int) -> Dict[str, float]:
-    """REEC projected demand for target_year, with eligibility breakdown."""
+def _reec_demand_factor(target_year: int, scenario: str) -> float:
+    """Return the demand-decay multiplier for REEC at target_year.
+
+    Encodes post-OBBBA federal Section 25D termination effects per the
+    selected scenario. See REEC_DEMAND_SCENARIOS for definitions.
+    """
+    if scenario not in REEC_DEMAND_SCENARIOS:
+        raise ValueError(
+            f"Unknown REEC demand scenario {scenario!r}; "
+            f"valid options: {list(REEC_DEMAND_SCENARIOS.keys())}"
+        )
+    table = REEC_DEMAND_SCENARIOS[scenario]
+    if target_year in table:
+        return table[target_year]
+    # Out-of-range: clamp to nearest endpoint
+    if target_year < min(table):
+        return table[min(table)]
+    return table[max(table)]
+
+
+def _reec_baseline_M(target_year: int, demand_scenario: str = DEFAULT_REEC_DEMAND_SCENARIO) -> Dict[str, float]:
+    """REEC projected demand for target_year, with eligibility breakdown.
+
+    Applies both Hawaii nominal income growth and the OBBBA demand-decay
+    factor for the chosen scenario.
+    """
     g = _hawaii_nominal_growth(target_year)
+    d = _reec_demand_factor(target_year, demand_scenario)
+    combined = g * d
     individual_eligible_2023  = _reec_eligible_individual_M()
     individual_ineligible_2023 = REEC_INDIVIDUAL_TOTAL_M - individual_eligible_2023
     return {
-        "growth":               g,
-        "individual_eligible":  individual_eligible_2023 * g,
-        "individual_ineligible": individual_ineligible_2023 * g,  # AGI-excluded
-        "corporate":            REEC_CORPORATE_TOTAL_M * g,
-        "other":                REEC_OTHER_TOTAL_M * g,
-        "total_baseline":       (REEC_INDIVIDUAL_TOTAL_M + REEC_CORPORATE_TOTAL_M + REEC_OTHER_TOTAL_M) * g,
-        "total_eligible":       (individual_eligible_2023 + REEC_CORPORATE_TOTAL_M + REEC_OTHER_TOTAL_M) * g,
+        "growth":                g,
+        "demand_factor":         d,
+        "individual_eligible":   individual_eligible_2023 * combined,
+        "individual_ineligible": individual_ineligible_2023 * combined,
+        "corporate":             REEC_CORPORATE_TOTAL_M * combined,
+        "other":                 REEC_OTHER_TOTAL_M * combined,
+        "total_baseline":        (REEC_INDIVIDUAL_TOTAL_M + REEC_CORPORATE_TOTAL_M + REEC_OTHER_TOTAL_M) * combined,
+        "total_eligible":        (individual_eligible_2023 + REEC_CORPORATE_TOTAL_M + REEC_OTHER_TOTAL_M) * combined,
     }
 
 
-def compute_credit_overlay(target_year: int) -> Dict[str, float]:
+def compute_credit_overlay(
+    target_year: int,
+    reec_demand_scenario: str = DEFAULT_REEC_DEMAND_SCENARIO,
+) -> Dict[str, float]:
     """Compute SB 3125 CD1 credit-cap fiscal impact for ``target_year``.
 
     Positive values = revenue gained by the State.
+
+    Parameters
+    ----------
+    target_year : int
+        Tax year to score, e.g. 2027.
+    reec_demand_scenario : str
+        One of REEC_DEMAND_SCENARIOS keys. Default 'obbba_mid' applies
+        Hawaii-tempered SEIA decay to REEC demand. Use 'pre_obbba' to
+        match the pre-research baseline.
 
     Returns a dict with the breakdown described in the module docstring.
     """
@@ -180,7 +254,7 @@ def compute_credit_overlay(target_year: int) -> Dict[str, float]:
     growth = _hawaii_nominal_growth(target_year)
 
     # ---- Renewable Energy Tax Credit ------------------------------------
-    reec = _reec_baseline_M(target_year)
+    reec = _reec_baseline_M(target_year, demand_scenario=reec_demand_scenario)
     if 2027 <= target_year <= 2030:
         # Cap binds on the eligible portion. Total revenue gain =
         # ineligible-by-AGI demand (filtered out entirely) +
@@ -208,6 +282,8 @@ def compute_credit_overlay(target_year: int) -> Dict[str, float]:
 
     return {
         "growth_factor":         round(growth, 4),
+        "reec_demand_factor":    round(reec["demand_factor"], 4),
+        "reec_demand_scenario":  reec_demand_scenario,
         # REEC breakdown
         "reec_individual_eligible_$M":   round(reec["individual_eligible"], 2),
         "reec_individual_ineligible_$M": round(reec["individual_ineligible"], 2),
