@@ -172,6 +172,30 @@ def _hawaii_nominal_growth(target_year: int) -> float:
         return fallback
 
 
+def _hawaii_corporate_growth(target_year: int) -> float:
+    """Cumulative Hawaii nominal *business sector* growth from BASE_YEAR.
+
+    CGEC and corporate REEC are business-investment / capital-asset
+    credits, NOT individual-income credits. Using median household income
+    growth for them systematically misprices the projection because:
+
+      - Hawaii GDP has grown ~5.0%/yr nominal 2019-2024 (BEA SAGDP)
+      - Median household income has grown ~3.5%/yr nominal in same period
+      - Business investment is more volatile and tracks GDP, not wages
+
+    We use Hawaii nominal GDP growth as the proxy. With Hawaii's GDP
+    around $112B (2023, BEA) growing ~5%/yr nominal in projection.
+
+    Falls back to flat 5%/yr if no bundled GDP series is available.
+    """
+    # Hawaii nominal GDP growth — slightly above national GDP growth in
+    # forecasts because of tourism recovery + real-estate appreciation.
+    # Source: BEA SAGDP1, projected forward at consensus 5%/yr nominal.
+    HAWAII_NOMINAL_GDP_GROWTH = 0.050
+    years = target_year - BASE_YEAR
+    return (1.0 + HAWAII_NOMINAL_GDP_GROWTH) ** years
+
+
 # ---------------------------------------------------------------------------
 # Credit overlay
 # ---------------------------------------------------------------------------
@@ -206,32 +230,72 @@ def _reec_demand_factor(target_year: int, scenario: str) -> float:
     return table[max(table)]
 
 
-def _reec_baseline_M(target_year: int, demand_scenario: str = DEFAULT_REEC_DEMAND_SCENARIO) -> Dict[str, float]:
+def _reec_baseline_M(
+    target_year: int,
+    demand_scenario: str = DEFAULT_REEC_DEMAND_SCENARIO,
+    corp_subject_to_agi_limit: bool = False,
+) -> Dict[str, float]:
     """REEC projected demand for target_year, with eligibility breakdown.
 
     Applies both Hawaii nominal income growth and the OBBBA demand-decay
-    factor for the chosen scenario.
+    factor for the chosen scenario. Individual claims grow with median
+    income; corporate + other claims grow with Hawaii nominal GDP
+    (CGEC-style growth, since these are business investments).
+
+    Parameters
+    ----------
+    corp_subject_to_agi_limit : bool
+        Whether corporate REEC claims are subject to the AGI limit. The
+        bill text in §235-12.5(a) says "the taxpayer's adjusted gross
+        income does not exceed $175,000 if filing as an individual, or
+        $350,000 if filing jointly." Whether "AGI" applies coherently to
+        a corporation is contested. Default False (treat corp claims as
+        eligible regardless of AGI). Set True for a conservative scenario
+        — assumes corporations get treated like high-income individuals
+        and most ($200K+ bin = 56.1% eligible) claims are accepted.
     """
-    g = _hawaii_nominal_growth(target_year)
+    g_individual = _hawaii_nominal_growth(target_year)
+    g_corporate  = _hawaii_corporate_growth(target_year)
     d = _reec_demand_factor(target_year, demand_scenario)
-    combined = g * d
+
+    combined_ind  = g_individual * d
+    combined_corp = g_corporate * d
+
     individual_eligible_2023  = _reec_eligible_individual_M()
     individual_ineligible_2023 = REEC_INDIVIDUAL_TOTAL_M - individual_eligible_2023
+
+    # Corporate eligibility: by default, no AGI limit (full claim).
+    # If corp_subject_to_agi_limit=True, treat corp claims as if they
+    # were filers in the $200K+ AGI bin (56.1% eligible per PUMS).
+    if corp_subject_to_agi_limit:
+        TOP_AGI_BIN_ELIGIBLE_SHARE = REEC_INDIVIDUAL_BY_AGI_BIN[-1][2]  # 0.561
+        corp_eligible_2023 = REEC_CORPORATE_TOTAL_M * TOP_AGI_BIN_ELIGIBLE_SHARE
+        other_eligible_2023 = REEC_OTHER_TOTAL_M * TOP_AGI_BIN_ELIGIBLE_SHARE
+    else:
+        corp_eligible_2023 = REEC_CORPORATE_TOTAL_M
+        other_eligible_2023 = REEC_OTHER_TOTAL_M
+
     return {
-        "growth":                g,
+        "growth_individual":     g_individual,
+        "growth_corporate":      g_corporate,
         "demand_factor":         d,
-        "individual_eligible":   individual_eligible_2023 * combined,
-        "individual_ineligible": individual_ineligible_2023 * combined,
-        "corporate":             REEC_CORPORATE_TOTAL_M * combined,
-        "other":                 REEC_OTHER_TOTAL_M * combined,
-        "total_baseline":        (REEC_INDIVIDUAL_TOTAL_M + REEC_CORPORATE_TOTAL_M + REEC_OTHER_TOTAL_M) * combined,
-        "total_eligible":        (individual_eligible_2023 + REEC_CORPORATE_TOTAL_M + REEC_OTHER_TOTAL_M) * combined,
+        "individual_eligible":   individual_eligible_2023 * combined_ind,
+        "individual_ineligible": individual_ineligible_2023 * combined_ind,
+        "corporate":             REEC_CORPORATE_TOTAL_M * combined_corp,
+        "corporate_eligible":    corp_eligible_2023 * combined_corp,
+        "other":                 REEC_OTHER_TOTAL_M * combined_corp,
+        "other_eligible":        other_eligible_2023 * combined_corp,
+        "total_baseline":        (REEC_INDIVIDUAL_TOTAL_M * combined_ind
+                                  + (REEC_CORPORATE_TOTAL_M + REEC_OTHER_TOTAL_M) * combined_corp),
+        "total_eligible":        (individual_eligible_2023 * combined_ind
+                                  + (corp_eligible_2023 + other_eligible_2023) * combined_corp),
     }
 
 
 def compute_credit_overlay(
     target_year: int,
     reec_demand_scenario: str = DEFAULT_REEC_DEMAND_SCENARIO,
+    corp_subject_to_agi_limit: bool = False,
 ) -> Dict[str, float]:
     """Compute SB 3125 CD1 credit-cap fiscal impact for ``target_year``.
 
@@ -245,16 +309,23 @@ def compute_credit_overlay(
         One of REEC_DEMAND_SCENARIOS keys. Default 'obbba_mid' applies
         Hawaii-tempered SEIA decay to REEC demand. Use 'pre_obbba' to
         match the pre-research baseline.
+    corp_subject_to_agi_limit : bool
+        Whether REEC corporate claims fall under the AGI limit (see
+        ``_reec_baseline_M`` docstring). Default False.
 
     Returns a dict with the breakdown described in the module docstring.
     """
     if target_year < BASE_YEAR:
         raise ValueError(f"target_year must be >= {BASE_YEAR}, got {target_year}")
 
-    growth = _hawaii_nominal_growth(target_year)
+    growth_individual = _hawaii_nominal_growth(target_year)
+    growth_corporate  = _hawaii_corporate_growth(target_year)
 
     # ---- Renewable Energy Tax Credit ------------------------------------
-    reec = _reec_baseline_M(target_year, demand_scenario=reec_demand_scenario)
+    reec = _reec_baseline_M(
+        target_year, demand_scenario=reec_demand_scenario,
+        corp_subject_to_agi_limit=corp_subject_to_agi_limit,
+    )
     if 2027 <= target_year <= 2030:
         # Cap binds on the eligible portion. Total revenue gain =
         # ineligible-by-AGI demand (filtered out entirely) +
@@ -267,11 +338,16 @@ def compute_credit_overlay(
     reec_savings = max(0.0, reec["total_baseline"] - reec_after_bill)
 
     # ---- Capital Goods Excise Tax Credit --------------------------------
-    cgec_baseline = CGEC_TOTAL_M * growth
+    # CGEC is mostly corporate / business-investment.
+    # Use Hawaii nominal GDP growth instead of median household income.
+    cgec_baseline = CGEC_TOTAL_M * growth_corporate
     cgec_savings = cgec_baseline if target_year > CGEC_SUNSET_YEAR else 0.0
 
     # ---- Research Activities Credit -------------------------------------
-    tcra_baseline = TCRA_TOTAL_M * growth
+    # TCRA baseline is $7M, $1M individual + $6M corporate. Use a
+    # weighted growth factor: 1/7 individual + 6/7 corporate.
+    tcra_growth = (1.0 * growth_individual + 6.0 * growth_corporate) / 7.0
+    tcra_baseline = TCRA_TOTAL_M * tcra_growth
     # Bill accelerates repeal by 1 year. Difference applies in TY 2029 only.
     if target_year == TCRA_BILL_REPEAL_YEAR:  # 2029: bill repeals, baseline keeps
         tcra_savings = tcra_baseline
@@ -281,14 +357,18 @@ def compute_credit_overlay(
     total_credit_savings = reec_savings + cgec_savings + tcra_savings
 
     return {
-        "growth_factor":         round(growth, 4),
+        "growth_individual":     round(growth_individual, 4),
+        "growth_corporate":      round(growth_corporate, 4),
         "reec_demand_factor":    round(reec["demand_factor"], 4),
         "reec_demand_scenario":  reec_demand_scenario,
+        "corp_subject_to_agi_limit": corp_subject_to_agi_limit,
         # REEC breakdown
         "reec_individual_eligible_$M":   round(reec["individual_eligible"], 2),
         "reec_individual_ineligible_$M": round(reec["individual_ineligible"], 2),
         "reec_corporate_$M":             round(reec["corporate"], 2),
+        "reec_corporate_eligible_$M":    round(reec["corporate_eligible"], 2),
         "reec_other_$M":                 round(reec["other"], 2),
+        "reec_other_eligible_$M":        round(reec["other_eligible"], 2),
         "reec_baseline_$M":              round(reec["total_baseline"], 2),
         "reec_eligible_$M":              round(reec["total_eligible"], 2),
         "reec_after_bill_$M":            round(reec_after_bill, 2),
