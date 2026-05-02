@@ -154,13 +154,19 @@ class PUMSDataLoader:
             hh_df = full_df.iloc[self._batch_offset:self._batch_offset + batch_size].copy()
         else:
             # CSV: skip the header plus rows already consumed.
+            # Use float for all numeric columns — PUMS has many nullable int
+            # fields (e.g. HFL, ACCESS) that arrive as float64 with NaN values
+            # and cannot be safely cast to int64 during read.
             skiprows = range(1, self._batch_offset + 1) if self._batch_offset > 0 else []
-            available_cols = {k: v for k, v in self.household_columns.items()}
+            csv_dtypes = {
+                k: (float if v is int else v)
+                for k, v in self.household_columns.items()
+            }
             hh_df = pd.read_csv(
                 hh_file,
                 skiprows=skiprows,
                 nrows=batch_size,
-                dtype=available_cols,
+                dtype=csv_dtypes,
             )
 
         if hh_df.empty:
@@ -213,9 +219,13 @@ class PUMSDataLoader:
                 person_df['SERIALNO'].astype(str).isin(serialno_set)
             ].copy()
         else:
+            csv_dtypes = {
+                k: (float if v is int else v)
+                for k, v in self.person_columns.items()
+            }
             chunks = []
             for chunk in pd.read_csv(
-                person_file, chunksize=10_000, dtype=self.person_columns
+                person_file, chunksize=10_000, dtype=csv_dtypes
             ):
                 filtered = chunk[chunk['SERIALNO'].astype(str).isin(serialno_set)]
                 if not filtered.empty:
