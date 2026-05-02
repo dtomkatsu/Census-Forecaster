@@ -92,6 +92,34 @@ if __name__ == "__main__":
         calibrated = _calibrate(units)
         print(f"  Done in {time.perf_counter()-t0:.1f}s", flush=True)
 
+        # ---- Top-income synthesis (Priority 1a fix) ------------------------
+        # Inject Pareto-derived $1M+ filers; rake's 1.5x weight cap can't
+        # close the 5x gap on its own. See packages/tax_modeler/src/
+        # tax_modeler/scenarios/top_income_synthesis.py for details.
+        from tax_modeler.scenarios.top_income_synthesis import (
+            synthesize_top_filers, validate_top_synthesis,
+        )
+        t0 = time.perf_counter()
+        print("Synthesizing top-income ($1M+) filers...", flush=True)
+        before = validate_top_synthesis(calibrated)
+        print(f"  Before: {before['filers_1m_plus']:,.0f} filers "
+              f"({100*before['filer_target_ratio']:.1f}% of target), "
+              f"${before['tax_1m_plus_$M']:,.1f}M tax "
+              f"({100*before['tax_target_ratio']:.1f}% of $663M)", flush=True)
+        calibrated = synthesize_top_filers(calibrated)
+        # Recompute base tax for the new synthetic rows
+        calibrated = _compute_base_tax(calibrated)
+        after = validate_top_synthesis(calibrated)
+        print(f"  After:  {after['filers_1m_plus']:,.0f} filers "
+              f"({100*after['filer_target_ratio']:.1f}% of target), "
+              f"${after['tax_1m_plus_$M']:,.1f}M tax "
+              f"({100*after['tax_target_ratio']:.1f}% of $663M)", flush=True)
+        print(f"  Filing mix at $1M+: MFJ {100*after['mfj_share']:.0f}% / "
+              f"Single {100*after['single_share']:.0f}% / "
+              f"HoH {100*after['hoh_share']:.0f}% / "
+              f"MFS {100*after['mfs_share']:.0f}%", flush=True)
+        print(f"  Done in {time.perf_counter()-t0:.1f}s", flush=True)
+
         # ---- Per-year fiscal impact ----------------------------------------
         calc = TaxCalculator()
         rows = []
