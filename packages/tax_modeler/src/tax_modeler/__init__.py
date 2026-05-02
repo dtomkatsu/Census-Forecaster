@@ -68,6 +68,9 @@ from .validation import (
 from .revenue import RevenueEstimator, estimate_revenue
 from .analysis import GeographicAnalyzer, assign_geography, load_crosswalk
 
+# --- End-to-end pipeline -----------------------------------------------------
+from .pipeline import run_pipeline, PipelineResult
+
 # --- PUMS / projection (two entry points each) ------------------------------
 # Simple "scalar / DataFrame" helpers — bridge to monorepo workspace packages.
 from .pums_adapter import load_hawaii_pums
@@ -132,6 +135,9 @@ __all__ = [
     # Revenue / analysis
     "RevenueEstimator",
     "estimate_revenue",
+    # End-to-end pipeline
+    "run_pipeline",
+    "PipelineResult",
     # Geography — PUMA crosswalk and analysis
     "GeographicAnalyzer",
     "assign_geography",
