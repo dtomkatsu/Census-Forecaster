@@ -117,8 +117,11 @@ if __name__ == "__main__":
                 "act46_revenue_$M":         round(base_row["revenue_millions"], 2),
                 "sb3125_cd1_revenue_$M":    round(scen_row["revenue_millions"], 2),
                 "bracket_delta_$M":         round(diff_row["revenue_millions"], 2),
+                "reec_baseline_$M":         credit["reec_baseline_$M"],
+                "reec_eligible_$M":         credit["reec_eligible_$M"],
                 "reec_savings_$M":          credit["reec_savings_$M"],
                 "cgec_savings_$M":          credit["cgec_savings_$M"],
+                "tcra_savings_$M":          credit["tcra_savings_$M"],
                 "total_credit_savings_$M":  credit["total_credit_savings_$M"],
                 "total_impact_$M":          round(
                     diff_row["revenue_millions"] + credit["total_credit_savings_$M"], 2
