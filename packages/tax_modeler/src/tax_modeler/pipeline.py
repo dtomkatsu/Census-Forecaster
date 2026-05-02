@@ -179,6 +179,11 @@ def _compute_base_tax(df: pd.DataFrame) -> pd.DataFrame:
     df = calculate_hawaii_tax_for_units(df)
     df = _recalculate_ctc(df)
     df = calculate_eitc_for_tax_units(df)
+    # Calibration expects 'agi' and 'hi_state_tax'; Hawaii tax produces 'hi_agi' / 'hi_tax_liability'
+    if "hi_agi" in df.columns and "agi" not in df.columns:
+        df["agi"] = df["hi_agi"]
+    if "hi_tax_liability" in df.columns and "hi_state_tax" not in df.columns:
+        df["hi_state_tax"] = df["hi_tax_liability"]
     return df
 
 
