@@ -261,17 +261,28 @@ def estimate_pte_election_shift_M(
     """Estimate revenue *reduction* from PTE election under SB 3125 CD1.
 
     Mechanism: Pass-through owners with income above the new 13% threshold
-    have a 2pp incentive (13% → 11%) to elect the PTE. We assume:
+    have a 4pp incentive (13% individual → 9% PTE) to elect the PTE. We assume:
 
-      - Share of $1M+ income that is pass-through-eligible: 40%
+      - Share of $1M+ **ordinary** income that is pass-through-eligible: 40%
         (national IRS SOI 2022: pass-through is ~35-50% of top-1% income;
-        Hawaii skews slightly lower due to wage-heavy economy)
-      - Of eligible pass-through income, `pte_capture` share elects
-      - Revenue lost = (captured income above threshold) × (13% - 11%)
-        = captured income × 0.02
+        Hawaii skews slightly lower due to wage-heavy economy).
+      - Of eligible pass-through income, `pte_capture` share elects.
+      - Revenue lost = (captured income above threshold) × (13% − 9%)
+        = captured income × 0.04
+
+    Capital gains are excluded from the election pool for two reasons:
+      1. CG income is not pass-through "business" income eligible for
+         entity-level election under HRS §235-110.93.
+      2. Even where K-1 capital gains could theoretically be elected,
+         the Hawaii CG cap (7.25%, HRS §235-16) is *below* the PTE rate
+         (9%), so rational filers would not elect PTE for CG income —
+         it would raise their tax on that income.
+
+    Threshold comparison uses total income (correct — that determines
+    bracket placement), but excess is computed on ordinary income only.
 
     Returns:
-      pte_eligible_income_$M:    pass-through income above threshold (pre-election)
+      pte_eligible_income_$M:    ordinary pass-through income above threshold
       pte_elected_income_$M:     income that actually elects ( × pte_capture)
       pte_revenue_loss_$M:       revenue moving from individual to PTE form
     """
@@ -283,14 +294,26 @@ def estimate_pte_election_shift_M(
         }
 
     PASS_THROUGH_SHARE = 0.40  # national IRS SOI 2022 average for top 1%
-    RATE_DIFFERENTIAL = SB3125_CD1_TOP_RATE - PTE_RATE  # 0.04 (13% - 9%)
+    RATE_DIFFERENTIAL = SB3125_CD1_TOP_RATE - PTE_RATE  # 0.04 (13% − 9%)
+
+    # Ordinary income = total income minus capital gains.
+    # synthetic_cg_share is set for $1M+ synthetic filers; base PUMS units
+    # default to 0 (no CG separation available from ACS).
+    if "synthetic_cg_share" in df.columns:
+        cg_share = df["synthetic_cg_share"].fillna(0.0)
+        ordinary_income = df[income_col] * (1.0 - cg_share)
+    else:
+        ordinary_income = df[income_col]
 
     excess_income_total = 0.0
     for fs, threshold in SB3125_TOP_THRESHOLDS.items():
+        # Threshold check: use total income (bracket placement)
         mask = (df[fs_col] == fs) & (df[income_col] > threshold)
         if not mask.any():
             continue
-        excess = (df.loc[mask, income_col] - threshold) * df.loc[mask, weight_col]
+        # Excess: ordinary income above threshold only
+        excess_ordinary = (ordinary_income.loc[mask] - threshold).clip(lower=0)
+        excess = excess_ordinary * df.loc[mask, weight_col]
         excess_income_total += float(excess.sum())
 
     pte_eligible = excess_income_total * PASS_THROUGH_SHARE
