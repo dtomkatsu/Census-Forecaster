@@ -128,6 +128,11 @@ class HawaiiTaxParameters:
 
 HAWAII_2023 = HawaiiTaxParameters()
 
+# HRS §235-16: net long-term capital gains taxed at no more than 7.25%.
+# SB 3125 CD1 amends §235-51 (ordinary income brackets) only; the CG cap
+# is unchanged and applies under both Act 46 and SB 3125 CD1 baselines.
+HAWAII_CG_CAP_RATE = 0.0725
+
 # ---------------------------------------------------------------------------
 # Year-specific schedules (Act 46 phase-in)
 # ---------------------------------------------------------------------------
@@ -279,6 +284,7 @@ def calculate_hawaii_tax(
     params: HawaiiTaxParameters = HAWAII_2023,
     tax_year: int = 2023,
     deduction_params: Optional[dict] = None,
+    cg_income: float = 0.0,
 ) -> Dict[str, float]:
     """
     Calculate Hawaii state income tax liability for a single tax unit.
@@ -301,6 +307,11 @@ def calculate_hawaii_tax(
             the standard deduction for filers where itemizing reduces taxable income.
             Pass scaled params from ``scale_deduction_params_for_target_year`` when
             projecting forward; omit (``None``) to use the standard deduction only.
+        cg_income: Net long-term capital gains included in ``income``.
+            When non-zero, the HRS §235-16 cap is applied: the incremental
+            bracket tax attributable to CG income is limited to
+            ``HAWAII_CG_CAP_RATE`` (7.25%) × ``cg_income``.  Defaults to 0
+            (backward-compatible — all income treated as ordinary).
 
     Returns:
         Dictionary with:
@@ -308,9 +319,10 @@ def calculate_hawaii_tax(
             - hi_standard_deduction: Standard deduction applied (or itemized if higher)
             - hi_personal_exemptions: Total personal exemption amount
             - hi_taxable_income: Taxable income after deductions/exemptions
-            - hi_tax_before_credits: Tax from bracket calculation
+            - hi_tax_before_credits: Tax from bracket calculation (CG cap applied)
             - hi_low_income_credit: Low-income refundable credit
             - hi_tax_liability: Net Hawaii tax (may be negative if credit exceeds liability)
+            - hi_cg_cap_savings: Tax reduction from CG cap (0 when cap not applied)
     """
     result = {
         'hi_agi': 0.0,
@@ -320,11 +332,13 @@ def calculate_hawaii_tax(
         'hi_tax_before_credits': 0.0,
         'hi_low_income_credit': 0.0,
         'hi_tax_liability': 0.0,
+        'hi_cg_cap_savings': 0.0,
     }
 
     filing_status = tax_unit.get('filing_status', 'single')
     agi = float(tax_unit.get('income', 0) or 0)
     num_dependents = int(tax_unit.get('num_dependents', 0))
+    cg_income = max(0.0, float(cg_income))
 
     result['hi_agi'] = agi
 
@@ -341,7 +355,6 @@ def calculate_hawaii_tax(
 
     if tax_year >= 2024:
         # Route through hawaii_tax_real for year-specific brackets + deductions.
-        # Lazy import avoids a circular dependency (projection imports liability).
         from tax_modeler.projection.hawaii_tax_real import (  # noqa: PLC0415
             _deduction_for_year,
             hawaii_tax_real,
@@ -354,12 +367,18 @@ def calculate_hawaii_tax(
         result['hi_standard_deduction'] = effective_ded
         taxable_income = max(0.0, agi - effective_ded - exemption_amount)
         result['hi_taxable_income'] = taxable_income
-        # Pass (agi − exemption) to hawaii_tax_real; its internal deduction
-        # subtraction then yields max(agi − effective_ded − exemption, 0).
-        # When itemizing we must override the standard-deduction subtraction
-        # inside hawaii_tax_real, so we adjust the income passed in.
         income_for_real = agi - exemption_amount - (effective_ded - std_ded)
         tax_before_credits = hawaii_tax_real(income_for_real, tax_year, real_fs)
+
+        # ---- HRS §235-16 capital gains cap ----------------------------------
+        if cg_income > 0:
+            ordinary_agi = max(0.0, agi - cg_income)
+            income_for_real_ord = ordinary_agi - exemption_amount - (effective_ded - std_ded)
+            ordinary_tax = hawaii_tax_real(income_for_real_ord, tax_year, real_fs)
+            cg_tax_uncapped = max(0.0, tax_before_credits - ordinary_tax)
+            cg_tax_capped = min(cg_tax_uncapped, cg_income * HAWAII_CG_CAP_RATE)
+            result['hi_cg_cap_savings'] = cg_tax_uncapped - cg_tax_capped
+            tax_before_credits = ordinary_tax + cg_tax_capped
     else:
         std_ded = params.standard_deduction.get(filing_status, params.standard_deduction['single'])
         effective_ded = _resolve_effective_deduction(
@@ -370,6 +389,15 @@ def calculate_hawaii_tax(
         result['hi_taxable_income'] = taxable_income
         brackets = params.brackets.get(filing_status, params.brackets['single'])
         tax_before_credits = _apply_brackets(taxable_income, brackets)
+
+        # ---- HRS §235-16 capital gains cap ----------------------------------
+        if cg_income > 0:
+            ordinary_taxable = max(0.0, (agi - cg_income) - effective_ded - exemption_amount)
+            ordinary_tax = _apply_brackets(ordinary_taxable, brackets)
+            cg_tax_uncapped = max(0.0, tax_before_credits - ordinary_tax)
+            cg_tax_capped = min(cg_tax_uncapped, cg_income * HAWAII_CG_CAP_RATE)
+            result['hi_cg_cap_savings'] = cg_tax_uncapped - cg_tax_capped
+            tax_before_credits = ordinary_tax + cg_tax_capped
 
     result['hi_tax_before_credits'] = tax_before_credits
 
@@ -452,10 +480,22 @@ def calculate_hawaii_tax_for_units(
     Returns:
         DataFrame with Hawaii tax columns added.
     """
+    # Derive per-unit capital gains income for the §235-16 cap.
+    # synthetic_cg_share is set by UltraHighIncomeSynthesizerV2 for $1M+ rows;
+    # base PUMS units don't have it, so they default to 0 (no cap applied).
+    has_cg_share = "synthetic_cg_share" in tax_units_df.columns
     results = []
     for _, row in tax_units_df.iterrows():
         unit = row.to_dict()
-        hi_tax = calculate_hawaii_tax(unit, tax_year=tax_year, deduction_params=deduction_params)
+        cg_income = 0.0
+        if has_cg_share:
+            cg_share = float(row.get("synthetic_cg_share") or 0.0)
+            income = float(row.get("income", 0) or 0)
+            cg_income = income * cg_share
+        hi_tax = calculate_hawaii_tax(
+            unit, tax_year=tax_year, deduction_params=deduction_params,
+            cg_income=cg_income,
+        )
         unit.update(hi_tax)
         results.append(unit)
     return pd.DataFrame(results)

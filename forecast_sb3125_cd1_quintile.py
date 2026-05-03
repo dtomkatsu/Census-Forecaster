@@ -62,13 +62,25 @@ def compute_quintile_breakdown(projected, baseline_cfg, scenario_cfg, calc):
     proj = projected.copy()
 
     # ---- Per-unit tax under each system (static scoring) --------------------
+    # CG income for §235-16 cap: synthetic filers carry synthetic_cg_share;
+    # base PUMS units don't (default 0 → no cap applied, consistent with
+    # ACS not capturing realized capital gains for sub-$1M filers).
+    import numpy as _np
+    cg_shares = (
+        proj["synthetic_cg_share"].fillna(0.0).values
+        if "synthetic_cg_share" in proj.columns
+        else _np.zeros(len(proj))
+    )
     base_tax, scen_tax = [], []
     ndep_col = proj.get("num_dependents") if hasattr(proj, "get") else proj["num_dependents"]
-    for inc, fs, ndep in zip(proj["income"], proj["filing_status"], ndep_col):
+    for inc, fs, ndep, cg_share in zip(
+        proj["income"], proj["filing_status"], ndep_col, cg_shares
+    ):
+        cg_inc = float(inc) * float(cg_share)
         b = calc.calculate_tax(inc, baseline_cfg, fs,
-                               num_exemptions=int(ndep) + 1)
+                               num_exemptions=int(ndep) + 1, cg_income=cg_inc)
         s = calc.calculate_tax(inc, scenario_cfg, fs,
-                               num_exemptions=int(ndep) + 1)
+                               num_exemptions=int(ndep) + 1, cg_income=cg_inc)
         base_tax.append(b["tax_liability"])
         scen_tax.append(s["tax_liability"])
 

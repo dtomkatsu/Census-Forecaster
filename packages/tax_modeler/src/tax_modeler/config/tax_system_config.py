@@ -342,72 +342,98 @@ class TaxCalculator:
         
         return adjusted
     
+    # HRS §235-16: net long-term capital gains taxed at no more than 7.25%
+    HAWAII_CG_CAP_RATE: float = 0.0725
+
+    def _bracket_tax(
+        self,
+        taxable_income: float,
+        brackets: "pd.DataFrame",
+    ) -> tuple:
+        """Apply bracket schedule to taxable income; return (tax, marginal_rate)."""
+        tax = 0.0
+        marginal_rate = 0.0
+        for _, bracket in brackets.iterrows():
+            bracket_min = bracket['income_min']
+            bracket_max = (bracket['income_max']
+                           if pd.notna(bracket['income_max']) else float('inf'))
+            rate = bracket['rate']
+            if rate > 1:
+                rate = rate / 100
+            if taxable_income > bracket_min:
+                tax += (min(taxable_income, bracket_max) - bracket_min) * rate
+                marginal_rate = rate
+                if taxable_income <= bracket_max:
+                    break
+        return tax, marginal_rate
+
     def calculate_tax(
         self,
         income: float,
         config: TaxSystemConfig,
         filing_status: str,
         num_exemptions: int = 1,
-        deduction_override: Optional[float] = None
+        deduction_override: Optional[float] = None,
+        cg_income: float = 0.0,
     ) -> Dict[str, float]:
         """
         Calculate tax liability for a single tax unit.
 
         Args:
-            income: Gross income (AGI)
-            config: Tax system configuration
-            filing_status: Filing status
-            num_exemptions: Number of personal exemptions
-            deduction_override: If provided, use this instead of the standard deduction
-                (e.g., for itemized deductions that exceed the standard deduction)
+            income: Gross income (AGI), including capital gains.
+            config: Tax system configuration.
+            filing_status: Filing status.
+            num_exemptions: Number of personal exemptions.
+            deduction_override: If provided, use this instead of the standard deduction.
+            cg_income: Net long-term capital gains included in ``income``.
+                When non-zero, the Hawaii §235-16 7.25% cap is applied: the
+                incremental bracket tax on the CG portion is limited to
+                7.25% × cg_income.  Defaults to 0 (all income treated as
+                ordinary — backward-compatible).
 
         Returns:
-            Dict with tax calculation details
+            Dict with tax calculation details, including ``cg_cap_savings``.
         """
         # Get standard deduction (or use override if provided)
         std_deduction = self.get_standard_deduction(config.standard_deduction_year, filing_status)
         if deduction_override is not None:
             std_deduction = deduction_override
-        
+
         # Calculate personal exemptions
         personal_exemptions = num_exemptions * config.personal_exemption
-        
-        # Calculate taxable income
+
+        # Calculate taxable income (on full AGI including CG)
         taxable_income = max(0, income - std_deduction - personal_exemptions)
-        
+
         # Get brackets (with optional scenario tag)
         brackets = self.get_brackets(config.bracket_year, filing_status,
                                      scenario=config.bracket_scenario)
-        
+
         # Apply adjustments if specified
         if config.bracket_adjustments:
             brackets = self.apply_bracket_adjustments(brackets, config.bracket_adjustments)
-        
-        # Calculate tax using brackets
-        tax = 0.0
-        marginal_rate = 0.0
-        
-        for _, bracket in brackets.iterrows():
-            bracket_min = bracket['income_min']
-            bracket_max = bracket['income_max'] if pd.notna(bracket['income_max']) else float('inf')
-            rate = bracket['rate']
-            
-            # Convert rate to decimal if stored as percentage
-            if rate > 1:
-                rate = rate / 100
-            
-            if taxable_income > bracket_min:
-                taxable_in_bracket = min(taxable_income, bracket_max) - bracket_min
-                tax += taxable_in_bracket * rate
-                marginal_rate = rate
-                
-                if taxable_income <= bracket_max:
-                    break
-        
+
+        # Calculate bracket tax on full income
+        tax, marginal_rate = self._bracket_tax(taxable_income, brackets)
+
+        # ---- HRS §235-16 capital gains cap (7.25%) --------------------------
+        cg_cap_savings = 0.0
+        cg_income = max(0.0, float(cg_income))
+        if cg_income > 0:
+            # Tax on ordinary income only (total AGI minus CG share)
+            ordinary_agi = max(0.0, income - cg_income)
+            ordinary_taxable = max(0.0, ordinary_agi - std_deduction - personal_exemptions)
+            ordinary_tax, _ = self._bracket_tax(ordinary_taxable, brackets)
+            # Incremental bracket tax that would be charged on the CG portion
+            cg_tax_uncapped = max(0.0, tax - ordinary_tax)
+            # Cap: CG income taxed at no more than 7.25%
+            cg_tax_capped = min(cg_tax_uncapped, cg_income * self.HAWAII_CG_CAP_RATE)
+            cg_cap_savings = cg_tax_uncapped - cg_tax_capped
+            tax = ordinary_tax + cg_tax_capped
+
         # Apply surcharges if configured
         surcharge_amount = 0.0
         if config.surcharges:
-            # Handle mapped status for config lookup
             status_map = {
                 'single': 'Single_Married_Separate',
                 'married_filing_jointly': 'Joint_Surviving_Spouse',
@@ -415,22 +441,18 @@ class TaxCalculator:
                 'head_of_household': 'Head_of_Household',
                 'qualifying_widow': 'Joint_Surviving_Spouse'
             }
-            # Try both original and mapped status
             status_keys = [filing_status, status_map.get(filing_status, filing_status)]
-            
             for status_key in status_keys:
                 if status_key in config.surcharges:
                     surcharge_config = config.surcharges[status_key]
                     threshold = surcharge_config['threshold']
                     rate = surcharge_config['rate']
-                    
-                    # Surcharge applies to taxable income above threshold
                     if taxable_income > threshold:
                         surcharge = (taxable_income - threshold) * rate
                         surcharge_amount += surcharge
                         tax += surcharge
                         marginal_rate += rate
-                    break  # Apply only one matching surcharge config
+                    break
 
         return {
             'gross_income': income,
@@ -439,8 +461,9 @@ class TaxCalculator:
             'taxable_income': taxable_income,
             'tax_liability': tax,
             'surcharge_amount': surcharge_amount,
-            'marginal_rate': marginal_rate * 100,  # Convert to percentage
-            'effective_rate': (tax / income * 100) if income > 0 else 0
+            'cg_cap_savings': cg_cap_savings,
+            'marginal_rate': marginal_rate * 100,
+            'effective_rate': (tax / income * 100) if income > 0 else 0,
         }
     
     def calculate_revenue(
@@ -490,6 +513,14 @@ class TaxCalculator:
         # Deduction overrides (None if column not specified)
         deductions = tax_units[deduction_col].values if deduction_col and deduction_col in tax_units.columns else None
 
+        # CG income for §235-16 cap: auto-detect synthetic_cg_share column.
+        # Base PUMS units don't have it → 0 (cap not applied).
+        cg_shares = (
+            tax_units["synthetic_cg_share"].fillna(0.0).values
+            if "synthetic_cg_share" in tax_units.columns
+            else np.zeros(len(tax_units))
+        )
+
         for i, (income, status, num_ex) in enumerate(zip(
             tax_units[income_col],
             tax_units[filing_status_col],
@@ -497,7 +528,11 @@ class TaxCalculator:
         )):
             try:
                 ded = float(deductions[i]) if deductions is not None else None
-                result = self.calculate_tax(income, config, status, int(num_ex), deduction_override=ded)
+                cg_inc = float(income) * float(cg_shares[i])
+                result = self.calculate_tax(
+                    income, config, status, int(num_ex),
+                    deduction_override=ded, cg_income=cg_inc,
+                )
                 liabilities.append(result['tax_liability'])
             except Exception as e:
                 logger.warning(f"Error calculating tax for income ${income:,.0f}, status {status}: {e}")
