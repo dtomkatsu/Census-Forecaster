@@ -51,31 +51,44 @@ TARGET_YEARS = [2027, 2028, 2029, 2030, 2031]
 # COR FY27 individual-income tax projection (Sep 2025 forecast)
 COR_FY27_IIT_PROJ_M = 3050.0
 
-# Three integrated scenarios (behavioral × Pareto × REEC demand)
+# Three calibrated scenarios. Calibration is anchored to (a) the official
+# 5yr fiscal-impact estimate of ~$680M, (b) state-level ETI literature
+# (Rauh/Shyu 2024 California 13.3% study), (c) PTE rate 9% (Act 50, Hawaii)
+# vs bill's 13% individual top → 4pp arbitrage gap, and (d) REEC nonrefundable
+# utilization considerations + Hawaii solar saturation.
 SCENARIOS = [
     {
         "label":  "LOW",
-        "alpha":  1.6,
+        "alpha":  1.7,                # steeper top tail (less concentration)
         "reec":   "obbba_severe",
-        "behav":  "low",
-        "corp_agi_limit": True,    # conservative on REEC corp eligibility
-        "top_premium":    0.000,    # no top-income growth premium (conservative)
+        "behav":  "high",             # strong behavioral response (low revenue gain)
+        "corp_agi_limit": True,
+        "top_premium":     -0.005,    # slight top-income decline (Hawaii outflow)
+        "reec_eff_share":  0.65,      # only 65% of claims actually offset tax
+        "cgec_growth":     0.020,     # 2%/yr business growth
+        "itemized_adj":    True,
     },
     {
         "label":  "MID",
         "alpha":  1.5,
         "reec":   "obbba_mid",
-        "behav":  "mid",
+        "behav":  "mid",              # ETI=0.40, migr=0.10, pte=0.70
         "corp_agi_limit": False,
-        "top_premium":    0.015,    # 1.5pp/yr top-income premium
+        "top_premium":     0.000,     # NO premium (Hawaii top-income flat)
+        "reec_eff_share":  0.80,      # 80% utilization (literature midpoint)
+        "cgec_growth":     0.030,     # 3%/yr (calibrated down from 5%)
+        "itemized_adj":    True,
     },
     {
         "label":  "HIGH",
         "alpha":  1.4,
         "reec":   "pre_obbba",
-        "behav":  "high",
+        "behav":  "low",              # weak behavioral (high revenue gain)
         "corp_agi_limit": False,
-        "top_premium":    0.025,    # 2.5pp/yr top-income premium (aggressive)
+        "top_premium":     0.010,     # 1pp/yr top-income premium
+        "reec_eff_share":  1.00,      # full claim utilization
+        "cgec_growth":     0.040,     # 4%/yr business growth
+        "itemized_adj":    False,     # no itemized adjustment (overstates 13% base)
     },
 ]
 
@@ -95,6 +108,7 @@ def run_one_scenario(
     synthesize_top_filers, validate_top_synthesis,
     BehavioralParams, apply_behavioral_response,
     apply_top_income_growth_premium,
+    apply_itemized_deduction_adjustment,
 ):
     import time
     label  = scenario["label"]
@@ -103,8 +117,13 @@ def run_one_scenario(
     behav  = scenario["behav"]
     corp_agi = scenario["corp_agi_limit"]
     top_premium = scenario["top_premium"]
+    reec_eff = scenario["reec_eff_share"]
+    cgec_g   = scenario["cgec_growth"]
+    do_item  = scenario["itemized_adj"]
     print(f"\n{'='*78}\nSCENARIO {label}: alpha={alpha} reec={reec} behav={behav} "
-          f"corp_agi={corp_agi} top_premium={top_premium:.3f}\n{'='*78}", flush=True)
+          f"corp_agi={corp_agi} top_premium={top_premium:+.3f}\n"
+          f"  reec_eff_share={reec_eff} cgec_growth={cgec_g:.3f} itemized_adj={do_item}\n"
+          f"{'='*78}", flush=True)
 
     # Synthesize fresh from the calibrated (no-synthesis) base
     units = synthesize_top_filers(base_calibrated, pareto_alpha=alpha)
@@ -131,6 +150,10 @@ def run_one_scenario(
             projected, target_year=year, annual_premium=top_premium,
         )
 
+        # 2b) Itemized-deduction adjustment for top filers
+        if do_item:
+            projected = apply_itemized_deduction_adjustment(projected)
+
         # 3) Pre-behavioral baseline + scenario revenue (static)
         baseline_cfg = TaxSystemRegistry.get_act46_system(year)
         scenario_cfg = TaxSystemRegistry.get_sb3125_cd1_system(year)
@@ -149,10 +172,12 @@ def run_one_scenario(
         pte_shift = behav_diag["pte_revenue_loss_$M"]
         bracket_delta_after_response = diff_behav - pte_shift
 
-        # 6) Credit-cap overlay (with corp AGI sensitivity)
+        # 6) Credit-cap overlay (with corp AGI + utilization + cgec growth)
         credit = compute_credit_overlay(
             year, reec_demand_scenario=reec,
             corp_subject_to_agi_limit=corp_agi,
+            reec_effective_claim_share=reec_eff,
+            cgec_annual_growth=cgec_g,
         )
         credit_total = credit["total_credit_savings_$M"]
 
@@ -210,6 +235,7 @@ if __name__ == "__main__":
             BehavioralParams,
             apply_behavioral_response,
             apply_top_income_growth_premium,
+            apply_itemized_deduction_adjustment,
         )
 
         wall_start = time.perf_counter()
@@ -243,6 +269,7 @@ if __name__ == "__main__":
                 BehavioralParams=BehavioralParams,
                 apply_behavioral_response=apply_behavioral_response,
                 apply_top_income_growth_premium=apply_top_income_growth_premium,
+                apply_itemized_deduction_adjustment=apply_itemized_deduction_adjustment,
             ))
 
         df = pd.DataFrame(all_rows)

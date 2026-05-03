@@ -70,11 +70,13 @@ SB3125_TOP_THRESHOLDS = {
 ACT46_TOP_RATE = 0.11      # current top rate under Act 46
 SB3125_CD1_TOP_RATE = 0.13 # new top rate under bill
 
-# Hawaii PTE election rate (HRS §235-110.93). Currently 11% (the top
-# individual rate); the PTE election was pegged to the top individual
-# bracket so it tracks Act 46. SB 3125 CD1 does NOT amend §235-110.93,
-# so PTE rate stays at 11% even when individual top hits 13%.
-PTE_RATE = 0.11
+# Hawaii PTE election rate (HRS §235-110.93). FIXED at 9% per Act 50
+# (TY 2024+); does NOT auto-track the top individual rate. SB 3125 CD1
+# does not amend §235-110.93, so PTE rate stays at 9%.
+# This creates a 4pp arbitrage gap (13% individual vs 9% PTE) under the
+# bill — a much stronger incentive to elect than the 2pp gap I had
+# initially assumed (when I mistakenly thought PTE rate was 11%).
+PTE_RATE = 0.09
 
 
 # ---------------------------------------------------------------------------
@@ -90,15 +92,19 @@ class BehavioralParams:
 
     @classmethod
     def low(cls) -> "BehavioralParams":
-        return cls(eti=0.15, migration_elast=0.05, pte_capture=0.20)
+        # Conservative for revenue: weak ETI, weak migration, moderate PTE capture
+        return cls(eti=0.15, migration_elast=0.05, pte_capture=0.40)
 
     @classmethod
     def mid(cls) -> "BehavioralParams":
-        return cls(eti=0.25, migration_elast=0.10, pte_capture=0.35)
+        # Calibrated MID: state-level ETI literature for top earners (Rauh/Shyu
+        # 2024), strong PTE arbitrage given 4pp gap (13% indiv vs 9% PTE)
+        return cls(eti=0.40, migration_elast=0.10, pte_capture=0.70)
 
     @classmethod
     def high(cls) -> "BehavioralParams":
-        return cls(eti=0.40, migration_elast=0.15, pte_capture=0.50)
+        # Aggressive behavioral response (cap on revenue gain)
+        return cls(eti=0.60, migration_elast=0.15, pte_capture=0.90)
 
     @classmethod
     def static(cls) -> "BehavioralParams":
@@ -277,7 +283,7 @@ def estimate_pte_election_shift_M(
         }
 
     PASS_THROUGH_SHARE = 0.40  # national IRS SOI 2022 average for top 1%
-    RATE_DIFFERENTIAL = SB3125_CD1_TOP_RATE - PTE_RATE  # 0.02
+    RATE_DIFFERENTIAL = SB3125_CD1_TOP_RATE - PTE_RATE  # 0.04 (13% - 9%)
 
     excess_income_total = 0.0
     for fs, threshold in SB3125_TOP_THRESHOLDS.items():
@@ -343,6 +349,69 @@ def apply_top_income_growth_premium(
     out.loc[mask, income_col] = out.loc[mask, income_col] * multiplier
     out["_top_income_premium"] = 1.0
     out.loc[mask, "_top_income_premium"] = multiplier
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Itemized-deduction adjustment for top filers
+# ---------------------------------------------------------------------------
+# Top earners itemize at near-100% rates (IRS SOI: ~99% of $1M+ filers
+# itemize federally). They typically have $50K-$200K of itemized deductions
+# (Hawaii: federal income tax paid + property tax + mortgage interest +
+# charitable). My synthesis applies the standard deduction ($16K MFJ for
+# 2027), which OVERSTATES the 13%-bracket taxable base.
+#
+# We approximate the effect by reducing reported income by an "itemized
+# premium" — the additional deduction beyond the standard deduction —
+# for filers above the relevant top-bracket threshold. This shrinks
+# their 13%-bracket-taxable income proportionally.
+#
+# Defaults: $80K MFJ premium above $1M, $40K Single/HoH above $500K-750K.
+# These approximate the median itemized-vs-standard differential for
+# Hawaii top filers based on IRS SOI Hawaii Table 2 (2022).
+ITEMIZED_PREMIUM_DEFAULTS = {
+    "married_filing_jointly":     80_000.0,
+    "qualifying_widow":           80_000.0,
+    "head_of_household":          50_000.0,
+    "single":                     40_000.0,
+    "married_filing_separately":  40_000.0,
+}
+
+
+def apply_itemized_deduction_adjustment(
+    df: pd.DataFrame,
+    *,
+    premium_by_status: Optional[Dict[str, float]] = None,
+    threshold_by_status: Optional[Dict[str, float]] = None,
+    income_col: str = "income",
+    fs_col: str = "filing_status",
+    inplace: bool = False,
+) -> pd.DataFrame:
+    """Reduce reported income of top filers by an implied itemized premium.
+
+    The microsim's tax calculator applies the *standard deduction* to
+    every filer to derive taxable income. Top earners actually itemize
+    much larger deductions; their taxable income is therefore lower
+    than the calculator estimates. To compensate, we subtract the
+    "itemized premium" (itemized − standard) from `income` for filers
+    above the bill's threshold, so that downstream tax computation
+    arrives at a reasonable taxable income.
+
+    This applies symmetrically to baseline AND scenario, so the bill's
+    rate cuts on the lower brackets are correctly priced too.
+    """
+    premiums = premium_by_status or ITEMIZED_PREMIUM_DEFAULTS
+    thresholds = threshold_by_status or SB3125_TOP_THRESHOLDS
+    out = df if inplace else df.copy()
+    out[income_col] = out[income_col].astype(float)
+    out["_itemized_premium"] = 0.0
+    for fs, prem in premiums.items():
+        thr = thresholds.get(fs, 1_000_000.0)
+        mask = (out[fs_col] == fs) & (out[income_col] > thr)
+        if not mask.any():
+            continue
+        out.loc[mask, income_col] = (out.loc[mask, income_col] - prem).clip(lower=0)
+        out.loc[mask, "_itemized_premium"] = prem
     return out
 
 

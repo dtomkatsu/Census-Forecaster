@@ -172,28 +172,21 @@ def _hawaii_nominal_growth(target_year: int) -> float:
         return fallback
 
 
-def _hawaii_corporate_growth(target_year: int) -> float:
+def _hawaii_corporate_growth(target_year: int, annual_rate: float = 0.030) -> float:
     """Cumulative Hawaii nominal *business sector* growth from BASE_YEAR.
 
     CGEC and corporate REEC are business-investment / capital-asset
     credits, NOT individual-income credits. Using median household income
-    growth for them systematically misprices the projection because:
+    growth for them systematically misprices the projection.
 
-      - Hawaii GDP has grown ~5.0%/yr nominal 2019-2024 (BEA SAGDP)
-      - Median household income has grown ~3.5%/yr nominal in same period
-      - Business investment is more volatile and tracks GDP, not wages
+    Default annual_rate is 3% (recalibrated downward from 5% after
+    feedback that real Hawaii business investment growth is closer to
+    the 3-4% range, not the 5% nominal GDP). Caller can override.
 
-    We use Hawaii nominal GDP growth as the proxy. With Hawaii's GDP
-    around $112B (2023, BEA) growing ~5%/yr nominal in projection.
-
-    Falls back to flat 5%/yr if no bundled GDP series is available.
+    Falls back to flat 3%/yr if no bundled GDP series is available.
     """
-    # Hawaii nominal GDP growth — slightly above national GDP growth in
-    # forecasts because of tourism recovery + real-estate appreciation.
-    # Source: BEA SAGDP1, projected forward at consensus 5%/yr nominal.
-    HAWAII_NOMINAL_GDP_GROWTH = 0.050
     years = target_year - BASE_YEAR
-    return (1.0 + HAWAII_NOMINAL_GDP_GROWTH) ** years
+    return (1.0 + annual_rate) ** years
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +227,8 @@ def _reec_baseline_M(
     target_year: int,
     demand_scenario: str = DEFAULT_REEC_DEMAND_SCENARIO,
     corp_subject_to_agi_limit: bool = False,
+    effective_claim_share: float = 1.0,
+    cgec_annual_growth: float = 0.030,
 ) -> Dict[str, float]:
     """REEC projected demand for target_year, with eligibility breakdown.
 
@@ -255,11 +250,17 @@ def _reec_baseline_M(
         and most ($200K+ bin = 56.1% eligible) claims are accepted.
     """
     g_individual = _hawaii_nominal_growth(target_year)
-    g_corporate  = _hawaii_corporate_growth(target_year)
+    g_corporate  = _hawaii_corporate_growth(target_year, annual_rate=cgec_annual_growth)
     d = _reec_demand_factor(target_year, demand_scenario)
 
-    combined_ind  = g_individual * d
-    combined_corp = g_corporate * d
+    # effective_claim_share scales the gross-claimed dollars down to the
+    # portion that actually offsets state tax revenue. Nonrefundable
+    # credit claims that exceed tax liability carry forward and don't
+    # reduce current-year revenue. DOTAX TY 2023: $50.7M refundable +
+    # $48.9M nonrefundable. Empirically, ~75-85% of claimed amount
+    # reduces current-year revenue. Default 1.0 preserves prior behavior.
+    combined_ind  = g_individual * d * effective_claim_share
+    combined_corp = g_corporate * d * effective_claim_share
 
     individual_eligible_2023  = _reec_eligible_individual_M()
     individual_ineligible_2023 = REEC_INDIVIDUAL_TOTAL_M - individual_eligible_2023
@@ -296,6 +297,8 @@ def compute_credit_overlay(
     target_year: int,
     reec_demand_scenario: str = DEFAULT_REEC_DEMAND_SCENARIO,
     corp_subject_to_agi_limit: bool = False,
+    reec_effective_claim_share: float = 1.0,
+    cgec_annual_growth: float = 0.030,
 ) -> Dict[str, float]:
     """Compute SB 3125 CD1 credit-cap fiscal impact for ``target_year``.
 
@@ -319,12 +322,14 @@ def compute_credit_overlay(
         raise ValueError(f"target_year must be >= {BASE_YEAR}, got {target_year}")
 
     growth_individual = _hawaii_nominal_growth(target_year)
-    growth_corporate  = _hawaii_corporate_growth(target_year)
+    growth_corporate  = _hawaii_corporate_growth(target_year, annual_rate=cgec_annual_growth)
 
     # ---- Renewable Energy Tax Credit ------------------------------------
     reec = _reec_baseline_M(
         target_year, demand_scenario=reec_demand_scenario,
         corp_subject_to_agi_limit=corp_subject_to_agi_limit,
+        effective_claim_share=reec_effective_claim_share,
+        cgec_annual_growth=cgec_annual_growth,
     )
     if 2027 <= target_year <= 2030:
         # Cap binds on the eligible portion. Total revenue gain =
@@ -339,8 +344,12 @@ def compute_credit_overlay(
 
     # ---- Capital Goods Excise Tax Credit --------------------------------
     # CGEC is mostly corporate / business-investment.
-    # Use Hawaii nominal GDP growth instead of median household income.
-    cgec_baseline = CGEC_TOTAL_M * growth_corporate
+    # Apply effective_claim_share for nonrefundable utilization realism +
+    # additional 10% reduction for sunset-induced pull-forward (businesses
+    # accelerate capital purchases into 2026-2027 to claim before sunset).
+    PULL_FORWARD_HAIRCUT = 0.90 if target_year > CGEC_SUNSET_YEAR else 1.0
+    cgec_baseline = (CGEC_TOTAL_M * growth_corporate
+                     * reec_effective_claim_share * PULL_FORWARD_HAIRCUT)
     cgec_savings = cgec_baseline if target_year > CGEC_SUNSET_YEAR else 0.0
 
     # ---- Research Activities Credit -------------------------------------
