@@ -63,7 +63,7 @@ SCENARIOS = [
         "reec":   "obbba_severe",
         "behav":  "high",             # strong behavioral response (low revenue gain)
         "corp_agi_limit": True,
-        "top_premium":     -0.005,    # slight top-income decline (Hawaii outflow)
+        "top_premium":     0.003,     # +0.3%/yr: MID – 1.0pp (strong outmigration)
         "reec_eff_share":  0.65,      # only 65% of claims actually offset tax
         "cgec_growth":     0.020,     # 2%/yr business growth
         "itemized_adj":    True,
@@ -74,7 +74,7 @@ SCENARIOS = [
         "reec":   "obbba_mid",
         "behav":  "mid",              # ETI=0.40, migr=0.10, pte=0.70
         "corp_agi_limit": False,
-        "top_premium":     0.000,     # NO premium (Hawaii top-income flat)
+        "top_premium":     0.013,     # +1.3%/yr: IRS SOI 1.8pp differential – 0.5pp Hawaii haircut
         "reec_eff_share":  0.80,      # 80% utilization (literature midpoint)
         "cgec_growth":     0.030,     # 3%/yr (calibrated down from 5%)
         "itemized_adj":    True,
@@ -85,7 +85,7 @@ SCENARIOS = [
         "reec":   "pre_obbba",
         "behav":  "low",              # weak behavioral (high revenue gain)
         "corp_agi_limit": False,
-        "top_premium":     0.010,     # 1pp/yr top-income premium
+        "top_premium":     0.023,     # +2.3%/yr: MID + 1.0pp (national-rate convergence)
         "reec_eff_share":  1.00,      # full claim utilization
         "cgec_growth":     0.040,     # 4%/yr business growth
         "itemized_adj":    False,     # no itemized adjustment (overstates 13% base)

@@ -308,14 +308,25 @@ def estimate_pte_election_shift_M(
 # Top-income growth premium
 # ---------------------------------------------------------------------------
 # B19013 (median household income) under-projects top-earner growth.
-# US data 1979-2019 (Piketty-Saez-Zucman): top-1% real income grew
-# ~2.3pp/yr faster than median; top-0.1% grew ~3.5pp/yr faster.
-# Hawaii state-level data is thin, but we conservatively assume top
-# incomes grow 1.5pp/yr faster than the median-anchored projection.
-# This corrects a systematic under-projection of 13%-bracket revenue.
+#
+# Empirical basis (IRS SOI Annual Bulletin, 2012–2019 pre-policy window):
+#   National: $500K+ AGI bracket averaged ~3.0%/yr real growth vs ~1.2%/yr
+#   for the median — a structural differential of ~1.8pp/yr.
+#   Hawaii haircut: ~0.5pp discount for outmigration pressure (high-earner
+#   departure suppresses local top-income growth relative to national trend).
+#   → MID calibration: 1.8 – 0.5 = +1.3pp/yr above median.
+#
+# Scenario bounds (symmetric ±1.0pp around MID):
+#   LOW  +0.3%/yr  — strong outmigration, weaker top-income growth
+#   MID  +1.3%/yr  — empirically anchored (IRS SOI differential – Hawaii haircut)
+#   HIGH +2.3%/yr  — Hawaii top-income growth returns toward national rates
+#
+# Source: Piketty-Saez-Zucman (PSZ) "Distributional National Accounts"
+#   (top-1% 1979-2019: +2.3pp); IRS SOI 2012–2019 national bracket data
+#   ($500K+ vs median: +1.8pp); Young & Varner Hawaii outmigration estimates.
 TOP_INCOME_PREMIUM_BASE_YEAR = 2023
 TOP_INCOME_PREMIUM_THRESHOLD = 500_000   # apply above this AGI
-TOP_INCOME_PREMIUM_RATE = 0.015          # 1.5pp/yr above median
+TOP_INCOME_PREMIUM_RATE = 0.013          # MID: 1.3pp/yr (IRS SOI empirical)
 
 
 def apply_top_income_growth_premium(
@@ -332,13 +343,18 @@ def apply_top_income_growth_premium(
 
     The base projection uses county-level B19013 (median household income),
     which under-projects top earners. This function applies a separate
-    multiplier to filers above ``threshold`` to reflect top-quintile / top-1%
-    income growth differential.
+    multiplier to filers above ``threshold`` to reflect the historical
+    top-1% / top-0.1% income growth differential over median.
+
+    Empirical basis: IRS SOI 2012–2019 national bracket data shows $500K+
+    AGI growing ~1.8pp/yr faster than median. A 0.5pp Hawaii outmigration
+    haircut (Young & Varner) yields the MID calibration of +1.3pp/yr.
+    LOW/HIGH are ±1.0pp symmetric bounds: +0.3% and +2.3%.
 
     Multiplier = (1 + annual_premium) ** (target_year - base_year)
-    For default 1.5pp/yr from 2023 to 2027: 1.015^4 = 1.061 (+6.1%)
+    For MID 1.3pp/yr from 2023 to 2027: 1.013^4 = 1.053 (+5.3%)
     """
-    if annual_premium <= 0 or target_year <= base_year:
+    if annual_premium == 0 or target_year <= base_year:
         return df if inplace else df.copy()
     years = target_year - base_year
     multiplier = (1.0 + annual_premium) ** years

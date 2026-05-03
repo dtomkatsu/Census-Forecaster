@@ -363,7 +363,17 @@ Hawaii's four counties (Honolulu, Maui, Hawaii, Kauai) each get their own growth
 **Function:** `apply_top_income_growth_premium()`  
 **File:** `packages/tax_modeler/src/tax_modeler/scenarios/behavioral_response.py`
 
-Applies an additional annual growth premium to units with income above $500K, on top of the county-level B19013 scaling. This corrects for the known divergence between top-1% income growth and median-anchored projections (Piketty-Saez-Zucman). MID scenario uses 0.0% premium (Hawaii top-income growth historically flat due to outmigration). HIGH uses +1.0%/yr. LOW uses −0.5%/yr.
+Applies an additional annual growth premium to units with income above $500K, on top of the county-level B19013 scaling. This corrects for the known divergence between top-1% income growth and median-anchored projections.
+
+**Empirical calibration (IRS SOI 2012–2019):** The $500K+ AGI bracket nationally averaged ~3.0%/yr real growth vs. ~1.2%/yr for the median — a structural differential of ~1.8pp/yr. A 0.5pp Hawaii outmigration haircut (Young & Varner 2016 top-1% migration elasticity applied to Hawaii's geography) yields the MID anchor of **+1.3%/yr**. LOW and HIGH are symmetric ±1.0pp bounds:
+
+| Scenario | Premium | Rationale |
+|----------|---------|-----------|
+| LOW | +0.3%/yr | Strong outmigration suppresses Hawaii top-income growth to near-median |
+| **MID** | **+1.3%/yr** | IRS SOI 1.8pp national differential minus 0.5pp Hawaii haircut |
+| HIGH | +2.3%/yr | Hawaii top-income growth converges toward national rates |
+
+Formula: `multiplier = (1 + annual_premium)^(target_year − 2023)`. For MID at TY2027: 1.013⁴ = 1.053 (+5.3% vs. the county-median-anchored projection).
 
 ### Step 9 — Itemized Deduction Adjustment
 
@@ -521,7 +531,7 @@ Three integrated scenarios cover the uncertainty range:
 | ETI | 0.60 | **0.40** | 0.15 |
 | Migration elasticity | 0.15 | **0.10** | 0.05 |
 | PTE capture rate | 90% | **70%** | 20% |
-| Top-income growth premium | −0.5%/yr | **0%** | +1.0%/yr |
+| Top-income growth premium | +0.3%/yr | **+1.3%/yr** | +2.3%/yr |
 | REEC effective claim share | 65% | **80%** | 100% |
 | CGEC annual growth | 2%/yr | **3%/yr** | 4%/yr |
 | Corporate AGI limit on REEC | Yes | **No** | No |
