@@ -28,10 +28,13 @@ Improvements over forecast_sb3125_cd1.py:
   7. **Baseline-scaling diagnostic** — Reports both raw and COR-scaled
      bracket delta (microsim baseline = $2,282M; COR FY27 = $3,050M).
 
-Three integrated scenarios:
-    LOW       — eti=0.15, migration=0.05, pte=0.20, alpha=1.6, reec=obbba_severe
-    MID       — eti=0.25, migration=0.10, pte=0.35, alpha=1.5, reec=obbba_mid
-    HIGH      — eti=0.40, migration=0.15, pte=0.50, alpha=1.4, reec=pre_obbba
+Four integrated scenarios (three behavioral + one recession macro):
+    LOW       — eti=0.60, migration=0.15, pte=0.90, alpha=1.7, reec=obbba_severe
+    MID       — eti=0.40, migration=0.10, pte=0.70, alpha=1.5, reec=obbba_mid  [no recession]
+    HIGH      — eti=0.15, migration=0.05, pte=0.40, alpha=1.4, reec=pre_obbba
+    RECESSION — MID behavioral params + moderate recession macro shock
+                (−2.0% all-filer income in 2027, −3.5% top-income, partial
+                rebound 2028, back to baseline 2029+)
 
 Output:
   /tmp/sb3125_cd1_enhanced_2027_2031.csv
@@ -67,6 +70,7 @@ SCENARIOS = [
         "reec_eff_share":  0.65,      # only 65% of claims actually offset tax
         "cgec_growth":     0.020,     # 2%/yr business growth
         "itemized_adj":    True,
+        "macro_shock":     None,      # no recession overlay (baseline macro)
     },
     {
         "label":  "MID",
@@ -78,6 +82,7 @@ SCENARIOS = [
         "reec_eff_share":  0.80,      # 80% utilization (literature midpoint)
         "cgec_growth":     0.030,     # 3%/yr (calibrated down from 5%)
         "itemized_adj":    True,
+        "macro_shock":     None,      # no recession overlay (baseline macro)
     },
     {
         "label":  "HIGH",
@@ -89,6 +94,25 @@ SCENARIOS = [
         "reec_eff_share":  1.00,      # full claim utilization
         "cgec_growth":     0.040,     # 4%/yr business growth
         "itemized_adj":    False,     # no itemized adjustment (overstates 13% base)
+        "macro_shock":     None,      # no recession overlay (baseline macro)
+    },
+    {
+        # Recession scenario: MID behavioral params + moderate recession macro shock.
+        # Models a mild-to-moderate recession onset 2027 with partial rebound 2028.
+        # All-filer income: −2.0% in 2027, +1.5% in 2028, back to baseline 2029+.
+        # Top-income (≥$200K) extra hit: −1.5% additional in 2027, +1.0% in 2028.
+        # Behavioral parameters held constant at MID values (conservative: no
+        # behavioral-macro interaction effects modeled).
+        "label":  "RECESSION",
+        "alpha":  1.5,                # same as MID
+        "reec":   "obbba_mid",        # same as MID
+        "behav":  "mid",              # MID behavioral: ETI=0.40, migr=0.10, pte=0.70
+        "corp_agi_limit": False,
+        "top_premium":     0.013,     # same as MID (IRS SOI empirical)
+        "reec_eff_share":  0.80,      # same as MID
+        "cgec_growth":     0.030,     # same as MID
+        "itemized_adj":    True,
+        "macro_shock":     "moderate", # apply moderate recession income shock
     },
 ]
 
@@ -109,6 +133,7 @@ def run_one_scenario(
     BehavioralParams, apply_behavioral_response,
     apply_top_income_growth_premium,
     apply_itemized_deduction_adjustment,
+    apply_macro_recession_shock,
 ):
     import time
     label  = scenario["label"]
@@ -120,9 +145,11 @@ def run_one_scenario(
     reec_eff = scenario["reec_eff_share"]
     cgec_g   = scenario["cgec_growth"]
     do_item  = scenario["itemized_adj"]
+    macro_shock = scenario.get("macro_shock")   # None = baseline macro; "moderate" = recession
     print(f"\n{'='*78}\nSCENARIO {label}: alpha={alpha} reec={reec} behav={behav} "
           f"corp_agi={corp_agi} top_premium={top_premium:+.3f}\n"
-          f"  reec_eff_share={reec_eff} cgec_growth={cgec_g:.3f} itemized_adj={do_item}\n"
+          f"  reec_eff_share={reec_eff} cgec_growth={cgec_g:.3f} "
+          f"itemized_adj={do_item} macro_shock={macro_shock or 'none'}\n"
           f"{'='*78}", flush=True)
 
     # Synthesize fresh from the calibrated (no-synthesis) base
@@ -152,7 +179,13 @@ def run_one_scenario(
             projected, target_year=year, annual_premium=top_premium,
         )
 
-        # 2b) Itemized-deduction adjustment for top filers
+        # 2b) Macro recession shock (RECESSION scenario only; no-op for None)
+        if macro_shock is not None:
+            projected = apply_macro_recession_shock(
+                projected, target_year=year, scenario=macro_shock,
+            )
+
+        # 2c) Itemized-deduction adjustment for top filers
         if do_item:
             projected = apply_itemized_deduction_adjustment(projected)
 
@@ -240,6 +273,7 @@ if __name__ == "__main__":
             apply_top_income_growth_premium,
             apply_itemized_deduction_adjustment,
         )
+        from tax_modeler.scenarios.macro_scenarios import apply_macro_recession_shock
 
         wall_start = time.perf_counter()
 
@@ -273,6 +307,7 @@ if __name__ == "__main__":
                 apply_behavioral_response=apply_behavioral_response,
                 apply_top_income_growth_premium=apply_top_income_growth_premium,
                 apply_itemized_deduction_adjustment=apply_itemized_deduction_adjustment,
+                apply_macro_recession_shock=apply_macro_recession_shock,
             ))
 
         df = pd.DataFrame(all_rows)
@@ -284,27 +319,30 @@ if __name__ == "__main__":
               flush=True)
         print("=" * 100, flush=True)
 
+        # Column order for summary tables
+        scen_order = [s["label"] for s in SCENARIOS]  # ["LOW","MID","HIGH","RECESSION"]
+
         # Total impact pivot
         pv = df.pivot(index="tax_year", columns="scenario", values="total_impact_$M")
-        pv = pv[["LOW", "MID", "HIGH"]]
+        pv = pv[scen_order]
         pv.loc["5yr cum"] = pv.sum()
         print("\nTotal annual fiscal impact ($M, post-behavioral):")
         print(pv.to_string(float_format=lambda x: f"{x:>9,.1f}"), flush=True)
 
         # Bracket-only (post-response) pivot
-        pv_b = df.pivot(index="tax_year", columns="scenario", values="bracket_delta_post_$M")[["LOW","MID","HIGH"]]
+        pv_b = df.pivot(index="tax_year", columns="scenario", values="bracket_delta_post_$M")[scen_order]
         pv_b.loc["5yr cum"] = pv_b.sum()
         print("\nBracket-change impact (post-ETI/migration/PTE) ($M):")
         print(pv_b.to_string(float_format=lambda x: f"{x:>9,.1f}"), flush=True)
 
         # COR-scaled pivot
-        pv_cs = df.pivot(index="tax_year", columns="scenario", values="bracket_delta_cor_scaled_$M")[["LOW","MID","HIGH"]]
+        pv_cs = df.pivot(index="tax_year", columns="scenario", values="bracket_delta_cor_scaled_$M")[scen_order]
         pv_cs.loc["5yr cum"] = pv_cs.sum()
         print("\nBracket-change impact, COR-scaled to actual revenue base ($M):")
         print(pv_cs.to_string(float_format=lambda x: f"{x:>9,.1f}"), flush=True)
 
         # Credit pivot
-        pv_c = df.pivot(index="tax_year", columns="scenario", values="credit_total_$M")[["LOW","MID","HIGH"]]
+        pv_c = df.pivot(index="tax_year", columns="scenario", values="credit_total_$M")[scen_order]
         pv_c.loc["5yr cum"] = pv_c.sum()
         print("\nCredit-cap impact ($M):")
         print(pv_c.to_string(float_format=lambda x: f"{x:>9,.1f}"), flush=True)
