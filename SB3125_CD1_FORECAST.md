@@ -3,7 +3,7 @@
 
 **Last updated:** May 2026  
 **Analyst:** Hawaii Appleseed Center for Law and Economic Justice  
-**Model version:** Calibrated MID — $679M 5-year (matches official ~$680M estimate)
+**Model version:** Calibrated MID — $629.6M 5-year (post CG-cap + PTE-CG exclusion corrections)
 
 > **Maintenance note:** This document must be updated whenever forecast methodology changes — including parameter recalibration, new behavioral channels, tax treatment corrections, or data source changes. Update the relevant section(s) and the Results table before committing.
 
@@ -33,7 +33,7 @@ This forecast estimates the year-by-year fiscal impact to the State of Hawaii fr
 
 The model uses a **bottom-up microsimulation** approach: it constructs roughly 43,000 representative Hawaii income tax units from the U.S. Census Bureau's Public Use Microdata Sample, calibrates them against DOTAX administrative data, projects them forward year by year using county-level income growth forecasts, and computes each unit's tax liability under both the baseline and the proposed law. The total fiscal impact is the population-weighted difference, adjusted for behavioral responses and a separate static-scoring credit overlay.
 
-**MID scenario 5-year result: $679.3M** (matches the official $680M estimate within rounding).
+**MID scenario 5-year result: $629.6M** (after two methodology corrections: §235-16 CG cap applied to synthetic filers, and PTE election pool excludes CG income per statute). Earlier runs showing ~$679M did not apply these corrections.
 
 ---
 
@@ -567,32 +567,47 @@ Four integrated scenarios: three behavioral sensitivity scenarios (no recession 
 | Itemized deduction adjustment | Yes | **Yes** | No |
 | Macro shock | None | **None** | None |
 
-**Calibration anchor:** MID is calibrated against the official 5-year estimate of ~$680M — the MID result ($679.3M) matches within rounding. This match is not a coincidence but reflects consistent methodology: the model anchors to DOTAX's $663M baseline tax figure for $1M+ filers (the same data underlying the official score), applies empirically-grounded behavioral parameters independently of that target, and the near-match validates both the behavioral assumptions and the tax treatment corrections (CG cap, PTE CG exclusion). LOW reflects maximum plausible behavioral response (strong ETI, 90% PTE shift, severe OBBBA solar decay). HIGH reflects minimal behavioral response and optimistic demand assumptions.
+**Calibration anchor:** The model anchors to DOTAX's $663M baseline tax figure for $1M+ filers. The MID result ($629.6M) is ~7.5% below the official ~$680M estimate due to two corrections applied after the official score was produced: (1) §235-16 CG cap (7.25%) properly applied to synthetic $1M+ filers — reduces the bracket-delta contribution of capital gains income; (2) PTE election pool excludes CG income per statute and economic rationality (9% PTE > 7.25% CG cap) — reduces the PTE offset, which in turn reduces the net bracket gain. LOW reflects maximum plausible behavioral response (strong ETI, 90% PTE shift, severe OBBBA solar decay). HIGH reflects minimal behavioral response and optimistic demand assumptions.
 
 ### 8b. Recession Scenario
 
 **Script:** `forecast_sb3125_cd1_enhanced.py` (RECESSION entry in SCENARIOS list)  
 **New file:** `packages/tax_modeler/src/tax_modeler/scenarios/macro_scenarios.py`
 
-Models a **mild-to-moderate recession with onset in 2027** — consistent with elevated current recession odds (25–50% 12-month, >50% five-year historically). Uses MID behavioral parameters; behavioral-macro interaction effects (e.g., higher PTE takeup in recession, slower migration) are not modeled (conservative simplification).
+Models a **mild-to-moderate recession with trough in 2027 and gradual recovery through 2031** — consistent with elevated current recession odds (25–50% 12-month, >50% five-year historically) and empirical recession patterns from 2001 and 2008. Uses MID behavioral parameters; behavioral-macro interaction effects (e.g., higher PTE takeup in recession, slower migration) are not modeled (conservative simplification).
+
+**Methodology — cumulative deviation from baseline.** The shock values are CUMULATIVE deviations from the baseline trajectory at each year, not year-on-year deltas. This correctly models persistent recession damage: by year 2 the income gap is smaller than year 1 (recovery underway), but income is still below trend. The previous year-on-year interpretation incorrectly produced a "rebound year" with income *above* baseline, which is not how recessions recover.
 
 **Macro shock parameters (applied after `project_tax_units_forward()` and top-income premium, before behavioral response):**
 
-| Year | All-filer shock | Top-income extra (≥$200K) | Net effect on $1M+ filers |
-|------|-----------------|---------------------------|--------------------------|
-| 2027 | −2.0% | −1.5% additional | −3.5% total |
-| 2028 | +1.5% | +1.0% additional | +2.5% total |
-| 2029 | 0.0% | 0.0% | Back to baseline |
-| 2030 | 0.0% | 0.0% | Same as MID |
-| 2031 | 0.0% | 0.0% | Same as MID |
+| Year | All-filer cumulative gap to baseline | Top-income additional gap (≥$200K) | Total top-income gap |
+|------|-------------------------------------:|----------------------------------:|---------------------:|
+| 2027 | −2.0% | −1.5% | **−3.5%** |
+| 2028 | −1.5% | −1.0% | **−2.5%** |
+| 2029 | −1.0% | −0.3% | **−1.3%** |
+| 2030 | −0.5% | 0.0% | **−0.5%** |
+| 2031 |  0.0% | 0.0% | **0.0%** (full recovery) |
 
-The top-income extra hit captures capital gains realization collapse and pass-through business income cyclicality (historical precedent: 2001 and 2008 recessions saw 40–60% CG declines for top earners).
+The top-income extra gap captures capital gains realization collapse and pass-through business income cyclicality (historical precedent: 2008–09 saw 40–60% CG declines and 6–12% peak-to-trough top-1% income drops, with full recovery within 4 years).
 
-**Key finding:** The recession scenario produces $678.0M over 5 years — only $1.3M below MID ($679.3M). This is because:
-1. Both Act 46 and SB 3125 CD1 face the same recession; the *delta* between the two systems narrows but is partially protected
-2. Reduced top income also reduces behavioral offsets (smaller PTE election pool, lower ETI impact)
-3. The credit overlay (REEC/CGEC) is unchanged — credit claim levels don't depend on individual incomes
-4. The 2028 rebound (+$0.5M vs MID) nearly offsets the 2027 recession effect (−$1.9M vs MID)
+**Results: Recession reduces 5-year gain by $8.9M (1.4% of MID).** The 2031 RECESSION result exactly equals MID ($182.2M), confirming the macro shock is zero that year (full recovery). ✓
+
+| Year | MID | RECESSION | Δ vs MID |
+|------|----:|----------:|---------:|
+| 2027 | $69.9M | $68.0M | −$1.9M |
+| 2028 | $107.0M | $104.2M | −$2.8M |
+| 2029 | $135.2M | $132.7M | −$2.5M |
+| 2030 | $135.3M | $133.6M | −$1.7M |
+| 2031 | $182.2M | $182.2M | $0.0M |
+| **5yr** | **$629.6M** | **$620.7M** | **−$8.9M** |
+
+**Why the effect is moderate in absolute terms:** This forecast measures the *delta* between Act 46 and SB 3125 CD1, not absolute state revenue. Both tax systems face the same income shock, so the delta is partially protected — only the marginal rate × marginal income above thresholds differs between them.
+
+1. **Bracket delta** (~$192M of $629.6M MID): drops ~$8.9M (4.6%) — spread across 2027–2030 as income remains depressed below baseline
+2. **Credit overlay** (~$437M of $629.6M MID): unchanged — REEC/CGEC claim levels don't depend on individual filer income
+3. **Behavioral offsets**: also shrink in recession (smaller PTE election pool, smaller ETI base), partially offsetting the bracket reduction
+
+**Note on absolute revenue impact:** While the bill's *revenue gain* is recession-resilient (−1.4% in this scenario), absolute state individual income tax revenue would drop substantially more in a recession (likely 5–10% peak-to-trough on a ~$3B base). That is a property of any income tax under any rate schedule, not specific to SB 3125 CD1.
 
 ---
 
@@ -620,29 +635,29 @@ Note: Q1 filers (avg income ~$3K) are **completely unaffected** because their gr
 
 | Tax Year | LOW | **MID** | HIGH | RECESSION |
 |----------|----:|--------:|-----:|----------:|
-| 2027 | $42.6M | **$78.3M** | $128.5M | $76.4M |
-| 2028 | $69.6M | **$116.2M** | $177.6M | $116.7M |
-| 2029 | $94.5M | **$145.2M** | $211.4M | $145.2M |
-| 2030 | $93.4M | **$145.9M** | $216.7M | $145.9M |
-| 2031 | $140.9M | **$193.7M** | $271.2M | $193.7M |
-| **5-year cumulative** | **$441.0M** | **$679.3M** | **$1,005.4M** | **$678.0M** |
+| 2027 | $30.8M | **$69.9M** | $126.7M | $68.0M |
+| 2028 | $55.7M | **$107.0M** | $175.1M | $104.2M |
+| 2029 | $79.7M | **$135.2M** | $208.4M | $132.7M |
+| 2030 | $78.2M | **$135.3M** | $213.0M | $133.6M |
+| 2031 | $125.3M | **$182.2M** | $266.8M | $182.2M |
+| **5-year cumulative** | **$369.7M** | **$629.6M** | **$990.1M** | **$620.7M** |
 
 *Positive = net revenue gain for the State. Includes bracket microsim + credit overlay.*
 
-**RECESSION scenario note:** The $1.3M difference from MID ($678.0M vs $679.3M) reflects that both tax systems face the same macro shock — the *delta* between them is largely preserved. See Section 8b for methodology and interpretation.
+**RECESSION scenario note:** The $8.9M difference from MID ($620.7M vs $629.6M) reflects that both tax systems face the same macro shock — the *delta* between them is partially preserved. 2031 RECESSION = MID exactly, confirming full macro recovery. See Section 8b for methodology.
 
 ### MID Scenario Decomposition
 
 | Channel | 5-year Total |
 |---------|-------------:|
-| Static bracket gain (13% top bracket + middle cuts) | +$498M |
-| ETI / migration behavioral offset | −$71M |
-| PTE election shift (ordinary income only; CG excluded) | −$185M |
-| **Post-behavioral bracket delta** | **+$242M** |
-| Credit overlay (REEC cap + CGEC sunset + TCRA) | +$437M |
-| **Total MID** | **+$679M** |
+| Static bracket gain (13% top bracket + middle cuts) | +$498.2M |
+| ETI / migration behavioral offset | −$70.8M |
+| PTE election shift (ordinary income only; CG excluded) | −$235.0M |
+| **Post-behavioral bracket delta** | **+$192.4M** |
+| Credit overlay (REEC cap + CGEC sunset + TCRA) | +$437.1M |
+| **Total MID** | **+$629.6M** |
 
-*The bracket delta is lower than a naive static calculation because (a) the §235-16 CG cap limits the bracket-delta contribution of CG income to zero under both systems, and (b) behavioral responses reduce ordinary income subject to the 13% rate. The credit overlay is the second-largest component, dominated by REEC cap savings as the $40M cap phases to $0 by TY2031.*
+*The bracket delta is lower than a naive static calculation because (a) the §235-16 CG cap (7.25%) limits the bracket-delta contribution of CG income to zero under both systems, and (b) PTE election shifts reduce the ordinary income subject to the 13% rate (CG income is excluded from PTE pool per statute and economic rationality), and (c) ETI/migration responses further reduce the high-income tax base. The credit overlay ($437M, 69% of total) is the largest single component, dominated by REEC cap savings as the $40M cap phases to $0 by TY2031.*
 
 ### Distributional Impact — TY 2027 Bracket Change (MID)
 
