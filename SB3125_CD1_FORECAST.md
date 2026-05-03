@@ -549,7 +549,9 @@ One-time acceleration effect modeled for **TY2029 only**:
 
 ## 8. Scenario Design
 
-Three integrated scenarios cover the uncertainty range:
+Four integrated scenarios: three behavioral sensitivity scenarios (no recession macro) plus one recession scenario using MID behavioral parameters.
+
+### 8a. Behavioral Scenarios (No Recession Macro)
 
 | Parameter | LOW | **MID (Recommended)** | HIGH |
 |-----------|-----|----------------------|------|
@@ -563,8 +565,34 @@ Three integrated scenarios cover the uncertainty range:
 | CGEC annual growth | 2%/yr | **3%/yr** | 4%/yr |
 | Corporate AGI limit on REEC | Yes | **No** | No |
 | Itemized deduction adjustment | Yes | **Yes** | No |
+| Macro shock | None | **None** | None |
 
 **Calibration anchor:** MID is calibrated against the official 5-year estimate of ~$680M — the MID result ($679.3M) matches within rounding. This match is not a coincidence but reflects consistent methodology: the model anchors to DOTAX's $663M baseline tax figure for $1M+ filers (the same data underlying the official score), applies empirically-grounded behavioral parameters independently of that target, and the near-match validates both the behavioral assumptions and the tax treatment corrections (CG cap, PTE CG exclusion). LOW reflects maximum plausible behavioral response (strong ETI, 90% PTE shift, severe OBBBA solar decay). HIGH reflects minimal behavioral response and optimistic demand assumptions.
+
+### 8b. Recession Scenario
+
+**Script:** `forecast_sb3125_cd1_enhanced.py` (RECESSION entry in SCENARIOS list)  
+**New file:** `packages/tax_modeler/src/tax_modeler/scenarios/macro_scenarios.py`
+
+Models a **mild-to-moderate recession with onset in 2027** — consistent with elevated current recession odds (25–50% 12-month, >50% five-year historically). Uses MID behavioral parameters; behavioral-macro interaction effects (e.g., higher PTE takeup in recession, slower migration) are not modeled (conservative simplification).
+
+**Macro shock parameters (applied after `project_tax_units_forward()` and top-income premium, before behavioral response):**
+
+| Year | All-filer shock | Top-income extra (≥$200K) | Net effect on $1M+ filers |
+|------|-----------------|---------------------------|--------------------------|
+| 2027 | −2.0% | −1.5% additional | −3.5% total |
+| 2028 | +1.5% | +1.0% additional | +2.5% total |
+| 2029 | 0.0% | 0.0% | Back to baseline |
+| 2030 | 0.0% | 0.0% | Same as MID |
+| 2031 | 0.0% | 0.0% | Same as MID |
+
+The top-income extra hit captures capital gains realization collapse and pass-through business income cyclicality (historical precedent: 2001 and 2008 recessions saw 40–60% CG declines for top earners).
+
+**Key finding:** The recession scenario produces $678.0M over 5 years — only $1.3M below MID ($679.3M). This is because:
+1. Both Act 46 and SB 3125 CD1 face the same recession; the *delta* between the two systems narrows but is partially protected
+2. Reduced top income also reduces behavioral offsets (smaller PTE election pool, lower ETI impact)
+3. The credit overlay (REEC/CGEC) is unchanged — credit claim levels don't depend on individual incomes
+4. The 2028 rebound (+$0.5M vs MID) nearly offsets the 2027 recession effect (−$1.9M vs MID)
 
 ---
 
@@ -590,16 +618,18 @@ Note: Q1 filers (avg income ~$3K) are **completely unaffected** because their gr
 
 ### Annual Fiscal Impact by Scenario ($M, vs. Act 46 baseline)
 
-| Tax Year | LOW | **MID** | HIGH |
-|----------|----:|--------:|-----:|
-| 2027 | $42.6M | **$78.3M** | $128.5M |
-| 2028 | $69.6M | **$116.2M** | $177.6M |
-| 2029 | $94.5M | **$145.2M** | $211.4M |
-| 2030 | $93.4M | **$145.9M** | $216.7M |
-| 2031 | $140.9M | **$193.7M** | $271.2M |
-| **5-year cumulative** | **$441.0M** | **$679.3M** | **$1,005.4M** |
+| Tax Year | LOW | **MID** | HIGH | RECESSION |
+|----------|----:|--------:|-----:|----------:|
+| 2027 | $42.6M | **$78.3M** | $128.5M | $76.4M |
+| 2028 | $69.6M | **$116.2M** | $177.6M | $116.7M |
+| 2029 | $94.5M | **$145.2M** | $211.4M | $145.2M |
+| 2030 | $93.4M | **$145.9M** | $216.7M | $145.9M |
+| 2031 | $140.9M | **$193.7M** | $271.2M | $193.7M |
+| **5-year cumulative** | **$441.0M** | **$679.3M** | **$1,005.4M** | **$678.0M** |
 
 *Positive = net revenue gain for the State. Includes bracket microsim + credit overlay.*
+
+**RECESSION scenario note:** The $1.3M difference from MID ($678.0M vs $679.3M) reflects that both tax systems face the same macro shock — the *delta* between them is largely preserved. See Section 8b for methodology and interpretation.
 
 ### MID Scenario Decomposition
 
@@ -665,7 +695,7 @@ The **bracket delta** (SB 3125 CD1 minus Act 46) is robust to this level-shift �
 |--------|---------|--------|
 | `forecast_sb3125_cd1.py` | Original forecast with decile snapshot | `/tmp/sb3125_cd1_fiscal_impact_2027_2031.csv` |
 | `forecast_sb3125_cd1_sensitivity.py` | Sensitivity across Pareto α × REEC scenarios (pre-behavioral) | `/tmp/sb3125_cd1_sensitivity_2027_2031.csv` |
-| `forecast_sb3125_cd1_enhanced.py` | **Primary forecast** — all behavioral channels, 3 calibrated scenarios | `/tmp/sb3125_cd1_enhanced_2027_2031.csv` |
+| `forecast_sb3125_cd1_enhanced.py` | **Primary forecast** — 3 behavioral scenarios + RECESSION macro scenario | `/tmp/sb3125_cd1_enhanced_2027_2031.csv` |
 | `forecast_sb3125_cd1_quintile.py` | Distributional analysis by income quintile (MID) | `/tmp/sb3125_cd1_quintile_2027_2031.csv` |
 
 ### Key Package Files
@@ -681,6 +711,7 @@ The **bracket delta** (SB 3125 CD1 minus Act 46) is robust to this level-shift �
 | `packages/tax_modeler/src/tax_modeler/projection/tax_unit_projector.py` | County-level income projection |
 | `packages/tax_modeler/src/tax_modeler/scenarios/top_income_synthesis.py` | Pareto $1M+ filer synthesis |
 | `packages/tax_modeler/src/tax_modeler/scenarios/behavioral_response.py` | ETI, migration, PTE election, itemized adjustment |
+| `packages/tax_modeler/src/tax_modeler/scenarios/macro_scenarios.py` | Macro recession shock (`apply_macro_recession_shock`) |
 | `packages/tax_modeler/src/tax_modeler/scenarios/sb3125_cd1_credits.py` | REEC/CGEC/TCRA credit overlay |
 
 ### Cache Files
