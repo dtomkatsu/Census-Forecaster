@@ -11,16 +11,17 @@
 
 1. [Overview](#1-overview)
 2. [Bill Summary](#2-bill-summary)
-3. [Data Sources](#3-data-sources)
-4. [Methodology](#4-methodology)
-5. [Behavioral Response](#5-behavioral-response)
-6. [Credit Overlay](#6-credit-overlay)
-7. [Scenario Design](#7-scenario-design)
-8. [Distributional Analysis](#8-distributional-analysis)
-9. [Results](#9-results)
-10. [Caveats and Limitations](#10-caveats-and-limitations)
-11. [Scripts and File Map](#11-scripts-and-file-map)
-12. [Software and Packages](#12-software-and-packages)
+3. [Act 46 vs SB 3125 CD1 — Bracket-by-Bracket Comparison](#3-act-46-vs-sb-3125-cd1--bracket-by-bracket-comparison)
+4. [Data Sources](#4-data-sources)
+5. [Methodology](#5-methodology)
+6. [Behavioral Response](#6-behavioral-response)
+7. [Credit Overlay](#7-credit-overlay)
+8. [Scenario Design](#8-scenario-design)
+9. [Distributional Analysis](#9-distributional-analysis)
+10. [Results](#10-results)
+11. [Caveats and Limitations](#11-caveats-and-limitations)
+12. [Scripts and File Map](#12-scripts-and-file-map)
+13. [Software and Packages](#13-software-and-packages)
 
 ---
 
@@ -72,7 +73,160 @@ DOTAX TY2023 baseline: $99.6M in total REEC claims ($58.3M individual + $38.6M c
 
 ---
 
-## 3. Data Sources
+## 3. Act 46 vs SB 3125 CD1 — Bracket-by-Bracket Comparison
+
+The tables below show every bracket for each filing status and each effective period. Cells marked **bold** differ between the two systems. A "—" means no bracket exists at that threshold under that system.
+
+> **How to read these tables:** Each row is a bracket that begins at the listed income threshold and runs to the next row's threshold. The rate shown applies to income within that range only (Hawaii uses a progressive structure). The 1.40% bottom bracket is identical in both systems across all years — Act 46's phase-ins widen it without changing the rate.
+
+---
+
+### Married Filing Jointly / Qualifying Surviving Spouse
+
+#### TY 2027–2028
+
+| Income Threshold | Act 46 Rate | SB 3125 CD1 Rate | Change |
+|-----------------|------------|-----------------|--------|
+| $0 | 1.40% | 1.40% | — |
+| $28,800 | 3.20% | **2.50%** | **−0.70 pp** |
+| $38,400 | 5.50% | **5.00%** | **−0.50 pp** |
+| $48,000 | 6.40% | 6.40% | — |
+| $72,000 | 6.80% | 6.80% | — |
+| $96,000 | 7.20% | 7.20% | — |
+| $250,000 | 7.60% | 7.60% | — |
+| $350,000 | 7.90% | **8.25%** | **+0.35 pp** |
+| $450,000 | 8.25% | **9.00%** | **+0.75 pp** |
+| $550,000 | 9.00% | **10.00%** | **+1.00 pp** |
+| $650,000 | 10.00% | **11.00%** | **+1.00 pp** |
+| $800,000 | 11.00% | 11.00%¹ | — |
+| $1,000,000 | — | **13.00%** | **New bracket** |
+
+¹ Under SB 3125 CD1, the 11% bracket runs from $650K to $1M (a narrower range than Act 46's $800K–∞). The 13% bracket then applies above $1M.
+
+#### TY 2029–2031
+
+| Income Threshold | Act 46 Rate | SB 3125 CD1 Rate | Change |
+|-----------------|------------|-----------------|--------|
+| $0 | 1.40% | 1.40% | — |
+| $38,400 | 3.20% | **2.50%** | **−0.70 pp** |
+| $48,000 | 5.50% | **5.00%** | **−0.50 pp** |
+| $72,000 | 6.40% | 6.40% | — |
+| $96,000 | 6.80% | 6.80% | — |
+| $250,000 | 7.20% | 7.20% | — |
+| $350,000 | 7.60% | **8.25%** | **+0.65 pp** |
+| $450,000 | 7.90% | **9.00%** | **+1.10 pp** |
+| $550,000 | 8.25% | **10.00%** | **+1.75 pp** |
+| $650,000 | 9.00% | **11.00%** | **+2.00 pp** |
+| $800,000 | 10.00% | — | *(absorbed into 11% bracket)* |
+| $950,000 | 11.00% | 11.00%¹ | — |
+| $1,000,000 | — | **13.00%** | **New bracket** |
+
+---
+
+### Head of Household
+
+#### TY 2027–2028
+
+| Income Threshold | Act 46 Rate | SB 3125 CD1 Rate | Change |
+|-----------------|------------|-----------------|--------|
+| $0 | 1.40% | 1.40% | — |
+| $21,600 | 3.20% | **2.50%** | **−0.70 pp** |
+| $28,800 | 5.50% | **5.00%** | **−0.50 pp** |
+| $36,000 | 6.40% | 6.40% | — |
+| $54,000 | 6.80% | 6.80% | — |
+| $72,000 | 7.20% | 7.20% | — |
+| $187,500 | 7.60% | 7.60% | — |
+| $262,500 | 7.90% | **8.25%** | **+0.35 pp** |
+| $337,500 | 8.25% | **9.00%** | **+0.75 pp** |
+| $412,500 | 9.00% | **10.00%** | **+1.00 pp** |
+| $487,500 | 10.00% | **11.00%** | **+1.00 pp** |
+| $600,000 | 11.00% | 11.00%¹ | — |
+| $750,000 | — | **13.00%** | **New bracket** |
+
+¹ SB 3125 CD1 narrows the 11% bracket to $487,500–$750,000; above $750,000 the 13% rate applies.
+
+#### TY 2029–2031
+
+| Income Threshold | Act 46 Rate | SB 3125 CD1 Rate | Change |
+|-----------------|------------|-----------------|--------|
+| $0 | 1.40% | 1.40% | — |
+| $28,800 | 3.20% | **2.50%** | **−0.70 pp** |
+| $36,000 | 5.50% | **5.00%** | **−0.50 pp** |
+| $54,000 | 6.40% | 6.40% | — |
+| $72,000 | 6.80% | 6.80% | — |
+| $187,500 | 7.20% | 7.20% | — |
+| $262,500 | 7.60% | **8.25%** | **+0.65 pp** |
+| $337,500 | 7.90% | **9.00%** | **+1.10 pp** |
+| $412,500 | 8.25% | **10.00%** | **+1.75 pp** |
+| $487,500 | 9.00% | **11.00%** | **+2.00 pp** |
+| $600,000 | 10.00% | — | *(absorbed into 11% bracket)* |
+| $712,500 | 11.00% | 11.00%¹ | — |
+| $750,000 | — | **13.00%** | **New bracket** |
+
+---
+
+### Single / Married Filing Separately
+
+#### TY 2027–2028
+
+| Income Threshold | Act 46 Rate | SB 3125 CD1 Rate | Change |
+|-----------------|------------|-----------------|--------|
+| $0 | 1.40% | 1.40% | — |
+| $14,400 | 3.20% | **2.50%** | **−0.70 pp** |
+| $19,200 | 5.50% | **5.00%** | **−0.50 pp** |
+| $24,000 | 6.40% | 6.40% | — |
+| $36,000 | 6.80% | 6.80% | — |
+| $48,000 | 7.20% | 7.20% | — |
+| $125,000 | 7.60% | 7.60% | — |
+| $175,000 | 7.90% | **8.25%** | **+0.35 pp** |
+| $225,000 | 8.25% | **9.00%** | **+0.75 pp** |
+| $275,000 | 9.00% | **10.00%** | **+1.00 pp** |
+| $325,000 | 10.00% | **11.00%** | **+1.00 pp** |
+| $400,000 | 11.00% | 11.00%¹ | — |
+| $500,000 | — | **13.00%** | **New bracket** |
+
+¹ SB 3125 CD1 narrows the 11% bracket to $325,000–$500,000; above $500,000 the 13% rate applies.
+
+#### TY 2029–2031
+
+| Income Threshold | Act 46 Rate | SB 3125 CD1 Rate | Change |
+|-----------------|------------|-----------------|--------|
+| $0 | 1.40% | 1.40% | — |
+| $19,200 | 3.20% | **2.50%** | **−0.70 pp** |
+| $24,000 | 5.50% | **5.00%** | **−0.50 pp** |
+| $36,000 | 6.40% | 6.40% | — |
+| $48,000 | 6.80% | 6.80% | — |
+| $125,000 | 7.20% | 7.20% | — |
+| $175,000 | 7.60% | **8.25%** | **+0.65 pp** |
+| $225,000 | 7.90% | **9.00%** | **+1.10 pp** |
+| $275,000 | 8.25% | **10.00%** | **+1.75 pp** |
+| $325,000 | 9.00% | **11.00%** | **+2.00 pp** |
+| $400,000 | 10.00% | — | *(absorbed into 11% bracket)* |
+| $475,000 | 11.00% | 11.00%¹ | — |
+| $500,000 | — | **13.00%** | **New bracket** |
+
+---
+
+### Summary: What Changes and for Whom
+
+| Income Band (MFJ example) | Net Rate Change TY2027 | Net Rate Change TY2029 | Effect |
+|--------------------------|------------------------|------------------------|--------|
+| $0 – $28,800 | None | None | Unchanged |
+| $28,800 – $38,400 | **−0.70 pp** (3.20→2.50) | **−0.70 pp** (3.20→2.50) | Tax cut |
+| $38,400 – $48,000 | **−0.50 pp** (5.50→5.00) | **−0.50 pp** (5.50→5.00) | Tax cut |
+| $48,000 – $250,000 | None | None | Unchanged |
+| $250,000 – $350,000 | None | None | Unchanged |
+| $350,000 – $450,000 | **+0.35 pp** (7.90→8.25) | **+0.65 pp** (7.60→8.25) | Tax increase |
+| $450,000 – $550,000 | **+0.75 pp** (8.25→9.00) | **+1.10 pp** (7.90→9.00) | Tax increase |
+| $550,000 – $650,000 | **+1.00 pp** (9.00→10.00) | **+1.75 pp** (8.25→10.00) | Tax increase |
+| $650,000 – $1,000,000 | **+1.00 pp** (10.00→11.00) | **+2.00 pp** (9.00→11.00) | Tax increase |
+| Above $1,000,000 | **+2.00 pp** (11.00→13.00) | **+2.00 pp** (11.00→13.00) | Tax increase |
+
+> **Key observation:** The bill is not simply "low rates cut, high rates raised." Rates in the $350K–$1M range are also raised — by up to 2 pp under the TY2029 schedule. This means a meaningful portion of the revenue gain comes from earners well below the $1M threshold. The upper-middle bracket increases grow larger over time because Act 46 progressively lowers those rates in 2027 and 2029, widening the gap that SB 3125 CD1 then closes upward.
+
+---
+
+## 4. Data Sources
 
 ### Microdata
 | Source | Description | Use |
@@ -110,7 +264,7 @@ DOTAX TY2023 baseline: $99.6M in total REEC claims ($58.3M individual + $38.6M c
 
 ---
 
-## 4. Methodology
+## 5. Methodology
 
 ### Step 1 — Load PUMS
 
@@ -224,7 +378,7 @@ The `_bracket_year()` lookup selects the largest available vintage year ≤ the 
 
 ---
 
-## 5. Behavioral Response
+## 6. Behavioral Response
 
 **File:** `packages/tax_modeler/src/tax_modeler/scenarios/behavioral_response.py`
 
@@ -281,7 +435,7 @@ PTE revenue loss = eligible_income × rate_differential × pte_capture
 
 ---
 
-## 6. Credit Overlay
+## 7. Credit Overlay
 
 **File:** `packages/tax_modeler/src/tax_modeler/scenarios/sb3125_cd1_credits.py`  
 **Function:** `compute_credit_overlay(target_year, reec_demand_scenario, ...)`
@@ -329,7 +483,7 @@ One-time acceleration effect modeled for **TY2029 only**:
 
 ---
 
-## 7. Scenario Design
+## 8. Scenario Design
 
 Three integrated scenarios cover the uncertainty range:
 
@@ -350,7 +504,7 @@ Three integrated scenarios cover the uncertainty range:
 
 ---
 
-## 8. Distributional Analysis
+## 9. Distributional Analysis
 
 **Script:** `forecast_sb3125_cd1_quintile.py`  
 **Output:** `/tmp/sb3125_cd1_quintile_2027_2031.csv`
@@ -368,7 +522,7 @@ Note: Q1 filers (avg income ~$3K) are **completely unaffected** because their gr
 
 ---
 
-## 9. Results
+## 10. Results
 
 ### Annual Fiscal Impact by Scenario ($M, vs. Act 46 baseline)
 
@@ -420,7 +574,7 @@ The **bracket delta** (SB 3125 CD1 minus Act 46) is robust to this level-shift �
 
 ---
 
-## 10. Caveats and Limitations
+## 11. Caveats and Limitations
 
 1. **PUMS income underreporting at the top.** The ACS PUMS understates income for very high earners even after Pareto synthesis. The Pareto approximation may understate income concentration above $10M. The top-income synthesis achieves 88% of the IRS SOI $663M tax target.
 
@@ -438,7 +592,7 @@ The **bracket delta** (SB 3125 CD1 minus Act 46) is robust to this level-shift �
 
 ---
 
-## 11. Scripts and File Map
+## 12. Scripts and File Map
 
 ### Forecast Scripts (repo root)
 
@@ -474,7 +628,7 @@ The **bracket delta** (SB 3125 CD1 minus Act 46) is robust to this level-shift �
 
 ---
 
-## 12. Software and Packages
+## 13. Software and Packages
 
 ### Language and Runtime
 - **Python 3.12** via `uv` (Astral) package manager
