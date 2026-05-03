@@ -316,7 +316,34 @@ Iterative Proportional Fitting (IPF) adjusts unit weights so the PUMS-derived to
 
 **How it works:** Generates synthetic tax units with incomes drawn from a Pareto distribution with shape parameter α (default α = 1.5, calibrated to match the IRS SOI 2022 Hawaii tail shape). These units are given realistic filing-status mixes (drawn from the DOTAX TY2023 $1M+ filer population: ~65% MFJ, ~25% Single, ~8% HoH, ~2% MFS) and are added to the calibrated dataset. Base tax is recomputed for all units after synthesis.
 
-**Validation target:** 1,824 weighted $1M+ filers with $663M in aggregate tax (from IRS SOI 2022 Hawaii Table A8 and DOTAX TY2023). The synthesis achieves 100% of filer target and ~88% of tax target (the 12% tax gap reflects that Pareto-modeled income distribution slightly underweights the ultra-high end above $10M, consistent with known limitations of the Pareto approximation at the very top).
+**Validation target:** 1,824 weighted $1M+ filers with $663M in aggregate tax (from IRS SOI 2022 Hawaii Table A8 and DOTAX TY2023). The synthesis hits 100% of the filer count target by construction.
+
+### Step 6a — Synthetic Tail Tax-Target Calibration
+
+**Function:** `rescale_synthetic_tail_to_tax_target()`  
+**File:** `packages/tax_modeler/src/tax_modeler/scenarios/top_income_synthesis.py`
+
+**Why this step exists:** The Pareto conditional-mean income formula slightly underestimates income concentration above ~$10M — the very top of the tail — causing the raw synthesis to recover only ~88% of the $663M tax benchmark. A 12% shortfall in the baseline tax at $1M+ directly translates to a ~12% undercount of marginal revenue from the 13% bracket, approximately $14–17M per year.
+
+**How it works:** After `synthesize_top_filers()` and an initial `_compute_base_tax()` call, a uniform scale factor `k` is computed:
+
+```
+k = target_tax_m / actual_tax_on_synthetic_1m_plus_filers
+```
+
+All income-related columns (`income`, `agi`, `synthetic_total_income`, `earned_income`, `investment_income`, etc.) on synthetic rows are multiplied by `k`. Tax columns are cleared and `_compute_base_tax()` is re-run, after which `validate_top_synthesis()` confirms the tax target ratio rises to ≥99.5%.
+
+**Why single-pass k is sufficient:** Hawaii's top income tax bracket is linear above the $200K threshold (11% marginal rate for Act 46). At $1M+ incomes, the effective marginal rate is approximately flat, so `tax ≈ k × income × rate`. A single application of k achieves the target within 0.5% without iteration.
+
+**Per-scenario k values** (reported at runtime; approximate):
+
+| Scenario | Pareto α | tail_k (approx.) | Post-scale tax ratio |
+|----------|----------|------------------|----------------------|
+| LOW      | 1.7      | ≈1.20–1.25       | ~100%                |
+| MID      | 1.5      | ≈1.13–1.14       | ~100%                |
+| HIGH     | 1.4      | ≈1.05–1.10       | ~100%                |
+
+k is larger for the LOW scenario (α=1.7, thinner tail → lower initial tax capture) and smaller for HIGH (α=1.4, fatter tail → higher initial tax capture). Each scenario is independently calibrated to the same $663M DOTAX benchmark.
 
 ### Step 7 — Project to Target Year
 
@@ -576,7 +603,7 @@ The **bracket delta** (SB 3125 CD1 minus Act 46) is robust to this level-shift �
 
 ## 11. Caveats and Limitations
 
-1. **PUMS income underreporting at the top.** The ACS PUMS understates income for very high earners even after Pareto synthesis. The Pareto approximation may understate income concentration above $10M. The top-income synthesis achieves 88% of the IRS SOI $663M tax target.
+1. **PUMS income underreporting at the top.** The ACS PUMS understates income for very high earners even after Pareto synthesis. The Pareto approximation underweights income concentration above ~$10M. The raw synthesis recovers ~88% of the IRS SOI $663M tax target; this gap is closed by the post-synthesis uniform tail scaling step (Step 6a), which brings the tax target ratio to ≥99.5% before projection.
 
 2. **Static credit overlay.** REEC and CGEC are scored as aggregate static overlays. The model does not simulate individual solar adoption behavior or capital investment timing at the filer level.
 

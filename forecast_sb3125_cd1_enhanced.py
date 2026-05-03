@@ -128,10 +128,12 @@ def run_one_scenario(
     # Synthesize fresh from the calibrated (no-synthesis) base
     units = synthesize_top_filers(base_calibrated, pareto_alpha=alpha)
     units = _compute_base_tax(units)
+    units, tail_k = rescale_synthetic_tail_to_tax_target(units)
+    units = _compute_base_tax(units)
     v = validate_top_synthesis(units)
     print(f"  Synthesis: {v['filers_1m_plus']:,.0f} filers @ $1M+ "
           f"({100*v['filer_target_ratio']:.1f}%), ${v['tax_1m_plus_$M']:,.1f}M tax "
-          f"({100*v['tax_target_ratio']:.1f}%)", flush=True)
+          f"({100*v['tax_target_ratio']:.1f}%), tail_k={tail_k:.4f}", flush=True)
 
     behav_params = BehavioralParams.named(behav)
     print(f"  Behavioral: ETI={behav_params.eti}, migration_elast="
@@ -230,6 +232,7 @@ if __name__ == "__main__":
         from tax_modeler.scenarios.sb3125_cd1_credits import compute_credit_overlay
         from tax_modeler.scenarios.top_income_synthesis import (
             synthesize_top_filers, validate_top_synthesis,
+            rescale_synthetic_tail_to_tax_target,
         )
         from tax_modeler.scenarios.behavioral_response import (
             BehavioralParams,

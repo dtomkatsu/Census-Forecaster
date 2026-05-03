@@ -171,6 +171,7 @@ if __name__ == "__main__":
         )
         from tax_modeler.scenarios.top_income_synthesis import (
             synthesize_top_filers, validate_top_synthesis,
+            rescale_synthetic_tail_to_tax_target,
         )
         from tax_modeler.scenarios.behavioral_response import (
             apply_top_income_growth_premium,
@@ -200,11 +201,14 @@ if __name__ == "__main__":
         t0 = time.perf_counter()
         units = synthesize_top_filers(units, pareto_alpha=PARETO_ALPHA)
         units = _compute_base_tax(units)
+        units, tail_k = rescale_synthetic_tail_to_tax_target(units)
+        units = _compute_base_tax(units)
         v = validate_top_synthesis(units)
         print(f"  {v['filers_1m_plus']:,.0f} filers @ $1M+ "
               f"({100*v['filer_target_ratio']:.1f}%), "
               f"${v['tax_1m_plus_$M']:,.1f}M tax "
-              f"({100*v['tax_target_ratio']:.1f}% of $663M target) "
+              f"({100*v['tax_target_ratio']:.1f}% of $663M target), "
+              f"tail_k={tail_k:.4f} "
               f"in {time.perf_counter()-t0:.1f}s", flush=True)
 
         # ---- Per-year quintile analysis -------------------------------------

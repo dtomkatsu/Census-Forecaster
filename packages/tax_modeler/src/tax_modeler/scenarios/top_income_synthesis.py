@@ -203,3 +203,80 @@ def validate_top_synthesis(df: pd.DataFrame) -> Dict[str, float]:
             mask = mask_1m & df["filing_status"].isin(fs_keys)
             out[fs_label] = float(df.loc[mask, "weight"].sum()) / filers_1m
     return out
+
+
+def rescale_synthetic_tail_to_tax_target(
+    df: pd.DataFrame,
+    target_tax_m: float = DOTAX_1M_PLUS_TAX_TARGET_M,
+) -> tuple:
+    """Scale synthesized $1M+ filer incomes uniformly so aggregate Hawaii tax
+    on the synthetic tail matches ``target_tax_m``.
+
+    This closes the gap between Pareto-distribution-derived income levels and
+    the DOTAX/IRS SOI tax benchmark.  The Pareto synthesizer hits the filer
+    count target exactly but typically recovers only ~88% of the $663M tax
+    target because the conditional-mean income per tier underestimates the
+    very top of the tail.  A uniform income scale factor ``k`` applied to all
+    synthetic filer incomes corrects this.
+
+    At $1M+ income Hawaii's effective marginal rate is approximately flat at
+    11% (top bracket), so ``tax ≈ k × income × rate`` — a single-pass k
+    lands within ~0.5% of target after ``_compute_base_tax()`` reruns. No
+    iteration is required.
+
+    Must be called AFTER ``synthesize_top_filers()`` AND ``_compute_base_tax()``.
+    Clears stale tax columns on synthetic rows; caller must re-run
+    ``_compute_base_tax()`` after this call.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Tax units after synthesis and base-tax computation.
+    target_tax_m : float
+        Target aggregate Hawaii tax for $1M+ synthetic filers, in $ millions.
+        Defaults to ``DOTAX_1M_PLUS_TAX_TARGET_M`` ($663M).
+
+    Returns
+    -------
+    tuple[DataFrame, float]
+        ``(rescaled_df, k)`` where ``k`` is the uniform scale factor applied
+        to all income-related columns on synthetic rows.  ``k > 1`` means
+        incomes were scaled up to reach the tax target.
+    """
+    mask = df["is_synthetic_ultra_high"].fillna(False).astype(bool)
+    tax_col = "hi_tax_liability" if "hi_tax_liability" in df.columns else "hi_state_tax"
+
+    actual_tax_m = float(
+        (df.loc[mask, tax_col] * df.loc[mask, "weight"]).sum() / 1e6
+    )
+    if actual_tax_m <= 0:
+        raise ValueError(
+            f"Synthetic filer tax is {actual_tax_m:.1f}M — run _compute_base_tax() first."
+        )
+
+    k = target_tax_m / actual_tax_m
+
+    income_cols = [
+        c for c in [
+            "income", "agi", "synthetic_total_income",
+            "earned_income", "investment_income",
+            "primary_wagp", "primary_intp",
+        ]
+        if c in df.columns
+    ]
+
+    out = df.copy()
+    for col in income_cols:
+        out.loc[mask, col] = out.loc[mask, col] * k
+
+    # Clear stale tax so caller must recompute with updated incomes
+    for col in ("hi_tax_liability", "hi_state_tax", "hi_agi", "hi_taxable_income",
+                "hi_tax_before_credits"):
+        if col in out.columns:
+            out.loc[mask, col] = 0.0
+
+    logger.info(
+        "rescale_synthetic_tail: k=%.4f  actual_tax=%.1fM → target=%.1fM",
+        k, actual_tax_m, target_tax_m,
+    )
+    return out, k
