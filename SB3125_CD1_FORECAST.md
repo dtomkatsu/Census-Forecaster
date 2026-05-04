@@ -1,19 +1,11 @@
 # SB 3125 CD1 — Hawaii Income Tax Fiscal Impact Forecast
 ## Tax Years 2027–2031
 
-**Last updated:** May 2026
+**Last updated:** May 3, 2026
 **Analyst:** Hawaii Appleseed Center for Law and Economic Justice
-**Model version:** Methodology revisions pending re-run — see "Pending Results Refresh" below.
+**Model version:** All methodology revisions applied and forecast re-run (May 2026).
 
 > **Maintenance note:** This document must be updated whenever forecast methodology changes — including parameter recalibration, new behavioral channels, tax treatment corrections, or data source changes. Update the relevant section(s) and the Results table before committing.
-
-> **Pending Results Refresh (2026-05-03):** Four methodology fixes have been
-> applied to the code (per-filer ETI, deduction plumbing, REEC §25D/§48E
-> split, premium base-year alignment). The headline result tables in
-> Section 10 still reflect the pre-fix model run. The forecast must be
-> re-run to refresh those tables before they are quoted publicly.
-> See "Methodology revisions — May 2026" below for the methodology
-> changes already merged.
 
 ---
 
@@ -780,46 +772,33 @@ Note: Q1 filers (avg income ~$3K) are **completely unaffected** because their gr
 
 ### Annual Fiscal Impact by Scenario ($M, vs. Act 46 baseline)
 
-> **Stale — refresh pending.** The numbers below are from the model
-> run *before* the May 2026 methodology fixes (per-filer ETI,
-> deduction plumbing, REEC §25D/§48E split, premium base-year
-> alignment). They are retained for reference until the forecast is
-> re-run. Expected directional changes from the fixes:
-> - **Bracket gain:** ambiguous. Per-filer ETI raises behavioral
->   offsets; effective-deduction plumbing partially offsets the
->   former HIGH-only `itemized_adj=False` boost; premium base-year
->   reduces the income premium by one year's compound (~1pp lower).
-> - **Credit overlay:** higher. Corporate REEC no longer decays
->   under §25D scenarios, and corporate effective claim share rises
->   from ~80% to ~98%.
-> - **Net total:** likely modestly different in MID; HIGH may shift
->   downward materially due to deduction-plumbing now applying.
+**Updated May 2026** with methodology fixes (per-filer ETI, deduction plumbing, REEC §25D/§48E split, premium base-year alignment). Results are post-behavioral (including ETI/migration and PTE election shift).
 
 | Tax Year | LOW | **MID** | HIGH | RECESSION |
 |----------|----:|--------:|-----:|----------:|
-| 2027 | $30.8M | **$69.9M** | $126.7M | $68.0M |
-| 2028 | $55.7M | **$107.0M** | $175.1M | $104.2M |
-| 2029 | $79.7M | **$135.2M** | $208.4M | $132.7M |
-| 2030 | $78.2M | **$135.3M** | $213.0M | $133.6M |
-| 2031 | $125.3M | **$182.2M** | $266.8M | $182.2M |
-| **5-year cumulative** | **$369.7M** | **$629.6M** | **$990.1M** | **$620.7M** |
+| 2027 | $48.5M | **$77.4M** | $116.8M | $75.1M |
+| 2028 | $73.6M | **$113.3M** | $164.2M | $111.7M |
+| 2029 | $94.4M | **$138.1M** | $194.2M | $135.4M |
+| 2030 | $92.6M | **$137.5M** | $198.4M | $137.3M |
+| 2031 | $137.2M | **$184.5M** | $252.4M | $184.5M |
+| **5-year cumulative** | **$446.3M** | **$650.9M** | **$926.0M** | **$644.0M** |
 
-*Positive = net revenue gain for the State. Includes bracket microsim + credit overlay.*
+*Positive = net revenue gain for the State. Includes bracket microsim + credit overlay + behavioral response.*
 
-**RECESSION scenario note:** The $8.9M difference from MID ($620.7M vs $629.6M) reflects that both tax systems face the same macro shock — the *delta* between them is partially preserved. 2031 RECESSION = MID exactly, confirming full macro recovery. See Section 8b for methodology.
+**RECESSION scenario note:** The $6.9M difference from MID ($644.0M vs $650.9M) reflects that both tax systems face the same macro shock — the *delta* between them is partially preserved. 2031 RECESSION = MID exactly, confirming full macro recovery. See Section 8b for methodology.
 
 ### MID Scenario Decomposition
 
 | Channel | 5-year Total |
 |---------|-------------:|
-| Static bracket gain (13% top bracket + middle cuts) | +$498.2M |
-| ETI / migration behavioral offset | −$70.8M |
-| PTE election shift (ordinary income only; CG excluded) | −$235.0M |
-| **Post-behavioral bracket delta** | **+$192.4M** |
-| Credit overlay (REEC cap + CGEC sunset + TCRA) | +$437.1M |
-| **Total MID** | **+$629.6M** |
+| Static bracket gain (13% top bracket + middle cuts) | +$460.1M |
+| ETI / migration behavioral offset | −$71.6M |
+| PTE election shift (ordinary income only; CG excluded) | −$240.9M |
+| **Post-behavioral bracket delta** | **+$147.7M** |
+| Credit overlay (REEC cap + CGEC sunset + TCRA) | +$503.2M |
+| **Total MID** | **+$650.9M** |
 
-*The bracket delta is lower than a naive static calculation because (a) the §235-16 CG cap (7.25%) limits the bracket-delta contribution of CG income to zero under both systems, and (b) PTE election shifts reduce the ordinary income subject to the 13% rate (CG income is excluded from PTE pool per statute and economic rationality), and (c) ETI/migration responses further reduce the high-income tax base. The credit overlay ($437M, 69% of total) is the largest single component, dominated by REEC cap savings as the $40M cap phases to $0 by TY2031.*
+*The bracket delta is lower than a naive static calculation because (a) the §235-16 CG cap (7.25%) limits the bracket-delta contribution of CG income to zero under both systems, (b) PTE election shifts reduce the ordinary income subject to the 13% rate (CG income is excluded from PTE pool per statute and economic rationality), (c) ETI/migration responses further reduce the high-income tax base, and (d) effective-deduction plumbing now applies across all scenarios (previously HIGH was boosted by disabling `itemized_adj`). The credit overlay ($503M, 77% of total) is the largest single component, dominated by REEC cap savings as the $40M cap phases to $0 by TY2031.*
 
 ### Distributional Impact — TY 2027 Bracket Change (MID)
 
