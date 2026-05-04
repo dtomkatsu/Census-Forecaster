@@ -75,6 +75,26 @@ REEC_CORPORATE_TOTAL_M  = 38.565
 REEC_OTHER_TOTAL_M      =  3.217   # financial corp, fiduciaries, exempt orgs (not subject to AGI limit)
 # Sanity: 58.293 + 38.565 + 3.217 = $100.075M, matches DOTAX Table A-1 line 1854.
 
+# Refundable / nonrefundable split (DOTAX "Tax Credits Claimed by Hawai`i
+# Taxpayers — Tax Year 2023", refund-flag breakout). Refundable claims
+# offset state revenue dollar-for-dollar; nonrefundable claims that exceed
+# tax liability carry forward and don't reduce current-year revenue, so
+# only ~80% of nonrefundable dollars effectively offset revenue.
+#
+# Individual:        $13.4M refundable, $44.9M nonrefundable  (~23% / ~77%)
+# Corporate + Other: $37.3M refundable, ~$4.5M nonrefundable  (~89% / ~11%)
+#
+# Corporate REEC is overwhelmingly refundable because most commercial-scale
+# claims are PV / wind / OTEC investments financed via tax-equity partners
+# (refundable by election under §235-12.5(g)). Applying a single
+# nonrefundable utilization haircut to both pools (as a previous version
+# did) understated the effective dollar value of corporate REEC by ~15%.
+REEC_REFUNDABLE_SHARE_INDIVIDUAL    = 13.4 / REEC_INDIVIDUAL_TOTAL_M
+REEC_NONREFUNDABLE_SHARE_INDIVIDUAL = 1.0 - REEC_REFUNDABLE_SHARE_INDIVIDUAL
+_corp_plus_other_total              = REEC_CORPORATE_TOTAL_M + REEC_OTHER_TOTAL_M
+REEC_REFUNDABLE_SHARE_CORPORATE     = 37.3 / _corp_plus_other_total
+REEC_NONREFUNDABLE_SHARE_CORPORATE  = 1.0 - REEC_REFUNDABLE_SHARE_CORPORATE
+
 # Individual REEC claims by AGI bin (DOTAX Table A-5, line 2067)
 # Each entry: (bin_label, claim_$M, eligible_share_after_AGI_limit)
 # Eligibility shares derived from Hawaii calibrated tax units (PUMS):
@@ -204,10 +224,13 @@ def _reec_eligible_individual_M() -> float:
 
 
 def _reec_demand_factor(target_year: int, scenario: str) -> float:
-    """Return the demand-decay multiplier for REEC at target_year.
+    """Return the residential REEC demand-decay multiplier at target_year.
 
     Encodes post-OBBBA federal Section 25D termination effects per the
     selected scenario. See REEC_DEMAND_SCENARIOS for definitions.
+
+    Applies to the **individual / residential** portion of REEC claims.
+    Corporate / commercial claims use :func:`_reec_demand_factor_corporate`.
     """
     if scenario not in REEC_DEMAND_SCENARIOS:
         raise ValueError(
@@ -223,6 +246,53 @@ def _reec_demand_factor(target_year: int, scenario: str) -> float:
     return table[max(table)]
 
 
+def _reec_demand_factor_corporate(target_year: int) -> float:
+    """Return the commercial REEC demand-decay multiplier at target_year.
+
+    OBBBA (PL 119-21, Jul 2025) terminated **§25D (residential)** but
+    extended **§48E (commercial)** through 12/31/2027 and tapered it
+    thereafter. Within the 2027–2031 forecast horizon, commercial Hawaii
+    solar economics are not materially altered by the federal change —
+    Sunrun-style leases use §48E rather than §25D, and Hawaii's $0.42/kWh
+    electricity prices keep commercial PV well above project-finance
+    hurdle rates. Returning 1.0 (no decay) for all forecast years is the
+    appropriate residential-vs-commercial split.
+
+    Kept as a function (rather than a constant) so a future scenario
+    layer can introduce a §48E taper if needed without changing callers.
+    """
+    return 1.0
+
+
+def _effective_claim_share_individual(nonrefundable_utilization: float) -> float:
+    """Aggregate effective-revenue share for individual REEC claims.
+
+    Refundable claims offset revenue 1:1; nonrefundable claims offset at
+    ``nonrefundable_utilization`` (the literature midpoint is ~0.80, since
+    ~20% of nonrefundable dollars carry forward or expire). This function
+    blends the two using the DOTAX 2023 refundable share (~23% individual).
+    """
+    return (
+        REEC_REFUNDABLE_SHARE_INDIVIDUAL * 1.0
+        + REEC_NONREFUNDABLE_SHARE_INDIVIDUAL * nonrefundable_utilization
+    )
+
+
+def _effective_claim_share_corporate(nonrefundable_utilization: float) -> float:
+    """Aggregate effective-revenue share for corporate / other REEC claims.
+
+    Mirrors :func:`_effective_claim_share_individual` but uses the
+    corporate refundable share (~89%), so a 0.80 nonrefundable
+    utilization rate yields an aggregate effective share near 0.98 —
+    materially higher than 0.80, because corporate REEC is dominated by
+    refundable PV tax-equity claims.
+    """
+    return (
+        REEC_REFUNDABLE_SHARE_CORPORATE * 1.0
+        + REEC_NONREFUNDABLE_SHARE_CORPORATE * nonrefundable_utilization
+    )
+
+
 def _reec_baseline_M(
     target_year: int,
     demand_scenario: str = DEFAULT_REEC_DEMAND_SCENARIO,
@@ -232,13 +302,25 @@ def _reec_baseline_M(
 ) -> Dict[str, float]:
     """REEC projected demand for target_year, with eligibility breakdown.
 
-    Applies both Hawaii nominal income growth and the OBBBA demand-decay
-    factor for the chosen scenario. Individual claims grow with median
-    income; corporate + other claims grow with Hawaii nominal GDP
-    (CGEC-style growth, since these are business investments).
+    Applies Hawaii nominal income growth and OBBBA demand-decay factors
+    for the chosen scenario. Individual / residential claims grow with
+    median income and decay per the §25D-termination scenarios;
+    corporate / commercial claims grow with Hawaii business-sector
+    nominal output and use the §48E-extension factor (no decay through
+    forecast horizon).
 
     Parameters
     ----------
+    effective_claim_share : float
+        **Nonrefundable utilization rate** — the share of nonrefundable
+        REEC claims that actually offset current-year tax (the rest
+        carry forward or expire). Refundable claims always offset 100%.
+        The aggregate effective share is computed per pool from the
+        DOTAX 2023 refundable / nonrefundable split: individual REEC is
+        ~23% refundable, corporate REEC is ~89% refundable, so a 0.80
+        nonrefundable utilization rate yields ~85% effective for
+        individual and ~98% effective for corporate. Default 1.0 makes
+        the function backward-compatible (no utilization haircut).
     corp_subject_to_agi_limit : bool
         Whether corporate REEC claims are subject to the AGI limit. The
         bill text in §235-12.5(a) says "the taxpayer's adjusted gross
@@ -251,18 +333,19 @@ def _reec_baseline_M(
     """
     g_individual = _hawaii_nominal_growth(target_year)
     g_corporate  = _hawaii_corporate_growth(target_year, annual_rate=cgec_annual_growth)
-    d = _reec_demand_factor(target_year, demand_scenario)
+    d_individual = _reec_demand_factor(target_year, demand_scenario)
+    d_corporate  = _reec_demand_factor_corporate(target_year)
 
-    # effective_claim_share scales the gross-claimed dollars down to the
-    # portion that actually offsets state tax revenue. Nonrefundable
-    # credit claims that exceed tax liability carry forward and don't
-    # reduce current-year revenue. DOTAX TY 2023: $50.7M refundable +
-    # $48.9M nonrefundable. Empirically, ~75-85% of claimed amount
-    # reduces current-year revenue. Default 1.0 preserves prior behavior.
-    combined_ind  = g_individual * d * effective_claim_share
-    combined_corp = g_corporate * d * effective_claim_share
+    # Effective-revenue share differs by pool because the
+    # refundable/nonrefundable mix differs (corporate is ~89% refundable,
+    # individual is ~23% refundable). See module-level constants.
+    eff_share_ind  = _effective_claim_share_individual(effective_claim_share)
+    eff_share_corp = _effective_claim_share_corporate(effective_claim_share)
 
-    individual_eligible_2023  = _reec_eligible_individual_M()
+    combined_ind  = g_individual * d_individual * eff_share_ind
+    combined_corp = g_corporate * d_corporate * eff_share_corp
+
+    individual_eligible_2023   = _reec_eligible_individual_M()
     individual_ineligible_2023 = REEC_INDIVIDUAL_TOTAL_M - individual_eligible_2023
 
     # Corporate eligibility: by default, no AGI limit (full claim).
@@ -270,16 +353,19 @@ def _reec_baseline_M(
     # were filers in the $200K+ AGI bin (56.1% eligible per PUMS).
     if corp_subject_to_agi_limit:
         TOP_AGI_BIN_ELIGIBLE_SHARE = REEC_INDIVIDUAL_BY_AGI_BIN[-1][2]  # 0.561
-        corp_eligible_2023 = REEC_CORPORATE_TOTAL_M * TOP_AGI_BIN_ELIGIBLE_SHARE
-        other_eligible_2023 = REEC_OTHER_TOTAL_M * TOP_AGI_BIN_ELIGIBLE_SHARE
+        corp_eligible_2023  = REEC_CORPORATE_TOTAL_M * TOP_AGI_BIN_ELIGIBLE_SHARE
+        other_eligible_2023 = REEC_OTHER_TOTAL_M    * TOP_AGI_BIN_ELIGIBLE_SHARE
     else:
-        corp_eligible_2023 = REEC_CORPORATE_TOTAL_M
+        corp_eligible_2023  = REEC_CORPORATE_TOTAL_M
         other_eligible_2023 = REEC_OTHER_TOTAL_M
 
     return {
-        "growth_individual":     g_individual,
-        "growth_corporate":      g_corporate,
-        "demand_factor":         d,
+        "growth_individual":      g_individual,
+        "growth_corporate":        g_corporate,
+        "demand_factor":           d_individual,
+        "demand_factor_corporate": d_corporate,
+        "effective_share_individual": eff_share_ind,
+        "effective_share_corporate":  eff_share_corp,
         "individual_eligible":   individual_eligible_2023 * combined_ind,
         "individual_ineligible": individual_ineligible_2023 * combined_ind,
         "corporate":             REEC_CORPORATE_TOTAL_M * combined_corp,

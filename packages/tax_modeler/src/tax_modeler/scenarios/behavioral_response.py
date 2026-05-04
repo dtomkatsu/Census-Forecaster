@@ -123,61 +123,141 @@ class BehavioralParams:
 # ---------------------------------------------------------------------------
 # ETI: taxable-income response to marginal rate change
 # ---------------------------------------------------------------------------
+#
+# Standard form: %ΔTI = ETI × %Δ(1-MTR)
+#     new_TI / old_TI = ((1 - scenario_mtr) / (1 - baseline_mtr)) ** eti
+#
+# Each filer's actual marginal rates under baseline and scenario are looked
+# up from the bracket schedules (not assumed to be 11% → 13%). This matters
+# because SB 3125 CD1 raises rates across $350K–$1M MFJ (and equivalents)
+# in addition to creating the new 13% bracket above $1M; mid-tier filers
+# face smaller-but-real rate changes that the prior threshold-based
+# implementation ignored.
 
-def _income_response_factor(
-    baseline_mtr: float, scenario_mtr: float, eti: float
-) -> float:
-    """Return the multiplicative income adjustment for an ETI response.
 
-    Standard form: %ΔTI = ETI × %Δ(1-MTR)
-        new_TI / old_TI = ((1 - scenario_mtr) / (1 - baseline_mtr)) ** eti
+def _per_filer_marginal_rate(
+    df: pd.DataFrame,
+    *,
+    config,
+    calculator,
+    income_col: str,
+    fs_col: str,
+    deduction_col: Optional[str],
+    exemption_count_col: Optional[str],
+) -> np.ndarray:
+    """Vectorized marginal-rate lookup per filer under ``config``.
 
-    For a rate increase (scenario_mtr > baseline_mtr), this is < 1.
+    Computes ``taxable = max(0, income − effective_deduction − exemption)``
+    then locates each filer's bracket via ``searchsorted`` on bracket
+    floors. Rates are read from the bracket CSV (stored as percentages,
+    e.g. 11.0); converted to decimals (0.11). Returns an ``ndarray`` of
+    decimal rates aligned with ``df``.
+
+    Filers with zero taxable income return MTR = 0.
     """
-    if baseline_mtr >= 1.0 or scenario_mtr >= 1.0:
-        return 1.0
-    return ((1.0 - scenario_mtr) / (1.0 - baseline_mtr)) ** eti
+    incomes = df[income_col].to_numpy(dtype=float)
+    statuses = df[fs_col].to_numpy()
+    n = len(df)
+
+    if deduction_col and deduction_col in df.columns:
+        deductions = df[deduction_col].fillna(0.0).to_numpy(dtype=float)
+    else:
+        deductions = np.empty(n, dtype=float)
+        for fs in np.unique(statuses):
+            deductions[statuses == fs] = calculator.get_standard_deduction(
+                config.standard_deduction_year, fs
+            )
+
+    if exemption_count_col and exemption_count_col in df.columns:
+        exemption_count = df[exemption_count_col].fillna(1).to_numpy(dtype=int)
+    else:
+        exemption_count = np.ones(n, dtype=int)
+    exemption_amount = exemption_count * config.personal_exemption
+
+    taxable = np.maximum(0.0, incomes - deductions - exemption_amount)
+
+    mtrs = np.zeros(n, dtype=float)
+    for fs in np.unique(statuses):
+        brackets = calculator.get_brackets(
+            config.bracket_year, fs, scenario=config.bracket_scenario
+        )
+        boundaries = brackets["income_min"].to_numpy(dtype=float)
+        rates_raw = brackets["rate"].to_numpy(dtype=float)
+        # CSV stores rates as percentages; normalize to decimal.
+        rates = rates_raw / 100.0 if rates_raw.max() > 1.0 else rates_raw
+        mask = statuses == fs
+        # searchsorted(side='right') returns idx with
+        # boundaries[idx-1] <= taxable < boundaries[idx]; the bracket
+        # the filer is in has rate rates[idx-1].
+        idx = np.searchsorted(boundaries, taxable[mask], side="right") - 1
+        idx = np.clip(idx, 0, len(boundaries) - 1)
+        mtrs[mask] = rates[idx]
+
+    mtrs[taxable <= 0] = 0.0
+    return mtrs
 
 
 def apply_eti_response(
     df: pd.DataFrame,
     params: BehavioralParams,
     *,
+    baseline_cfg,
+    scenario_cfg,
+    calculator,
     income_col: str = "income",
     fs_col: str = "filing_status",
+    deduction_col: Optional[str] = None,
+    exemption_count_col: Optional[str] = None,
     inplace: bool = False,
 ) -> pd.DataFrame:
-    """Reduce incomes of filers above the new 13% threshold per ETI.
+    """Apply per-filer ETI shrinkage based on actual baseline → scenario MTR.
 
-    Only the *marginal* income above the threshold gets the rate change
-    11% → 13% — but standard ETI literature applies the response to
-    the entire taxable income of the filer (since they re-optimize
-    overall labor supply / shelter use). We follow the literature and
-    apply the factor to total income for filers above threshold.
+    For each filer whose marginal rate increases, multiply income by
+    ``((1 − scen_mtr) / (1 − base_mtr)) ** eti``. Filers facing no rate
+    change (or a rate cut) receive no income adjustment — the ETI
+    literature is asymmetric and rate cuts have weaker, less established
+    behavioral feedback than rate increases.
 
-    For filers below threshold under both systems, no response.
+    Parameters
+    ----------
+    baseline_cfg, scenario_cfg : TaxSystemConfig
+        The two systems whose bracket schedules define each filer's
+        marginal rate. The bracket schedule is looked up via
+        ``calculator.get_brackets(year, status, scenario=...)``.
+    calculator : TaxCalculator
+        Provides bracket lookup and standard-deduction lookup.
+    deduction_col : str, optional
+        When supplied, used as each filer's effective deduction in the
+        taxable-income calculation. Recommended: ``"hi_standard_deduction"``
+        from the projection step (greater of std and itemized).
     """
     if params.eti <= 0:
         return df if inplace else df.copy()
 
     out = df if inplace else df.copy()
     out[income_col] = out[income_col].astype(float)
-    out["_eti_factor"] = 1.0
 
-    for fs, threshold in SB3125_TOP_THRESHOLDS.items():
-        mask = (out[fs_col] == fs) & (out[income_col] > threshold)
-        if not mask.any():
-            continue
-        # Marginal rate moved from ACT46_TOP_RATE to SB3125_CD1_TOP_RATE
-        # for the portion above the threshold. ETI literature treats
-        # the response as proportional to the change in the marginal
-        # net-of-tax rate at the filer's top dollar.
-        factor = _income_response_factor(
-            ACT46_TOP_RATE, SB3125_CD1_TOP_RATE, params.eti
-        )
-        out.loc[mask, income_col] = out.loc[mask, income_col] * factor
-        out.loc[mask, "_eti_factor"] = factor
+    base_mtr = _per_filer_marginal_rate(
+        out, config=baseline_cfg, calculator=calculator,
+        income_col=income_col, fs_col=fs_col,
+        deduction_col=deduction_col, exemption_count_col=exemption_count_col,
+    )
+    scen_mtr = _per_filer_marginal_rate(
+        out, config=scenario_cfg, calculator=calculator,
+        income_col=income_col, fs_col=fs_col,
+        deduction_col=deduction_col, exemption_count_col=exemption_count_col,
+    )
 
+    factor = np.ones(len(out), dtype=float)
+    rate_up = (scen_mtr > base_mtr) & (base_mtr < 1.0) & (scen_mtr < 1.0)
+    factor[rate_up] = (
+        (1.0 - scen_mtr[rate_up]) / (1.0 - base_mtr[rate_up])
+    ) ** params.eti
+
+    out[income_col] = out[income_col].to_numpy() * factor
+    out["_eti_factor"] = factor
+    out["_eti_base_mtr"] = base_mtr
+    out["_eti_scen_mtr"] = scen_mtr
     return out
 
 
@@ -347,7 +427,13 @@ def estimate_pte_election_shift_M(
 # Source: Piketty-Saez-Zucman (PSZ) "Distributional National Accounts"
 #   (top-1% 1979-2019: +2.3pp); IRS SOI 2012–2019 national bracket data
 #   ($500K+ vs median: +1.8pp); Young & Varner Hawaii outmigration estimates.
-TOP_INCOME_PREMIUM_BASE_YEAR = 2023
+#
+# Base year 2024: the PUMS panel is the ACS 2020-2024 5-year vintage,
+# inflation-adjusted to 2024 dollars, and the county B19013 projector
+# anchors on the most recent 1-year ACS observation (2024). The premium
+# represents the top-vs-median growth differential layered on top of the
+# county-anchored projection, so it must compound from the same anchor.
+TOP_INCOME_PREMIUM_BASE_YEAR = 2024
 TOP_INCOME_PREMIUM_THRESHOLD = 500_000   # apply above this AGI
 TOP_INCOME_PREMIUM_RATE = 0.013          # MID: 1.3pp/yr (IRS SOI empirical)
 
@@ -375,7 +461,7 @@ def apply_top_income_growth_premium(
     LOW/HIGH are ±1.0pp symmetric bounds: +0.3% and +2.3%.
 
     Multiplier = (1 + annual_premium) ** (target_year - base_year)
-    For MID 1.3pp/yr from 2023 to 2027: 1.013^4 = 1.053 (+5.3%)
+    For MID 1.3pp/yr from 2024 to 2027: 1.013^3 = 1.040 (+4.0%)
     """
     if annual_premium == 0 or target_year <= base_year:
         return df if inplace else df.copy()
@@ -463,10 +549,14 @@ def apply_behavioral_response(
     params: BehavioralParams,
     *,
     target_year: int,
+    baseline_cfg,
+    scenario_cfg,
+    calculator,
     bill_effective_year: int = 2027,
     income_col: str = "income",
     fs_col: str = "filing_status",
     weight_col: str = "weight",
+    deduction_col: Optional[str] = None,
 ) -> Tuple[pd.DataFrame, Dict[str, float]]:
     """Apply ETI + migration adjustments and report the PTE shift.
 
@@ -476,9 +566,19 @@ def apply_behavioral_response(
     that moves to a different tax base (the PTE entity-level tax), not
     revenue that disappears. The caller subtracts it from the bracket
     delta as a correction.
+
+    ``baseline_cfg``, ``scenario_cfg``, and ``calculator`` are required so
+    that ETI shrinkage can be applied based on each filer's actual
+    marginal-rate change rather than a hard-coded 11% → 13% assumption.
     """
     out = df.copy()
-    out = apply_eti_response(out, params, income_col=income_col, fs_col=fs_col, inplace=True)
+    out = apply_eti_response(
+        out, params,
+        baseline_cfg=baseline_cfg, scenario_cfg=scenario_cfg, calculator=calculator,
+        income_col=income_col, fs_col=fs_col,
+        deduction_col=deduction_col,
+        inplace=True,
+    )
     out = apply_migration_response(
         out, params, target_year=target_year,
         bill_effective_year=bill_effective_year,

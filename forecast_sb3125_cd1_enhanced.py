@@ -2,31 +2,48 @@
 
 Improvements over forecast_sb3125_cd1.py:
 
-  1. **ETI behavioral response** — taxable-income elasticity reduces top-bracket
-     income for filers above the 13% threshold. Saez/Slemrod/Giertz range:
-     ETI=0.15 (low) / 0.25 (mid) / 0.40 (high).
+  1. **ETI behavioral response** — per-filer taxable-income elasticity.
+     Each filer's marginal rate is computed under both the Act 46 baseline
+     and SB 3125 CD1 schedules; ETI shrinkage is applied based on the
+     actual rate change (not a hard-coded 11% → 13%). This correctly
+     captures behavior for $350K–$1M MFJ filers (and equivalents) who
+     also face rate increases under the bill, not just $1M+ filers.
+     Saez/Slemrod/Giertz range: ETI=0.15 (low) / 0.25 (mid) / 0.40 (high).
 
   2. **Migration response** — Young/Varner top-1% migration elasticity per pp
      top-rate change. Phased in over 5 years from 2027.
 
-  3. **PTE election shift** — Bill creates 2pp incentive for $1M+ pass-through
-     income to elect PTE (11%) vs face individual 13%. Reported as a
+  3. **PTE election shift** — Bill creates 4pp incentive for $1M+ pass-through
+     income to elect PTE (9%) vs face individual 13%. Reported as a
      deduction from gross bracket revenue.
 
   4. **Top-income growth premium** — Top earners (>$500K) get an additional
-     1.5pp/yr growth above the median-anchored projection (Piketty-Saez-Zucman
-     top-1% > median differential, conservatively halved for state level).
+     premium above the median-anchored projection. Anchored to PUMS 2024
+     base year (5-year vintage panel inflation-adjusted to 2024 dollars).
 
-  5. **Corporate growth proxy for CGEC** — Capital Goods Excise Credit
-     ($34.6M, 90% corporate) now grows with Hawaii nominal GDP (5%/yr),
-     not median household income (3.5%/yr).
+  5. **Effective deductions plumbed through** — The bracket comparison
+     uses each filer's projection-time effective deduction (greater of
+     standard and itemized via expected-value Pease-limited Hawaii rules)
+     instead of a fixed-amount itemized-premium subtraction. This is the
+     same deduction that drives ``hi_tax_liability`` upstream, so the
+     comparison is internally consistent.
 
-  6. **Corporate REEC AGI eligibility option** — Bill text is ambiguous on
-     whether AGI limits bind to corporations. Default False (no limit), but
-     a sensitivity scenario sets True (treat as $200K+ bin).
+  6. **Corporate REEC: §48E vs §25D split** — OBBBA terminated §25D
+     (residential) but extended §48E (commercial). Corporate REEC
+     baseline now uses the §48E factor (no decay through forecast
+     horizon); residential decay still applies to individual REEC.
 
-  7. **Baseline-scaling diagnostic** — Reports both raw and COR-scaled
-     bracket delta (microsim baseline = $2,282M; COR FY27 = $3,050M).
+  7. **REEC refundable / nonrefundable utilization split** — The
+     ``reec_eff_share`` parameter is the **nonrefundable** utilization
+     rate; refundable claims are always 100% effective. Aggregate
+     effective shares are blended per the DOTAX 2023 refundable mix
+     (~23% individual, ~89% corporate).
+
+  8. **Recession scenario** — Mild-to-moderate recession with trough
+     2027 and gradual recovery through 2031. MID behavioral params.
+
+  9. **Baseline-scaling diagnostic** — Reports both raw and COR-scaled
+     bracket delta (microsim baseline ≈ $2.3B; COR FY27 = $3.05B).
 
 Four integrated scenarios (three behavioral + one recession macro):
     LOW       — eti=0.60, migration=0.15, pte=0.90, alpha=1.7, reec=obbba_severe
@@ -59,6 +76,8 @@ COR_FY27_IIT_PROJ_M = 3050.0
 # (Rauh/Shyu 2024 California 13.3% study), (c) PTE rate 9% (Act 50, Hawaii)
 # vs bill's 13% individual top → 4pp arbitrage gap, and (d) REEC nonrefundable
 # utilization considerations + Hawaii solar saturation.
+# Scenarios (no per-scenario ``itemized_adj`` flag — effective deductions
+# are now plumbed through compare_systems via ``deduction_col``).
 SCENARIOS = [
     {
         "label":  "LOW",
@@ -67,9 +86,8 @@ SCENARIOS = [
         "behav":  "high",             # strong behavioral response (low revenue gain)
         "corp_agi_limit": True,
         "top_premium":     0.003,     # +0.3%/yr: MID – 1.0pp (strong outmigration)
-        "reec_eff_share":  0.65,      # only 65% of claims actually offset tax
+        "reec_eff_share":  0.65,      # 65% nonrefundable utilization
         "cgec_growth":     0.020,     # 2%/yr business growth
-        "itemized_adj":    True,
         "macro_shock":     None,      # no recession overlay (baseline macro)
     },
     {
@@ -79,9 +97,8 @@ SCENARIOS = [
         "behav":  "mid",              # ETI=0.40, migr=0.10, pte=0.70
         "corp_agi_limit": False,
         "top_premium":     0.013,     # +1.3%/yr: IRS SOI 1.8pp differential – 0.5pp Hawaii haircut
-        "reec_eff_share":  0.80,      # 80% utilization (literature midpoint)
+        "reec_eff_share":  0.80,      # 80% nonrefundable utilization (literature midpoint)
         "cgec_growth":     0.030,     # 3%/yr (calibrated down from 5%)
-        "itemized_adj":    True,
         "macro_shock":     None,      # no recession overlay (baseline macro)
     },
     {
@@ -91,16 +108,14 @@ SCENARIOS = [
         "behav":  "low",              # weak behavioral (high revenue gain)
         "corp_agi_limit": False,
         "top_premium":     0.023,     # +2.3%/yr: MID + 1.0pp (national-rate convergence)
-        "reec_eff_share":  1.00,      # full claim utilization
+        "reec_eff_share":  1.00,      # full nonrefundable utilization
         "cgec_growth":     0.040,     # 4%/yr business growth
-        "itemized_adj":    False,     # no itemized adjustment (overstates 13% base)
         "macro_shock":     None,      # no recession overlay (baseline macro)
     },
     {
         # Recession scenario: MID behavioral params + moderate recession macro shock.
         # Models a mild-to-moderate recession onset 2027 with partial rebound 2028.
-        # All-filer income: −2.0% in 2027, +1.5% in 2028, back to baseline 2029+.
-        # Top-income (≥$200K) extra hit: −1.5% additional in 2027, +1.0% in 2028.
+        # Cumulative deviations from baseline (see scenarios/macro_scenarios.py).
         # Behavioral parameters held constant at MID values (conservative: no
         # behavioral-macro interaction effects modeled).
         "label":  "RECESSION",
@@ -111,7 +126,6 @@ SCENARIOS = [
         "top_premium":     0.013,     # same as MID (IRS SOI empirical)
         "reec_eff_share":  0.80,      # same as MID
         "cgec_growth":     0.030,     # same as MID
-        "itemized_adj":    True,
         "macro_shock":     "moderate", # apply moderate recession income shock
     },
 ]
@@ -130,9 +144,9 @@ def run_one_scenario(
     TaxCalculator, TaxSystemRegistry, compare_systems,
     compute_credit_overlay,
     synthesize_top_filers, validate_top_synthesis,
+    rescale_synthetic_tail_to_tax_target,
     BehavioralParams, apply_behavioral_response,
     apply_top_income_growth_premium,
-    apply_itemized_deduction_adjustment,
     apply_macro_recession_shock,
 ):
     import time
@@ -144,12 +158,11 @@ def run_one_scenario(
     top_premium = scenario["top_premium"]
     reec_eff = scenario["reec_eff_share"]
     cgec_g   = scenario["cgec_growth"]
-    do_item  = scenario["itemized_adj"]
     macro_shock = scenario.get("macro_shock")   # None = baseline macro; "moderate" = recession
     print(f"\n{'='*78}\nSCENARIO {label}: alpha={alpha} reec={reec} behav={behav} "
           f"corp_agi={corp_agi} top_premium={top_premium:+.3f}\n"
           f"  reec_eff_share={reec_eff} cgec_growth={cgec_g:.3f} "
-          f"itemized_adj={do_item} macro_shock={macro_shock or 'none'}\n"
+          f"macro_shock={macro_shock or 'none'}\n"
           f"{'='*78}", flush=True)
 
     # Synthesize fresh from the calibrated (no-synthesis) base
@@ -167,11 +180,18 @@ def run_one_scenario(
           f"{behav_params.migration_elast}, pte_capture={behav_params.pte_capture}",
           flush=True)
 
+    # Per-filer effective deduction from the projection step
+    # (greater of standard and expected itemized, with Hawaii Pease applied).
+    # Plumbed into compare_systems so the bracket comparison reflects
+    # realistic itemized behavior at the top of the distribution.
+    DED_COL = "hi_standard_deduction"
+
     calc = TaxCalculator()
     rows = []
     for year in target_years:
         t0 = time.perf_counter()
-        # 1) Standard projection (county B19013 income growth)
+        # 1) Standard projection (county B19013 income growth + per-filer
+        #    effective deduction populated as `hi_standard_deduction`).
         projected = project_tax_units_forward(units, target_year=year, method="ensemble")
 
         # 2) Top-income growth premium (corrects under-projection of top-1%)
@@ -185,22 +205,26 @@ def run_one_scenario(
                 projected, target_year=year, scenario=macro_shock,
             )
 
-        # 2c) Itemized-deduction adjustment for top filers
-        if do_item:
-            projected = apply_itemized_deduction_adjustment(projected)
-
         # 3) Pre-behavioral baseline + scenario revenue (static)
         baseline_cfg = TaxSystemRegistry.get_act46_system(year)
         scenario_cfg = TaxSystemRegistry.get_sb3125_cd1_system(year)
-        cmp_static = compare_systems(projected, baseline_cfg, scenario_cfg, calculator=calc)
+        cmp_static = compare_systems(
+            projected, baseline_cfg, scenario_cfg,
+            calculator=calc, deduction_col=DED_COL,
+        )
         diff_static = float(cmp_static[cmp_static["system"] == "Difference"].iloc[0]["revenue_millions"])
         baseline_static = float(cmp_static[cmp_static["system"] == baseline_cfg.name].iloc[0]["revenue_millions"])
 
-        # 4) Apply behavioral response (ETI + migration), recompute scenario revenue
+        # 4) Apply behavioral response (per-filer ETI + migration), recompute
         adjusted, behav_diag = apply_behavioral_response(
             projected, behav_params, target_year=year,
+            baseline_cfg=baseline_cfg, scenario_cfg=scenario_cfg, calculator=calc,
+            deduction_col=DED_COL,
         )
-        cmp_behav = compare_systems(adjusted, baseline_cfg, scenario_cfg, calculator=calc)
+        cmp_behav = compare_systems(
+            adjusted, baseline_cfg, scenario_cfg,
+            calculator=calc, deduction_col=DED_COL,
+        )
         diff_behav = float(cmp_behav[cmp_behav["system"] == "Difference"].iloc[0]["revenue_millions"])
 
         # 5) PTE election shift (revenue moves from individual to PTE form)
@@ -271,7 +295,6 @@ if __name__ == "__main__":
             BehavioralParams,
             apply_behavioral_response,
             apply_top_income_growth_premium,
-            apply_itemized_deduction_adjustment,
         )
         from tax_modeler.scenarios.macro_scenarios import apply_macro_recession_shock
 
@@ -303,10 +326,10 @@ if __name__ == "__main__":
                 compute_credit_overlay=compute_credit_overlay,
                 synthesize_top_filers=synthesize_top_filers,
                 validate_top_synthesis=validate_top_synthesis,
+                rescale_synthetic_tail_to_tax_target=rescale_synthetic_tail_to_tax_target,
                 BehavioralParams=BehavioralParams,
                 apply_behavioral_response=apply_behavioral_response,
                 apply_top_income_growth_premium=apply_top_income_growth_premium,
-                apply_itemized_deduction_adjustment=apply_itemized_deduction_adjustment,
                 apply_macro_recession_shock=apply_macro_recession_shock,
             ))
 

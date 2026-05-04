@@ -588,25 +588,37 @@ def compare_systems(
     tax_units: pd.DataFrame,
     baseline_config: TaxSystemConfig,
     scenario_config: TaxSystemConfig,
-    calculator: Optional[TaxCalculator] = None
+    calculator: Optional[TaxCalculator] = None,
+    deduction_col: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Compare two tax systems and return detailed comparison.
-    
+
     Args:
         tax_units: DataFrame with tax units
         baseline_config: Baseline tax system
         scenario_config: Scenario tax system to compare
         calculator: Optional pre-initialized calculator
-        
+        deduction_col: Optional column with per-unit effective deductions
+            (e.g. ``"hi_standard_deduction"`` from project_tax_units_forward,
+            which is the larger of standard and itemized). When supplied,
+            both baseline and scenario use this per-filer deduction so the
+            bracket comparison reflects realistic itemized-deduction
+            behavior at the top of the distribution. When None, both
+            systems use the standard deduction by filing status.
+
     Returns:
         DataFrame with comparison results
     """
     if calculator is None:
         calculator = TaxCalculator()
-    
-    baseline_revenue = calculator.calculate_revenue(tax_units, baseline_config)
-    scenario_revenue = calculator.calculate_revenue(tax_units, scenario_config)
+
+    baseline_revenue = calculator.calculate_revenue(
+        tax_units, baseline_config, deduction_col=deduction_col,
+    )
+    scenario_revenue = calculator.calculate_revenue(
+        tax_units, scenario_config, deduction_col=deduction_col,
+    )
     
     def _row(rev, cfg):
         return {

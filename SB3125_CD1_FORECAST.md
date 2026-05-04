@@ -1,11 +1,83 @@
 # SB 3125 CD1 — Hawaii Income Tax Fiscal Impact Forecast
 ## Tax Years 2027–2031
 
-**Last updated:** May 2026  
-**Analyst:** Hawaii Appleseed Center for Law and Economic Justice  
-**Model version:** Calibrated MID — $629.6M 5-year (post CG-cap + PTE-CG exclusion corrections)
+**Last updated:** May 2026
+**Analyst:** Hawaii Appleseed Center for Law and Economic Justice
+**Model version:** Methodology revisions pending re-run — see "Pending Results Refresh" below.
 
 > **Maintenance note:** This document must be updated whenever forecast methodology changes — including parameter recalibration, new behavioral channels, tax treatment corrections, or data source changes. Update the relevant section(s) and the Results table before committing.
+
+> **Pending Results Refresh (2026-05-03):** Four methodology fixes have been
+> applied to the code (per-filer ETI, deduction plumbing, REEC §25D/§48E
+> split, premium base-year alignment). The headline result tables in
+> Section 10 still reflect the pre-fix model run. The forecast must be
+> re-run to refresh those tables before they are quoted publicly.
+> See "Methodology revisions — May 2026" below for the methodology
+> changes already merged.
+
+---
+
+## Methodology revisions — May 2026
+
+The following corrections were merged after the May 2026 review and supersede
+the corresponding sections below; results in Section 10 will refresh on the
+next forecast run.
+
+1. **Per-filer ETI based on actual MTR change.** The old ETI step
+   applied a flat ``((1 − 0.13)/(1 − 0.11)) ** eti`` factor to every
+   filer above the new 13% threshold. SB 3125 CD1 raises rates across
+   the entire $350K–$1M MFJ range (and equivalents for HoH/Single), not
+   just at $1M+, so the old approach attributed *zero* behavioral
+   response to those mid-tier rate increases — overstating the static
+   bracket gain in the upper-middle band. The new
+   :func:`apply_eti_response` looks up each filer's marginal rate under
+   both Act 46 and SB 3125 CD1 (via vectorized bracket-boundary
+   ``searchsorted``) and applies the ETI factor based on the actual
+   per-filer net-of-tax change. Filers facing no rate change get
+   factor 1.0; filers facing a rate cut also get 1.0 (asymmetric
+   treatment, matching the literature).
+
+2. **Effective deduction plumbed into the bracket comparison.**
+   ``project_tax_units_forward`` already computes each filer's
+   effective deduction (the larger of standard and Pease-limited
+   itemized) and stores it as ``hi_standard_deduction``. Previously
+   ``compare_systems`` ignored that column and applied the standard
+   deduction on its own, which forced a separate
+   ``apply_itemized_deduction_adjustment`` step that subtracted a
+   flat $40K–$80K from each top filer's income as a stand-in.
+   ``compare_systems`` now accepts a ``deduction_col`` parameter; the
+   enhanced forecast passes ``"hi_standard_deduction"`` for both
+   baseline and scenario, so the bracket comparison uses the same
+   per-filer deduction as the projection step. The per-scenario
+   ``itemized_adj`` flag has been retired.
+
+3. **REEC: residential vs commercial demand decay.** OBBBA terminated
+   §25D (residential) but extended §48E (commercial) through
+   12/31/2027. The old code applied the §25D-based demand decay
+   (`obbba_mid`, `obbba_severe`) to *both* individual and corporate
+   REEC pools, understating corporate baseline demand by ~10–20%.
+   The new ``_reec_demand_factor_corporate`` returns 1.0 for all
+   forecast years; only individual / residential REEC sees the §25D
+   decay.
+
+4. **REEC: refundable / nonrefundable utilization split.** The old
+   ``effective_claim_share`` parameter was applied uniformly to all
+   REEC dollars. But refundable claims offset state revenue 1:1; only
+   nonrefundable claims have utilization concerns (carry-forward,
+   expiration). DOTAX 2023 actuals: individual REEC is ~23%
+   refundable, corporate REEC is ~89% refundable. The parameter has
+   been re-interpreted as a *nonrefundable utilization rate*; the
+   aggregate effective share is computed per pool. At the MID setting
+   of 0.80, individual aggregate share is ~85% and corporate is ~98%
+   (vs the previous 80% for both).
+
+5. **Top-income growth premium base-year alignment.** Previously
+   ``TOP_INCOME_PREMIUM_BASE_YEAR = 2023`` while the PUMS panel and
+   B19013 county projections anchor on 2024 (the most recent ACS
+   1-year vintage in the bundled panel). Compounding from 2023 added
+   one extra year of premium on top of the projection. Base year is
+   now 2024; the MID multiplier for TY 2027 falls from
+   ``1.013⁴ = 1.053`` (+5.3%) to ``1.013³ = 1.040`` (+4.0%).
 
 ---
 
@@ -362,7 +434,7 @@ Hawaii's four counties (Honolulu, Maui, Hawaii, Kauai) each get their own growth
 
 ### Step 8 — Top-Income Growth Premium (MID/HIGH scenarios)
 
-**Function:** `apply_top_income_growth_premium()`  
+**Function:** `apply_top_income_growth_premium()`
 **File:** `packages/tax_modeler/src/tax_modeler/scenarios/behavioral_response.py`
 
 Applies an additional annual growth premium to units with income above $500K, on top of the county-level B19013 scaling. This corrects for the known divergence between top-1% income growth and median-anchored projections.
@@ -375,14 +447,39 @@ Applies an additional annual growth premium to units with income above $500K, on
 | **MID** | **+1.3%/yr** | IRS SOI 1.8pp national differential minus 0.5pp Hawaii haircut |
 | HIGH | +2.3%/yr | Hawaii top-income growth converges toward national rates |
 
-Formula: `multiplier = (1 + annual_premium)^(target_year − 2023)`. For MID at TY2027: 1.013⁴ = 1.053 (+5.3% vs. the county-median-anchored projection).
+Formula: `multiplier = (1 + annual_premium)^(target_year − 2024)`. The base
+year is **2024** to match the PUMS panel anchor (the bundled ACS 5-year
+2020–2024 vintage is inflation-adjusted to 2024 dollars, and the
+county B19013 projector anchors on the most recent 1-year ACS observation
+— also 2024). For MID at TY 2027: 1.013³ = 1.040 (+4.0% vs. the
+county-median-anchored projection). The previous version used base
+year 2023, which compounded one extra year of premium on top of the
+projection.
 
-### Step 9 — Itemized Deduction Adjustment
+### Step 9 — Effective Deduction (per-filer, plumbed through comparison)
 
-**Function:** `apply_itemized_deduction_adjustment()`  
-**File:** `packages/tax_modeler/src/tax_modeler/scenarios/behavioral_response.py`
+**File:** `packages/tax_modeler/src/tax_modeler/projection/tax_unit_projector.py`,
+`packages/tax_modeler/src/tax_modeler/liability/hawaii.py`,
+`packages/tax_modeler/src/tax_modeler/config/tax_system_config.py`
 
-Reduces effective taxable income for high-income filers by the premium they receive from itemizing over the standard deduction. IRS SOI data shows Hawaii filers above $500K itemize on average $40–80K more than the standard deduction depending on filing status (MFJ: $80K premium; Single: $40K; HoH: $50K). This adjustment ensures the 13% bracket is applied to the correct taxable income base, not gross income. Applied in MID and LOW scenarios; skipped in HIGH (which provides an upper bound on the bracket impact).
+`project_tax_units_forward` computes each filer's effective deduction —
+the larger of the year-appropriate standard deduction and the
+expected-value itemized deduction (mortgage interest with homeownership
+probability + tier-banded charitable + medical expenses + real-estate
+taxes, with Hawaii's Pease limitation applied) — and stores it as
+`hi_standard_deduction`. The enhanced forecast passes that column to
+`compare_systems` via the new `deduction_col` parameter, so the
+bracket comparison applies each filer's actual effective deduction
+under both Act 46 and SB 3125 CD1.
+
+This replaces the prior `apply_itemized_deduction_adjustment` step,
+which subtracted a flat dollar amount ($40–$80K depending on filing
+status) from each top filer's income to approximate the same effect.
+The flat-amount approach was crude (real itemized deductions scale
+with AGI — federal income tax paid alone is ~$300K+ at $1M AGI) and
+required a per-scenario `itemized_adj` flag (with HIGH turning it off
+entirely, which inflated HIGH's bracket gain by overstating the
+taxable base). Both have been retired.
 
 ### Step 10 — Per-Unit Tax Calculation
 
@@ -442,7 +539,7 @@ The `_bracket_year()` lookup selects the largest available vintage year ≤ the 
 
 Three behavioral channels are modeled, applied to the projected population before revenue comparison. All are applied only to filers above the new 13% threshold (~$500K+).
 
-### 5a. Taxable Income Elasticity (ETI)
+### 5a. Taxable Income Elasticity (ETI) — per-filer MTR change
 
 High-income filers reduce their *reported* taxable income in response to a higher marginal rate — through increased charitable giving, deferred compensation, additional retirement contributions, and accelerated deductions. The standard form is:
 
@@ -450,15 +547,36 @@ High-income filers reduce their *reported* taxable income in response to a highe
 %ΔTaxable Income = ETI × %Δ(1 − MTR)
 ```
 
-Applied to income above the new 13% threshold using the net-of-tax rate change from the rate increase (11% → 13%, a 2pp change on ~2.25pp net-of-tax reduction).
+The model computes each filer's marginal rate under both Act 46
+and SB 3125 CD1 (vectorized bracket-boundary lookup on
+``income − effective_deduction − exemption``) and applies the ETI
+factor based on the actual per-filer rate change:
+
+```
+factor = ((1 − scen_mtr) / (1 − base_mtr)) ** ETI
+```
+
+This correctly captures the rate increases that SB 3125 CD1 applies
+across $350K–$1M MFJ (and equivalents) as well as the new 13% bracket
+above $1M. The previous implementation hard-coded ``base_mtr = 11%``
+and ``scen_mtr = 13%`` for filers above the new top threshold and
+applied no ETI at all to mid-tier filers, even though those filers
+also face rate increases under the bill. Filers facing no rate change
+(or a rate cut) get factor 1.0 — the literature is asymmetric and
+rate cuts have weaker, less-established income-shrinkage feedback.
 
 **Source:** Saez, Slemrod & Giertz (2012); state-level calibration from Rauh & Shyu (2024) California 13.3% study.
 
-| Scenario | ETI | 5-year revenue impact |
+| Scenario | ETI | 5-year revenue impact (pending refresh) |
 |----------|-----|----------------------|
-| LOW (high behavioral) | 0.60 | −$81M |
-| **MID** | **0.40** | **−$71M** |
-| HIGH (low behavioral) | 0.15 | −$27M |
+| LOW (high behavioral) | 0.60 | −$81M (pre-fix) |
+| **MID** | **0.40** | **−$71M (pre-fix)** |
+| HIGH (low behavioral) | 0.15 | −$27M (pre-fix) |
+
+Per-filer ETI will *increase* the absolute behavioral offset relative
+to the prior version because filers in $350K–$1M who previously got
+no ETI now contribute. Magnitude depends on bracket-by-bracket rate
+change × that bracket's income mass. Awaiting forecast re-run.
 
 ### 5b. Migration Response
 
@@ -508,24 +626,52 @@ The REEC, CGEC, and TCRA credit changes are **aggregate static-scoring overlays*
 
 ### 6a. REEC — Renewable Energy Technologies Income Tax Credit
 
-**DOTAX TY2023 baseline:** $99.6M total claims  
-- Individual refundable: $13.4M  
-- Individual nonrefundable: $44.9M  
-- Corporate refundable: $37.3M  
-- Corporate nonrefundable: $4.0M  
+**DOTAX TY2023 baseline:** $99.6M total claims
+- Individual refundable: $13.4M (~23% of $58.3M individual)
+- Individual nonrefundable: $44.9M (~77%)
+- Corporate refundable: $37.3M (~89% of $41.8M corporate + other)
+- Corporate nonrefundable: ~$4.5M (~11%)
 
-**Effective claim share (MID: 0.80):** Not all nonrefundable credits offset current-year tax dollar-for-dollar — some are carried forward or unused due to insufficient tax liability. The 0.80 effective share is the literature midpoint for nonrefundable state credits.
+**Effective claim share — refundable / nonrefundable split.** Refundable
+claims offset state revenue 1:1; nonrefundable claims that exceed
+current-year tax liability carry forward and don't immediately reduce
+revenue. The ``reec_effective_claim_share`` parameter is the
+**nonrefundable utilization rate** (literature midpoint ~0.80); the
+aggregate effective share is computed per pool from the refundable mix:
 
-**OBBBA demand impact:** The federal One Big Beautiful Budget Act (OBBBA) terminated Section 25D (the federal residential solar credit) effective December 31, 2025. Hawaii solar demand is modeled under three scenarios:
-- `pre_obbba` — no demand decay (upper bound)
-- `obbba_mid` — −10% in 2026 (Hawaii-tempered; SEIA national −19% discounted for Hawaii's lease-heavy market), gradual recovery
-- `obbba_severe` — −19% in 2026 (SEIA national figures applied directly), slow recovery
+| Pool | Refundable share | Effective at 0.80 nonrefundable | Effective at 1.00 |
+|------|------------------|--------------------------------|--------------------|
+| Individual | ~23% | ~85% | 100% |
+| Corporate + Other | ~89% | ~98% | 100% |
+
+A previous version applied a single ``effective_claim_share`` (e.g.
+0.80) to both pools, which understated the dollar value of corporate
+REEC by ~15%.
+
+**OBBBA demand impact — residential vs commercial.** OBBBA (PL 119-21,
+Jul 2025) terminated **§25D (residential)** but extended **§48E
+(commercial)** through 12/31/2027. Hawaii residential and commercial
+REEC see different decays:
+
+- *Individual / residential REEC* uses the §25D decay scenario:
+  - `pre_obbba` — no demand decay (upper bound)
+  - `obbba_mid` — −10% in 2026 (Hawaii-tempered; SEIA national −19% discounted for Hawaii's lease-heavy market), gradual recovery
+  - `obbba_severe` — −19% in 2026 (SEIA national figures applied directly), slow recovery
+- *Corporate / commercial REEC* uses ``_reec_demand_factor_corporate``
+  which returns **1.0** for all forecast years (no §48E impact through
+  2027; tapering schedule is downstream of the forecast horizon).
+
+The previous version applied the residential decay factor to both
+pools, biasing total revenue gain down.
 
 **Cap impact logic:**
 - TY2027–2030: `cap_savings = max(0, projected_baseline − $40M cap)`
 - TY2031+: `cap_savings = full projected_baseline` (cap → $0)
 
-**MID scenario REEC savings:** $42M (2027) → $104M (2031), total ~$307M over 5 years.
+**MID scenario REEC savings (pre-fix):** $42M (2027) → $104M (2031),
+total ~$307M over 5 years. Post-fix savings will be higher because
+corporate baseline no longer decays and corporate aggregate effective
+share rises from ~80% to ~98%. Awaiting re-run.
 
 ### 6b. CGEC — Capital Goods Excise Tax Credit
 
@@ -556,15 +702,16 @@ Four integrated scenarios: three behavioral sensitivity scenarios (no recession 
 | Parameter | LOW | **MID (Recommended)** | HIGH |
 |-----------|-----|----------------------|------|
 | Pareto α (top-income concentration) | 1.7 (lighter tail) | **1.5** | 1.4 (heavier tail) |
-| REEC demand scenario | obbba_severe | **obbba_mid** | pre_obbba |
+| REEC residential demand scenario | obbba_severe | **obbba_mid** | pre_obbba |
+| REEC commercial demand factor | 1.0 (no §48E impact) | **1.0** | 1.0 |
 | ETI | 0.60 | **0.40** | 0.15 |
 | Migration elasticity | 0.15 | **0.10** | 0.05 |
 | PTE capture rate | 90% | **70%** | 40% |
 | Top-income growth premium | +0.3%/yr | **+1.3%/yr** | +2.3%/yr |
-| REEC effective claim share | 65% | **80%** | 100% |
+| REEC nonrefundable utilization | 65% | **80%** | 100% |
 | CGEC annual growth | 2%/yr | **3%/yr** | 4%/yr |
 | Corporate AGI limit on REEC | Yes | **No** | No |
-| Itemized deduction adjustment | Yes | **Yes** | No |
+| Per-filer effective deduction in compare_systems | Yes | **Yes** | Yes |
 | Macro shock | None | **None** | None |
 
 **Calibration anchor:** The model anchors to DOTAX's $663M baseline tax figure for $1M+ filers. The MID result ($629.6M) is ~7.5% below the official ~$680M estimate due to two corrections applied after the official score was produced: (1) §235-16 CG cap (7.25%) properly applied to synthetic $1M+ filers — reduces the bracket-delta contribution of capital gains income; (2) PTE election pool excludes CG income per statute and economic rationality (9% PTE > 7.25% CG cap) — reduces the PTE offset, which in turn reduces the net bracket gain. LOW reflects maximum plausible behavioral response (strong ETI, 90% PTE shift, severe OBBBA solar decay). HIGH reflects minimal behavioral response and optimistic demand assumptions.
@@ -632,6 +779,21 @@ Note: Q1 filers (avg income ~$3K) are **completely unaffected** because their gr
 ## 10. Results
 
 ### Annual Fiscal Impact by Scenario ($M, vs. Act 46 baseline)
+
+> **Stale — refresh pending.** The numbers below are from the model
+> run *before* the May 2026 methodology fixes (per-filer ETI,
+> deduction plumbing, REEC §25D/§48E split, premium base-year
+> alignment). They are retained for reference until the forecast is
+> re-run. Expected directional changes from the fixes:
+> - **Bracket gain:** ambiguous. Per-filer ETI raises behavioral
+>   offsets; effective-deduction plumbing partially offsets the
+>   former HIGH-only `itemized_adj=False` boost; premium base-year
+>   reduces the income premium by one year's compound (~1pp lower).
+> - **Credit overlay:** higher. Corporate REEC no longer decays
+>   under §25D scenarios, and corporate effective claim share rises
+>   from ~80% to ~98%.
+> - **Net total:** likely modestly different in MID; HIGH may shift
+>   downward materially due to deduction-plumbing now applying.
 
 | Tax Year | LOW | **MID** | HIGH | RECESSION |
 |----------|----:|--------:|-----:|----------:|
