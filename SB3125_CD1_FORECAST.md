@@ -1,7 +1,7 @@
 # SB 3125 CD1 — Hawaii Income Tax Fiscal Impact Forecast
 ## Tax Years 2027–2031
 
-**Last updated:** May 3, 2026
+**Last updated:** May 4, 2026
 **Analyst:** Hawaii Appleseed Center for Law and Economic Justice
 **Model version:** All methodology revisions applied and forecast re-run (May 2026).
 
@@ -97,7 +97,7 @@ This forecast estimates the year-by-year fiscal impact to the State of Hawaii fr
 
 The model uses a **bottom-up microsimulation** approach: it constructs roughly 43,000 representative Hawaii income tax units from the U.S. Census Bureau's Public Use Microdata Sample, calibrates them against DOTAX administrative data, projects them forward year by year using county-level income growth forecasts, and computes each unit's tax liability under both the baseline and the proposed law. The total fiscal impact is the population-weighted difference, adjusted for behavioral responses and a separate static-scoring credit overlay.
 
-**MID scenario 5-year result: $629.6M** (after two methodology corrections: §235-16 CG cap applied to synthetic filers, and PTE election pool excludes CG income per statute). Earlier runs showing ~$679M did not apply these corrections.
+**MID scenario 5-year result: $768.9M** (after methodology corrections: per-filer ETI, deduction plumbing, REEC §25D/§48E split, premium base-year alignment, and Hawaii-specific PTE pass-through share recalibration from 0.40 → 0.20 using Hawaii IRS SOI 2022 data). Earlier runs showing $650.9M used the national top-1% pass-through share which overstates Hawaii's wage-heavy income mix.
 
 ---
 
@@ -772,33 +772,33 @@ Note: Q1 filers (avg income ~$3K) are **completely unaffected** because their gr
 
 ### Annual Fiscal Impact by Scenario ($M, vs. Act 46 baseline)
 
-**Updated May 2026** with methodology fixes (per-filer ETI, deduction plumbing, REEC §25D/§48E split, premium base-year alignment). Results are post-behavioral (including ETI/migration and PTE election shift).
+**Updated May 2026** with methodology fixes (per-filer ETI, deduction plumbing, REEC §25D/§48E split, premium base-year alignment) and Hawaii-specific PTE pass-through share correction (`PASS_THROUGH_SHARE` revised from 0.40 to 0.20 based on Hawaii IRS SOI 2022: partnership/S-corp income = 12.6% of total income for $200K+ filers, ~15% of ordinary income — the national top-1% figure of 40% overstates Hawaii's wage-heavy high-income mix). Results are post-behavioral (including ETI/migration and PTE election shift).
 
 | Tax Year | LOW | **MID** | HIGH | RECESSION |
 |----------|----:|--------:|-----:|----------:|
-| 2027 | $48.5M | **$77.4M** | $116.8M | $75.1M |
-| 2028 | $73.6M | **$113.3M** | $164.2M | $111.7M |
-| 2029 | $94.4M | **$138.1M** | $194.2M | $135.4M |
-| 2030 | $92.6M | **$137.5M** | $198.4M | $137.3M |
-| 2031 | $137.2M | **$184.5M** | $252.4M | $184.5M |
-| **5-year cumulative** | **$446.3M** | **$650.9M** | **$926.0M** | **$644.0M** |
+| 2027 | $76.7M | **$99.1M** | $129.3M | $96.0M |
+| 2028 | $101.6M | **$136.5M** | $178.7M | $134.4M |
+| 2029 | $121.7M | **$161.7M** | $210.1M | $159.4M |
+| 2030 | $119.8M | **$161.7M** | $215.6M | $162.1M |
+| 2031 | $163.5M | **$210.0M** | $269.6M | $210.0M |
+| **5-year cumulative** | **$583.2M** | **$768.9M** | **$1,003.3M** | **$761.9M** |
 
 *Positive = net revenue gain for the State. Includes bracket microsim + credit overlay + behavioral response.*
 
-**RECESSION scenario note:** The $6.9M difference from MID ($644.0M vs $650.9M) reflects that both tax systems face the same macro shock — the *delta* between them is partially preserved. 2031 RECESSION = MID exactly, confirming full macro recovery. See Section 8b for methodology.
+**RECESSION scenario note:** The $7.0M difference from MID ($761.9M vs $768.9M) reflects that both tax systems face the same macro shock — the *delta* between them is partially preserved. 2031 RECESSION = MID exactly, confirming full macro recovery. See Section 8b for methodology.
 
 ### MID Scenario Decomposition
 
 | Channel | 5-year Total |
 |---------|-------------:|
-| Static bracket gain (13% top bracket + middle cuts) | +$460.1M |
-| ETI / migration behavioral offset | −$71.6M |
-| PTE election shift (ordinary income only; CG excluded) | −$240.9M |
-| **Post-behavioral bracket delta** | **+$147.7M** |
+| Static bracket gain (13% top bracket + middle cuts) | +$460.6M |
+| ETI / migration behavioral offset | −$74.5M |
+| PTE election shift (ordinary income only; CG excluded) | −$120.4M |
+| **Post-behavioral bracket delta** | **+$265.7M** |
 | Credit overlay (REEC cap + CGEC sunset + TCRA) | +$503.2M |
-| **Total MID** | **+$650.9M** |
+| **Total MID** | **+$768.9M** |
 
-*The bracket delta is lower than a naive static calculation because (a) the §235-16 CG cap (7.25%) limits the bracket-delta contribution of CG income to zero under both systems, (b) PTE election shifts reduce the ordinary income subject to the 13% rate (CG income is excluded from PTE pool per statute and economic rationality), (c) ETI/migration responses further reduce the high-income tax base, and (d) effective-deduction plumbing now applies across all scenarios (previously HIGH was boosted by disabling `itemized_adj`). The credit overlay ($503M, 77% of total) is the largest single component, dominated by REEC cap savings as the $40M cap phases to $0 by TY2031.*
+*PTE offset reduced from −$240.9M to −$120.4M after correcting `PASS_THROUGH_SHARE` from 0.40 (national top-1% average) to 0.20 (Hawaii IRS SOI 2022: partnership/S-corp = 12.6% of total income / ~15% of ordinary income for $200K+ filers). The credit overlay ($503M, 65% of total) remains the largest single component.*
 
 ### Distributional Impact — TY 2027 Bracket Change (MID)
 
@@ -833,7 +833,7 @@ The **bracket delta** (SB 3125 CD1 minus Act 46) is robust to this level-shift �
 
 3. **No general equilibrium effects.** The model does not simulate wage effects, employment changes, or business investment responses beyond the three modeled behavioral channels.
 
-4. **PTE capture rate uncertainty.** The 4pp arbitrage (13% individual vs. 9% PTE) creates a strong incentive for restructuring. The MID scenario's 70% capture rate is a judgment call — actual takeup depends on legal/accounting costs and awareness. This is the largest single source of model uncertainty.
+4. **PTE capture rate uncertainty.** The 4pp arbitrage (13% individual vs. 9% PTE) creates a strong incentive for restructuring. The MID scenario's 70% capture rate is a judgment call — actual takeup depends on legal/accounting costs and awareness. The pass-through share (0.20) is now calibrated to Hawaii IRS SOI 2022 data ($200K+ filers: 12.6% of total income as partnership/S-corp income, ~15% of ordinary income), replacing the prior national top-1% figure of 0.40. Remaining uncertainty: the IRS SOI does not break out $1M+ filers separately; the $1M+ sub-population may have a modestly higher pass-through share than the full $200K+ bracket.
 
 5. **OBBBA demand uncertainty.** Federal repeal of Section 25D in 2025 creates genuine uncertainty for Hawaii solar demand 2026–2031. The three REEC scenarios bracket the plausible range from SEIA forecasts.
 

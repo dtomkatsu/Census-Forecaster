@@ -373,7 +373,7 @@ def estimate_pte_election_shift_M(
             "pte_revenue_loss_$M":    0.0,
         }
 
-    PASS_THROUGH_SHARE = 0.40  # national IRS SOI 2022 average for top 1%
+    PASS_THROUGH_SHARE = 0.20  # Hawaii IRS SOI 2022: partnership/S-corp = 12.6% of total income for $200K+ filers (~15% of ordinary income); national 0.40 overstates Hawaii's wage-heavy high-income mix
     RATE_DIFFERENTIAL = SB3125_CD1_TOP_RATE - PTE_RATE  # 0.04 (13% − 9%)
 
     # Ordinary income = total income minus capital gains.
