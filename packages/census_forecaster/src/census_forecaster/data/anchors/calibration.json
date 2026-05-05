@@ -1397,7 +1397,7 @@
       "method": "trend_ensemble",
       "n_calibration": 79,
       "pop_bucket": "medium",
-      "quantile": 1.2712164000727904,
+      "quantile": 1.2712164000727901,
       "target_coverage": 0.9
     },
     {
@@ -1744,7 +1744,7 @@
       "bea_hi_percapita_income": 0.28177298166615905
     }
   },
-  "run_date": "2026-04-28",
+  "run_date": "2026-05-05",
   "schema_version": 4,
   "se_inflator_override_by_indicator_method": {
     "B19013_001E": {
@@ -1805,7 +1805,7 @@
     "bias": [
       {
         "extra": {
-          "b_raw": -0.025865382325673876,
+          "b_raw": -0.02586538232567388,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -1813,7 +1813,7 @@
         "method": "trend_ensemble",
         "n_folds": 484,
         "pop_bucket": "medium",
-        "value": -0.025865382325673876
+        "value": -0.02586538232567388
       },
       {
         "extra": {
@@ -1889,7 +1889,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.08382078760008785,
+          "b_raw": -0.08382078760008786,
           "clamped": 0.0
         },
         "h_bucket": "long",
@@ -1897,7 +1897,7 @@
         "method": "multi_anchor",
         "n_folds": 690,
         "pop_bucket": "medium",
-        "value": -0.08382078760008785
+        "value": -0.08382078760008786
       },
       {
         "extra": {
@@ -2045,7 +2045,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.00260214480858973,
+          "b_raw": -0.0026021448085897293,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -2053,7 +2053,7 @@
         "method": "trend_ensemble",
         "n_folds": 484,
         "pop_bucket": "medium",
-        "value": -0.00260214480858973
+        "value": -0.0026021448085897293
       },
       {
         "extra": {
@@ -2093,7 +2093,7 @@
       },
       {
         "extra": {
-          "b_raw": 0.007910812300733695,
+          "b_raw": 0.007910812300733693,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -2101,7 +2101,7 @@
         "method": "trend_ensemble",
         "n_folds": 484,
         "pop_bucket": "medium",
-        "value": 0.007910812300733695
+        "value": 0.007910812300733693
       },
       {
         "extra": {
@@ -2165,7 +2165,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.0020197324271393597,
+          "b_raw": -0.00201973242713936,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -2173,7 +2173,7 @@
         "method": "trend_ensemble",
         "n_folds": 484,
         "pop_bucket": "medium",
-        "value": -0.0020197324271393597
+        "value": -0.00201973242713936
       },
       {
         "extra": {
@@ -2429,7 +2429,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.0016102577173034791,
+          "b_raw": -0.0016102577173034793,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -2437,7 +2437,7 @@
         "method": "trend_ensemble",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": -0.0016102577173034791
+        "value": -0.0016102577173034793
       },
       {
         "extra": {
@@ -2477,7 +2477,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.00025572373051141304,
+          "b_raw": -0.000255723730511412,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -2485,7 +2485,7 @@
         "method": "trend_ensemble",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": -0.00025572373051141304
+        "value": -0.000255723730511412
       },
       {
         "extra": {
@@ -2549,7 +2549,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.0021660852612961977,
+          "b_raw": -0.002166085261296197,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -2557,11 +2557,11 @@
         "method": "trend_ensemble",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": -0.0021660852612961977
+        "value": -0.002166085261296197
       },
       {
         "extra": {
-          "b_raw": -0.006551854368955009,
+          "b_raw": -0.006551854368955008,
           "clamped": 0.0
         },
         "h_bucket": "long",
@@ -2569,7 +2569,7 @@
         "method": "trend_ensemble",
         "n_folds": 765,
         "pop_bucket": "xlarge",
-        "value": -0.006551854368955009
+        "value": -0.006551854368955008
       },
       {
         "extra": {
@@ -2645,7 +2645,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.017261879489637404,
+          "b_raw": -0.017261879489637418,
           "clamped": 0.0
         },
         "h_bucket": "long",
@@ -2653,7 +2653,7 @@
         "method": "trend_ensemble",
         "n_folds": 34,
         "pop_bucket": "large",
-        "value": -0.017261879489637404
+        "value": -0.017261879489637418
       },
       {
         "extra": {
@@ -2777,7 +2777,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.030256331972815253,
+          "b_raw": -0.030256331972815246,
           "clamped": 0.0
         },
         "h_bucket": "long",
@@ -2785,7 +2785,7 @@
         "method": "trend_ensemble",
         "n_folds": 34,
         "pop_bucket": "large",
-        "value": -0.030256331972815253
+        "value": -0.030256331972815246
       },
       {
         "extra": {
@@ -2981,7 +2981,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.012703698970431162,
+          "b_raw": -0.01270369897043116,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -2989,7 +2989,7 @@
         "method": "trend_ensemble",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": -0.012703698970431162
+        "value": -0.01270369897043116
       },
       {
         "extra": {
@@ -3125,7 +3125,7 @@
       },
       {
         "extra": {
-          "b_raw": 0.00685933926343569,
+          "b_raw": 0.006859339263435689,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -3133,7 +3133,7 @@
         "method": "trend_ensemble",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": 0.00685933926343569
+        "value": 0.006859339263435689
       },
       {
         "extra": {
@@ -3269,7 +3269,7 @@
       },
       {
         "extra": {
-          "b_raw": 0.02918628441088635,
+          "b_raw": 0.029186284410886346,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -3277,7 +3277,7 @@
         "method": "trend_ensemble",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": 0.02918628441088635
+        "value": 0.029186284410886346
       },
       {
         "extra": {
@@ -3341,7 +3341,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.0053866478631513694,
+          "b_raw": -0.005386647863151369,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -3349,7 +3349,7 @@
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": -0.0053866478631513694
+        "value": -0.005386647863151369
       },
       {
         "extra": {
@@ -3377,7 +3377,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.021369990372730057,
+          "b_raw": -0.021369990372730047,
           "clamped": 0.0
         },
         "h_bucket": "long",
@@ -3385,11 +3385,11 @@
         "method": "ml_trend",
         "n_folds": 34,
         "pop_bucket": "large",
-        "value": -0.021369990372730057
+        "value": -0.021369990372730047
       },
       {
         "extra": {
-          "b_raw": -0.012786765277547131,
+          "b_raw": -0.01278676527754713,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -3397,7 +3397,7 @@
         "method": "ml_trend",
         "n_folds": 484,
         "pop_bucket": "medium",
-        "value": -0.012786765277547131
+        "value": -0.01278676527754713
       },
       {
         "extra": {
@@ -3485,7 +3485,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.006430641948534707,
+          "b_raw": -0.006430641948534708,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -3493,7 +3493,7 @@
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": -0.006430641948534707
+        "value": -0.006430641948534708
       },
       {
         "extra": {
@@ -3773,7 +3773,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.0012428096408815805,
+          "b_raw": -0.0012428096408815808,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -3781,11 +3781,11 @@
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": -0.0012428096408815805
+        "value": -0.0012428096408815808
       },
       {
         "extra": {
-          "b_raw": -0.0018526153731434492,
+          "b_raw": -0.0018526153731434486,
           "clamped": 0.0
         },
         "h_bucket": "long",
@@ -3793,7 +3793,7 @@
         "method": "ml_trend",
         "n_folds": 765,
         "pop_bucket": "xlarge",
-        "value": -0.0018526153731434492
+        "value": -0.0018526153731434486
       },
       {
         "extra": {
@@ -3833,7 +3833,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.03466537719989031,
+          "b_raw": -0.0346653771998903,
           "clamped": 0.0
         },
         "h_bucket": "long",
@@ -3841,7 +3841,7 @@
         "method": "ml_trend",
         "n_folds": 688,
         "pop_bucket": "medium",
-        "value": -0.03466537719989031
+        "value": -0.0346653771998903
       },
       {
         "extra": {
@@ -4037,7 +4037,7 @@
       },
       {
         "extra": {
-          "b_raw": 0.0009887697612854574,
+          "b_raw": 0.000988769761285458,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -4045,7 +4045,7 @@
         "method": "ml_trend",
         "n_folds": 484,
         "pop_bucket": "medium",
-        "value": 0.0009887697612854574
+        "value": 0.000988769761285458
       },
       {
         "extra": {
@@ -4109,7 +4109,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.007430059171668419,
+          "b_raw": -0.007430059171668418,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -4117,7 +4117,7 @@
         "method": "ml_trend",
         "n_folds": 484,
         "pop_bucket": "medium",
-        "value": -0.007430059171668419
+        "value": -0.007430059171668418
       },
       {
         "extra": {
@@ -4133,7 +4133,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.005980946690057552,
+          "b_raw": -0.005980946690057551,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -4141,7 +4141,7 @@
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": -0.005980946690057552
+        "value": -0.005980946690057551
       },
       {
         "extra": {
@@ -4277,7 +4277,7 @@
       },
       {
         "extra": {
-          "b_raw": 0.004619753153321951,
+          "b_raw": 0.0046197531533219505,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -4285,7 +4285,7 @@
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": 0.004619753153321951
+        "value": 0.0046197531533219505
       },
       {
         "extra": {
@@ -4421,7 +4421,7 @@
       },
       {
         "extra": {
-          "b_raw": 0.029145411739034715,
+          "b_raw": 0.02914541173903472,
           "clamped": 0.0
         },
         "h_bucket": "short",
@@ -4429,7 +4429,7 @@
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": 0.029145411739034715
+        "value": 0.02914541173903472
       },
       {
         "extra": {
@@ -4757,7 +4757,7 @@
       },
       {
         "extra": {
-          "b_raw": 0.005152702455403406,
+          "b_raw": 0.005152702455403405,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -4765,7 +4765,7 @@
         "method": "trend_ensemble",
         "n_folds": 1172,
         "pop_bucket": "medium",
-        "value": 0.005152702455403406
+        "value": 0.005152702455403405
       },
       {
         "extra": {
@@ -4925,7 +4925,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.0011811123453709185,
+          "b_raw": -0.0011811123453709187,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -4933,7 +4933,7 @@
         "method": "trend_ensemble",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": -0.0011811123453709185
+        "value": -0.0011811123453709187
       },
       {
         "extra": {
@@ -4949,7 +4949,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.01609956445895032,
+          "b_raw": -0.016099564458950315,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -4957,7 +4957,7 @@
         "method": "trend_ensemble",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": -0.01609956445895032
+        "value": -0.016099564458950315
       },
       {
         "extra": {
@@ -5021,7 +5021,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.009957683135494787,
+          "b_raw": -0.009957683135494794,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -5029,7 +5029,7 @@
         "method": "trend_ensemble",
         "n_folds": 58,
         "pop_bucket": "large",
-        "value": -0.009957683135494787
+        "value": -0.009957683135494794
       },
       {
         "extra": {
@@ -5093,7 +5093,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.01635806983187513,
+          "b_raw": -0.016358069831875127,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -5101,7 +5101,7 @@
         "method": "trend_ensemble",
         "n_folds": 58,
         "pop_bucket": "large",
-        "value": -0.01635806983187513
+        "value": -0.016358069831875127
       },
       {
         "extra": {
@@ -5201,7 +5201,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.019647981447155207,
+          "b_raw": -0.019647981447155204,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -5209,7 +5209,7 @@
         "method": "trend_ensemble",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": -0.019647981447155207
+        "value": -0.019647981447155204
       },
       {
         "extra": {
@@ -5237,7 +5237,7 @@
       },
       {
         "extra": {
-          "b_raw": 0.027106974822145358,
+          "b_raw": 0.02710697482214535,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -5245,7 +5245,7 @@
         "method": "trend_ensemble",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": 0.027106974822145358
+        "value": 0.02710697482214535
       },
       {
         "extra": {
@@ -5273,7 +5273,7 @@
       },
       {
         "extra": {
-          "b_raw": 0.023063373315712073,
+          "b_raw": 0.02306337331571207,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -5281,7 +5281,7 @@
         "method": "trend_ensemble",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": 0.023063373315712073
+        "value": 0.02306337331571207
       },
       {
         "extra": {
@@ -5393,7 +5393,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.010180755024316722,
+          "b_raw": -0.010180755024316717,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -5401,7 +5401,7 @@
         "method": "ml_trend",
         "n_folds": 58,
         "pop_bucket": "large",
-        "value": -0.010180755024316722
+        "value": -0.010180755024316717
       },
       {
         "extra": {
@@ -5585,7 +5585,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.004284122852548196,
+          "b_raw": -0.0042841228525481966,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -5593,11 +5593,11 @@
         "method": "ml_trend",
         "n_folds": 1172,
         "pop_bucket": "medium",
-        "value": -0.004284122852548196
+        "value": -0.0042841228525481966
       },
       {
         "extra": {
-          "b_raw": -0.0016002819666902622,
+          "b_raw": -0.0016002819666902617,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -5605,7 +5605,7 @@
         "method": "ml_trend",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": -0.0016002819666902622
+        "value": -0.0016002819666902617
       },
       {
         "extra": {
@@ -5729,7 +5729,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.000992300807105985,
+          "b_raw": -0.0009923008071059847,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -5737,7 +5737,7 @@
         "method": "ml_trend",
         "n_folds": 1172,
         "pop_bucket": "medium",
-        "value": -0.000992300807105985
+        "value": -0.0009923008071059847
       },
       {
         "extra": {
@@ -5777,7 +5777,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.008559320458715653,
+          "b_raw": -0.008559320458715651,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -5785,7 +5785,7 @@
         "method": "ml_trend",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": -0.008559320458715653
+        "value": -0.008559320458715651
       },
       {
         "extra": {
@@ -6101,7 +6101,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.04962095337096571,
+          "b_raw": -0.049620953370965705,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -6109,7 +6109,7 @@
         "method": "multi_anchor",
         "n_folds": 2539,
         "pop_bucket": "*",
-        "value": -0.04962095337096571
+        "value": -0.049620953370965705
       },
       {
         "extra": {
@@ -6341,7 +6341,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.0027553441658159767,
+          "b_raw": -0.002755344165815977,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -6349,7 +6349,7 @@
         "method": "ml_trend",
         "n_folds": 2535,
         "pop_bucket": "*",
-        "value": -0.0027553441658159767
+        "value": -0.002755344165815977
       },
       {
         "extra": {
@@ -6389,7 +6389,7 @@
       },
       {
         "extra": {
-          "b_raw": -0.0021473571065289895,
+          "b_raw": -0.002147357106528989,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -6397,11 +6397,11 @@
         "method": "ml_trend",
         "n_folds": 2535,
         "pop_bucket": "*",
-        "value": -0.0021473571065289895
+        "value": -0.002147357106528989
       },
       {
         "extra": {
-          "b_raw": -0.010453075248666299,
+          "b_raw": -0.010453075248666297,
           "clamped": 0.0
         },
         "h_bucket": "*",
@@ -6409,7 +6409,7 @@
         "method": "ml_trend",
         "n_folds": 2535,
         "pop_bucket": "*",
-        "value": -0.010453075248666299
+        "value": -0.010453075248666297
       },
       {
         "extra": {
@@ -13039,7 +13039,7 @@
         "method": "trend_ensemble",
         "n_folds": 765,
         "pop_bucket": "xlarge",
-        "value": 0.08167573917482811
+        "value": 0.08167573917482812
       },
       {
         "h_bucket": "long",
@@ -13383,7 +13383,7 @@
         "method": "trend_ensemble",
         "n_folds": 34,
         "pop_bucket": "large",
-        "value": 0.09676050052273336
+        "value": 0.09676050052273337
       },
       {
         "h_bucket": "short",
@@ -13519,7 +13519,7 @@
         "method": "trend_ensemble",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": 0.02543936916626483
+        "value": 0.025439369166264828
       },
       {
         "h_bucket": "long",
@@ -13719,7 +13719,7 @@
         "method": "trend_ensemble",
         "n_folds": 765,
         "pop_bucket": "xlarge",
-        "value": 0.0850244808421703
+        "value": 0.08502448084217032
       },
       {
         "h_bucket": "short",
@@ -13951,7 +13951,7 @@
         "method": "ml_trend",
         "n_folds": 540,
         "pop_bucket": "xlarge",
-        "value": 0.042093474882993934
+        "value": 0.04209347488299393
       },
       {
         "h_bucket": "long",
@@ -14295,7 +14295,7 @@
         "method": "ml_trend",
         "n_folds": 765,
         "pop_bucket": "xlarge",
-        "value": 0.029266491998028932
+        "value": 0.02926649199802893
       },
       {
         "h_bucket": "short",
@@ -14815,7 +14815,7 @@
         "method": "trend_ensemble",
         "n_folds": 1305,
         "pop_bucket": "xlarge",
-        "value": 0.01260832223715083
+        "value": 0.012608322237150832
       },
       {
         "h_bucket": "*",
@@ -14927,7 +14927,7 @@
         "method": "trend_ensemble",
         "n_folds": 58,
         "pop_bucket": "large",
-        "value": 0.08256722300523801
+        "value": 0.08256722300523803
       },
       {
         "h_bucket": "*",
