@@ -186,24 +186,38 @@ class TaxSystemRegistry:
 
     @classmethod
     def get_sb3125_sd1_2027_system(cls) -> TaxSystemConfig:
-        """SB3125 SD1 (2026 session) bracket schedule effective TY2027.
+        """SB3125 SD1 (2026 session) bracket schedule effective TY2027."""
+        return cls.get_sb3125_sd1_system(2027)
 
-        Changes vs existing 2027 baseline (SB3125 original):
-          - Joint/Surviving Spouse: top brackets above $350k shift from 7.9%→8.25% at $350k,
-            collapsing the $650k-$800k tier (top rate now at $650k instead of $800k)
-          - Head of Household: top brackets above $262.5k shift one level up,
-            collapsing the $487.5k-$600k tier (top rate at $487.5k instead of $600k)
-          - Single/MFS: top brackets above $175k shift one level up,
-            collapsing the $325k-$400k tier (top rate at $325k instead of $400k)
-        Lower brackets are unchanged from the SB3125 original schedule.
+    @classmethod
+    def get_sb3125_sd1_system(cls, year: int) -> TaxSystemConfig:
+        """SB 3125 SD1 (2026 senate draft) bracket schedule for any TY 2027+.
+
+        Same SD1 bracket schedule (effective TY2027) carried forward for all
+        later years — SD1 has no scheduled phase-in beyond 2027. Standard
+        deductions and personal exemptions still follow the year-by-year
+        schedule (the bill does not amend deductions).
+
+        Changes vs Act 46 (TY2027 MFJ):
+          - $350K-$450K: 7.9% → 8.25% (+0.35pp)
+          - $450K-$550K: 8.25% → 9.0% (+0.75pp)
+          - $550K-$650K: 9.0% → 10.0% (+1.0pp)
+          - $650K-$800K: 10.0% → 11.0% (+1.0pp; collapsed into $650K+ at 11%)
+          - $800K+: 11.0% → 11.0% (no change)
+          - All brackets below $350K: no change
+
+        Notably, SD1 has NO bottom-bracket tax cuts and NO 13% top bracket
+        (those were added in CD1).
         """
+        if year < 2027:
+            raise ValueError(f"SB 3125 SD1 brackets only apply to year >= 2027, got {year}")
         return TaxSystemConfig(
-            name="sb3125_sd1_2027",
-            year=2027,
-            bracket_year=2027,
-            standard_deduction_year=2027,
-            personal_exemption=cls.PERSONAL_EXEMPTIONS.get(2027, 1200),
-            description="SB3125 SD1 (2026 session) — higher top bracket rates effective TY2027",
+            name=f"sb3125_sd1_{year}",
+            year=year,
+            bracket_year=2027,            # SD1 has no post-2027 phase-in
+            standard_deduction_year=year,
+            personal_exemption=cls.PERSONAL_EXEMPTIONS.get(year, 1200),
+            description=f"SB 3125 SD1 — TY {year} (higher top bracket rates, no 13% bracket)",
             bracket_scenario='sb3125_sd1',
             credit_scenario='sb3125_sd1',
         )
