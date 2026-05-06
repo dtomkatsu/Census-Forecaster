@@ -178,6 +178,20 @@ def project_and_recalibrate(
     from tax_modeler.calibration.simultaneous_calibrator import (
         phase1_reweight, phase2_tax_calibrate,
     )
+    from tax_modeler.adjustments.itemized_deductions import (
+        scale_deduction_params_for_target_year,
+    )
+
+    # Build TY-scaled itemized deduction params once. CBO-aging path bypasses
+    # project_tax_units_forward (which normally writes hi_itemized_deduction),
+    # so _compute_base_tax must receive these params explicitly to populate
+    # the column. Without this, per_unit_tax can't recover scenario-specific
+    # max(scenario_SD, itemized) for SD-freezing bills like HB 2306 ORIG —
+    # all filers get just the SD, which overstates revenue from SD-freeze
+    # by ~$246M cumulative over TY 2027-2031.
+    _ded_params = scale_deduction_params_for_target_year(
+        target_year, geoid="15003"  # Honolulu state-proxy
+    )
 
     # ── 1. Income aging — uniform county growth OR CBO component aging ───────
     if use_cbo_aging:
@@ -287,7 +301,9 @@ def project_and_recalibrate(
     # base-tax recompute helper.
     if apply_top_premium:
         from tax_modeler.pipeline import _compute_base_tax
-        raked = _compute_base_tax(raked, tax_year=target_year)
+        raked = _compute_base_tax(
+            raked, tax_year=target_year, deduction_params=_ded_params,
+        )
         # _compute_base_tax writes to hi_tax_liability; re-alias for Phase 2.
         if "hi_tax_liability" in raked.columns:
             raked["hi_state_tax"] = raked["hi_tax_liability"]
@@ -343,7 +359,9 @@ def project_and_recalibrate(
             )
             mode = "Pareto resynthesis"
 
-        raked = _compute_base_tax_2(raked, tax_year=target_year)
+        raked = _compute_base_tax_2(
+            raked, tax_year=target_year, deduction_params=_ded_params,
+        )
         if "hi_tax_liability" in raked.columns:
             raked["hi_state_tax"] = raked["hi_tax_liability"]
         if "income" in raked.columns:
@@ -387,7 +405,9 @@ def project_and_recalibrate(
             raked["weight"] = w_arr
             # Recompute tax after weight changes (per-unit tax unchanged but
             # aggregate moved; phase 2 will re-anchor)
-            raked = _compute_base_tax_2(raked, tax_year=target_year)
+            raked = _compute_base_tax_2(
+                raked, tax_year=target_year, deduction_params=_ded_params,
+            )
             if "hi_tax_liability" in raked.columns:
                 raked["hi_state_tax"] = raked["hi_tax_liability"]
 

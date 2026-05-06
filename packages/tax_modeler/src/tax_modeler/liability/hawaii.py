@@ -269,10 +269,34 @@ def _resolve_effective_deduction(
     deterministically via :func:`_expected_itemized_deductions` and the larger
     amount is returned.
     """
+    eff, _ = _resolve_effective_deduction_pair(
+        agi, filing_status, standard_deduction, deduction_params
+    )
+    return eff
+
+
+def _resolve_effective_deduction_pair(
+    agi: float,
+    filing_status: str,
+    standard_deduction: float,
+    deduction_params: Optional[dict],
+) -> tuple[float, float]:
+    """Return ``(effective_deduction, itemized_raw)``.
+
+    ``effective_deduction`` is ``max(standard_deduction, itemized)`` when
+    ``deduction_params`` is provided, else ``standard_deduction``.
+
+    ``itemized_raw`` is the expected itemized deduction *before* comparison
+    against the standard deduction (always ≥ 0). It is stored separately so
+    downstream scenario comparisons can compute ``max(scenario_SD, itemized)``
+    correctly when the scenario's standard deduction differs from the one
+    used at projection time (e.g. HB 2306 ORIG which freezes the SD at TY
+    2026 levels for TY 2027+).
+    """
     if deduction_params is None:
-        return standard_deduction
+        return standard_deduction, 0.0
     itemized = _expected_itemized_deductions(agi, filing_status, deduction_params)
-    return max(standard_deduction, itemized)
+    return max(standard_deduction, itemized), itemized
 
 
 # ---------------------------------------------------------------------------
@@ -316,7 +340,10 @@ def calculate_hawaii_tax(
     Returns:
         Dictionary with:
             - hi_agi: Hawaii Adjusted Gross Income (proxy)
-            - hi_standard_deduction: Standard deduction applied (or itemized if higher)
+            - hi_standard_deduction: Effective deduction applied (max of SD and itemized)
+            - hi_itemized_deduction: Raw expected itemized deduction (≥ 0, before SD floor).
+              Used by per_unit_tax to compute scenario-specific max(scenario_SD, itemized)
+              when the scenario freezes or changes the SD relative to projection year.
             - hi_personal_exemptions: Total personal exemption amount
             - hi_taxable_income: Taxable income after deductions/exemptions
             - hi_tax_before_credits: Tax from bracket calculation (CG cap applied)
@@ -327,6 +354,7 @@ def calculate_hawaii_tax(
     result = {
         'hi_agi': 0.0,
         'hi_standard_deduction': 0.0,
+        'hi_itemized_deduction': 0.0,
         'hi_personal_exemptions': 0.0,
         'hi_taxable_income': 0.0,
         'hi_tax_before_credits': 0.0,
@@ -361,10 +389,11 @@ def calculate_hawaii_tax(
         )
         real_fs = _FS_REAL_MAP.get(filing_status, 'Single_Married_Separate')
         std_ded = _deduction_for_year(tax_year, real_fs)
-        effective_ded = _resolve_effective_deduction(
+        effective_ded, itemized_raw = _resolve_effective_deduction_pair(
             agi, filing_status, std_ded, deduction_params
         )
         result['hi_standard_deduction'] = effective_ded
+        result['hi_itemized_deduction'] = itemized_raw
         taxable_income = max(0.0, agi - effective_ded - exemption_amount)
         result['hi_taxable_income'] = taxable_income
         income_for_real = agi - exemption_amount - (effective_ded - std_ded)
@@ -381,10 +410,11 @@ def calculate_hawaii_tax(
             tax_before_credits = ordinary_tax + cg_tax_capped
     else:
         std_ded = params.standard_deduction.get(filing_status, params.standard_deduction['single'])
-        effective_ded = _resolve_effective_deduction(
+        effective_ded, itemized_raw = _resolve_effective_deduction_pair(
             agi, filing_status, std_ded, deduction_params
         )
         result['hi_standard_deduction'] = effective_ded
+        result['hi_itemized_deduction'] = itemized_raw
         taxable_income = max(0.0, agi - effective_ded - exemption_amount)
         result['hi_taxable_income'] = taxable_income
         brackets = params.brackets.get(filing_status, params.brackets['single'])
@@ -464,8 +494,9 @@ def calculate_hawaii_tax_for_units(
     """
     Calculate Hawaii income tax for all tax units in a DataFrame.
 
-    Adds columns: hi_agi, hi_standard_deduction, hi_personal_exemptions,
-    hi_taxable_income, hi_tax_before_credits, hi_low_income_credit, hi_tax_liability.
+    Adds columns: hi_agi, hi_standard_deduction, hi_itemized_deduction,
+    hi_personal_exemptions, hi_taxable_income, hi_tax_before_credits,
+    hi_low_income_credit, hi_tax_liability.
 
     Args:
         tax_units_df: DataFrame of tax units.

@@ -90,13 +90,33 @@ def per_unit_tax(
     num_dependents = np.where(nan_dep, 0, raw_dep).astype(int)
 
     if deduction_col and deduction_col in tax_units.columns:
+        # Caller-provided override (e.g. pre-computed effective deduction).
+        # NOTE: this path forces both baseline and scenario configs to use
+        # the same column value, which hides scenario-specific SD changes
+        # (e.g. HB 2306 ORIG SD freeze). Prefer deduction_col=None unless
+        # comparing scenarios that don't change the standard deduction.
         deductions = tax_units[deduction_col].fillna(0.0).to_numpy(dtype=float)
     else:
-        deductions = np.empty(n, dtype=float)
+        # Compute effective deduction = max(scenario_SD_per_fs, itemized).
+        # When `hi_itemized_deduction` is present (populated upstream by
+        # calculate_hawaii_tax with TY-scaled deduction_params), itemizers
+        # keep their itemized amount under any scenario; only non-itemizers
+        # see the scenario-specific SD. This is required for SD-changing
+        # bills like HB 2306 ORIG, where applying the SD difference to
+        # itemizers would overstate the bill's revenue impact.
+        sd_per_filer = np.empty(n, dtype=float)
         for fs in np.unique(statuses):
-            deductions[statuses == fs] = calc.get_standard_deduction(
+            sd_per_filer[statuses == fs] = calc.get_standard_deduction(
                 config.standard_deduction_year, fs
             )
+        if "hi_itemized_deduction" in tax_units.columns:
+            itemized = (
+                tax_units["hi_itemized_deduction"]
+                .fillna(0.0).to_numpy(dtype=float)
+            )
+            deductions = np.maximum(sd_per_filer, itemized)
+        else:
+            deductions = sd_per_filer
 
     exemption_amount = num_exemptions * config.personal_exemption
     taxable_full = np.maximum(0.0, incomes - deductions - exemption_amount)
