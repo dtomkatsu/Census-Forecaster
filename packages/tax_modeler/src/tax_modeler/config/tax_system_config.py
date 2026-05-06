@@ -589,7 +589,6 @@ class TaxCalculator:
         income_col: str = 'income',
         weight_col: str = 'weight',
         num_exemptions_col: str = 'num_exemptions',
-        deduction_col: Optional[str] = None,
         num_dependents_col: str = 'num_dependents',
     ) -> Dict[str, float]:
         """Vectorized counterpart of :meth:`calculate_revenue` (~30-50× faster).
@@ -628,15 +627,22 @@ class TaxCalculator:
         nan_dep = np.isnan(raw_dep)
         num_dependents = np.where(nan_dep, 0, raw_dep).astype(int)
 
-        # Per-filer effective deduction (override) or filing-status standard
-        if deduction_col and deduction_col in tax_units.columns:
-            deductions = tax_units[deduction_col].fillna(0.0).to_numpy(dtype=float)
+        # Per-filer effective deduction: max(filing-status SD, hi_itemized_deduction).
+        # Column-name override was removed — always use the standard logic so callers
+        # cannot silently pass a wrong column.
+        sd_per_filer = np.empty(n, dtype=float)
+        for fs in np.unique(statuses):
+            sd_per_filer[statuses == fs] = self.get_standard_deduction(
+                config.standard_deduction_year, fs
+            )
+        if "hi_itemized_deduction" in tax_units.columns:
+            itemized = (
+                tax_units["hi_itemized_deduction"]
+                .fillna(0.0).to_numpy(dtype=float)
+            )
+            deductions = np.maximum(sd_per_filer, itemized)
         else:
-            deductions = np.empty(n, dtype=float)
-            for fs in np.unique(statuses):
-                deductions[statuses == fs] = self.get_standard_deduction(
-                    config.standard_deduction_year, fs
-                )
+            deductions = sd_per_filer
 
         exemption_amount = num_exemptions * config.personal_exemption
         taxable_full = np.maximum(0.0, incomes - deductions - exemption_amount)
@@ -721,7 +727,6 @@ class TaxCalculator:
         income_col: str = 'income',
         weight_col: str = 'weight',
         num_exemptions_col: str = 'num_exemptions',
-        deduction_col: Optional[str] = None,
         num_dependents_col: str = 'num_dependents',
     ) -> Dict[str, float]:
         """
@@ -734,7 +739,6 @@ class TaxCalculator:
             income_col: Column name for income
             weight_col: Column name for weights
             num_exemptions_col: Column name for number of exemptions
-            deduction_col: Optional column with per-unit deduction overrides
             num_dependents_col: Column name for number of dependents
 
         Returns:
@@ -757,8 +761,20 @@ class TaxCalculator:
         else:
             num_dependents = tax_units[num_dependents_col].values
 
-        # Deduction overrides (None if column not specified)
-        deductions = tax_units[deduction_col].values if deduction_col and deduction_col in tax_units.columns else None
+        # Per-filer effective deduction: max(filing-status SD, hi_itemized_deduction).
+        # Column-name override was removed to eliminate the silent wrong-column pattern.
+        _n = len(tax_units)
+        _statuses = tax_units[filing_status_col].to_numpy()
+        _sd = np.empty(_n, dtype=float)
+        for _fs in np.unique(_statuses):
+            _sd[_statuses == _fs] = self.get_standard_deduction(
+                config.standard_deduction_year, _fs
+            )
+        if "hi_itemized_deduction" in tax_units.columns:
+            _itemized = tax_units["hi_itemized_deduction"].fillna(0.0).to_numpy(dtype=float)
+            deductions = np.maximum(_sd, _itemized)
+        else:
+            deductions = _sd
 
         # CG income for §235-16 cap: auto-detect synthetic_cg_share column.
         # Base PUMS units don't have it → 0 (cap not applied).
@@ -774,7 +790,7 @@ class TaxCalculator:
             num_exemptions
         )):
             try:
-                ded = float(deductions[i]) if deductions is not None else None
+                ded = float(deductions[i])
                 cg_inc = float(income) * float(cg_shares[i])
                 result = self.calculate_tax(
                     income, config, status, int(num_ex),
@@ -836,23 +852,22 @@ def compare_systems(
     baseline_config: TaxSystemConfig,
     scenario_config: TaxSystemConfig,
     calculator: Optional[TaxCalculator] = None,
-    deduction_col: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Compare two tax systems and return detailed comparison.
+
+    Effective deduction per filer is automatically computed as
+    ``max(filing-status standard deduction, hi_itemized_deduction)``
+    when the ``hi_itemized_deduction`` column is present; otherwise the
+    filing-status standard deduction is used. The former
+    ``deduction_col`` parameter has been removed to eliminate the
+    silent wrong-column anti-pattern.
 
     Args:
         tax_units: DataFrame with tax units
         baseline_config: Baseline tax system
         scenario_config: Scenario tax system to compare
         calculator: Optional pre-initialized calculator
-        deduction_col: Optional column with per-unit effective deductions
-            (e.g. ``"hi_standard_deduction"`` from project_tax_units_forward,
-            which is the larger of standard and itemized). When supplied,
-            both baseline and scenario use this per-filer deduction so the
-            bracket comparison reflects realistic itemized-deduction
-            behavior at the top of the distribution. When None, both
-            systems use the standard deduction by filing status.
 
     Returns:
         DataFrame with comparison results
@@ -864,10 +879,10 @@ def compare_systems(
     # The legacy ``calculate_revenue`` (per-filer Python loop) remains
     # available on TaxCalculator for backwards compatibility.
     baseline_revenue = calculator.calculate_revenue_vectorized(
-        tax_units, baseline_config, deduction_col=deduction_col,
+        tax_units, baseline_config,
     )
     scenario_revenue = calculator.calculate_revenue_vectorized(
-        tax_units, scenario_config, deduction_col=deduction_col,
+        tax_units, scenario_config,
     )
     
     def _row(rev, cfg):

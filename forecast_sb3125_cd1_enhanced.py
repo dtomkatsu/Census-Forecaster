@@ -73,16 +73,13 @@ CACHE_FILE = Path("/tmp/tax_units_cache.parquet")
 OUT_CSV = Path("/tmp/sb3125_cd1_enhanced_2027_2031.csv")
 TARGET_YEARS = [2027, 2028, 2029, 2030, 2031]
 
-# COR FY27 individual-income tax projection (Sep 2025 forecast)
-COR_FY27_IIT_PROJ_M = 3050.0
-
 # Three calibrated scenarios. Calibration is anchored to (a) the official
 # 5yr fiscal-impact estimate of ~$680M, (b) state-level ETI literature
 # (Rauh/Shyu 2024 California 13.3% study), (c) PTE rate 9% (Act 50, Hawaii)
 # vs bill's 13% individual top → 4pp arbitrage gap, and (d) REEC nonrefundable
 # utilization considerations + Hawaii solar saturation.
-# Scenarios (no per-scenario ``itemized_adj`` flag — effective deductions
-# are now plumbed through compare_systems via ``deduction_col``).
+# Scenarios (effective deductions are computed automatically as
+# max(filing-status SD, hi_itemized_deduction) inside compare_systems).
 SCENARIOS = [
     {
         "label":  "LOW",
@@ -193,6 +190,7 @@ def run_one_scenario(base_calibrated, *, scenario, target_years):
         apply_top_income_growth_premium,
     )
     from tax_modeler.scenarios.macro_scenarios import apply_macro_recession_shock
+    from tax_modeler.scenarios.quintile_analysis import cor_scale_factor_for_year
 
     label  = scenario["label"]
     alpha  = scenario["alpha"]
@@ -231,8 +229,6 @@ def run_one_scenario(base_calibrated, *, scenario, target_years):
     # (greater of standard and expected itemized, with Hawaii Pease applied).
     # Plumbed into compare_systems so the bracket comparison reflects
     # realistic itemized behavior at the top of the distribution.
-    DED_COL = None  # use each config's standard_deduction_year, not pre-computed column
-
     calc = TaxCalculator()
     rows = []
     for year in target_years:
@@ -257,7 +253,7 @@ def run_one_scenario(base_calibrated, *, scenario, target_years):
         scenario_cfg = TaxSystemRegistry.get_sb3125_cd1_system(year)
         cmp_static = compare_systems(
             projected, baseline_cfg, scenario_cfg,
-            calculator=calc, deduction_col=DED_COL,
+            calculator=calc,
         )
         diff_static = float(cmp_static[cmp_static["system"] == "Difference"].iloc[0]["revenue_millions"])
         baseline_static = float(cmp_static[cmp_static["system"] == baseline_cfg.name].iloc[0]["revenue_millions"])
@@ -266,11 +262,10 @@ def run_one_scenario(base_calibrated, *, scenario, target_years):
         adjusted, behav_diag = apply_behavioral_response(
             projected, behav_params, target_year=year,
             baseline_cfg=baseline_cfg, scenario_cfg=scenario_cfg, calculator=calc,
-            deduction_col=DED_COL,
         )
         cmp_behav = compare_systems(
             adjusted, baseline_cfg, scenario_cfg,
-            calculator=calc, deduction_col=DED_COL,
+            calculator=calc,
         )
         diff_behav = float(cmp_behav[cmp_behav["system"] == "Difference"].iloc[0]["revenue_millions"])
 
@@ -291,7 +286,7 @@ def run_one_scenario(base_calibrated, *, scenario, target_years):
         total = bracket_delta_after_response + credit_total
 
         # 7) COR-scaled diagnostic: scale bracket delta to match COR baseline
-        cor_scale_factor = COR_FY27_IIT_PROJ_M / baseline_static if baseline_static > 0 else 1.0
+        cor_scale_factor = cor_scale_factor_for_year(year, baseline_static)
         bracket_delta_cor_scaled = bracket_delta_after_response * cor_scale_factor
 
         rows.append({
@@ -567,7 +562,8 @@ if __name__ == "__main__":
         print(f"  ETI/migration response (income shrink): ${mid27['eti_response_$M']:>+8.2f}M", flush=True)
         print(f"  PTE election shift to entity tax:       ${mid27['pte_shift_$M']:>+8.2f}M", flush=True)
         print(f"  Post-behavioral bracket delta:          ${mid27['bracket_delta_post_$M']:>+8.2f}M", flush=True)
-        print(f"  COR-scaled (×{COR_FY27_IIT_PROJ_M/mid27['act46_baseline_$M']:.3f}):                "
+        cor_diag = mid27['bracket_delta_cor_scaled_$M'] / mid27['bracket_delta_post_$M'] if mid27['bracket_delta_post_$M'] else 1.0
+        print(f"  COR-scaled (×{cor_diag:.3f}):                "
               f"${mid27['bracket_delta_cor_scaled_$M']:>+8.2f}M", flush=True)
 
         print(f"\nSaved: {OUT_CSV}", flush=True)

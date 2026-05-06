@@ -142,3 +142,34 @@ def test_round_trip_to_base_year_preserves_income(cbo_rates: CBOComponentRates):
     assert abs(post / pre - 1) < 0.01, (
         f"Base-year round-trip drift {post/pre - 1:.4f} > 1%"
     )
+
+
+def test_synthetic_cg_share_refreshed_after_aging(cbo_rates: CBOComponentRates):
+    """After component aging, synthetic_cg_share must reflect post-aged composition.
+
+    A filer starting at 60% CG / 40% wages will have a different CG share after
+    CBO aging because CG and wages grow at different rates. The share should
+    shift by more than 0.5pp over 9 years (2022→2031).
+    """
+    # One $5M filer: 60% CG, 40% wages; no PUMS columns so decomposition
+    # falls back to synthetic_cg_share and synthetic_wages_share for CG/wages.
+    df = pd.DataFrame({
+        "income": [5_000_000.0],
+        "agi": [5_000_000.0],
+        "weight": [1.0],
+        "filing_status": ["married_filing_jointly"],
+        "synthetic_cg_share": [0.60],
+        # No primary_wagp etc. — forces synthetic-share path.
+    })
+    aged = age_filers_with_components(
+        df, target_year=2031, base_year=2022, cbo_rates=cbo_rates,
+        hawaii_factors={c: 1.0 for c in CBO_COMPONENTS},
+    )
+    new_share = float(aged["synthetic_cg_share"].iloc[0])
+    # CG and wages grow at different CBO rates → share must have moved.
+    assert abs(new_share - 0.60) > 0.005, (
+        f"synthetic_cg_share should change after 9-yr differential CBO aging, "
+        f"but moved only {abs(new_share - 0.60):.4f} (pre=0.60, post={new_share:.4f})"
+    )
+    # Share must remain a valid fraction.
+    assert 0.0 <= new_share <= 1.0, f"share out of range: {new_share}"

@@ -17,8 +17,8 @@ Methodology
 For target year Y:
 
 * **Aggregate tax target T_Y**: lookup in COR projections (default
-  ``DEFAULT_COR_IIT_PROJECTIONS_M``). For Y < 2027, back-cast from the FY27
-  anchor at 2.5% nominal growth.
+  ``DEFAULT_COR_IIT_PROJECTIONS_M``). Years outside the table are
+  extrapolated at 2.5% nominal growth from the nearest anchor.
 
 * **Filer migration**: apply piecewise growth ``g_b(Y)`` per bracket:
     - Below $200K: ``g_low = 1.025^(Y-2022)``
@@ -44,15 +44,17 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# COR Sep 2025 forecast for Hawaii Individual Income Tax (FY27 anchor; FY28+
-# at the council's long-run 2.5% nominal growth). Source of truth for the
-# aggregate revenue target each year.
+# COR March 10, 2026 forecast for Hawaii Individual Income Tax.
+# Source: files.hawaii.gov/tax/useful/cor/2026gf03-10_attach_1.pdf
+# FY→TY mapping: FY(n+1) = TY(n) per DOTAX fiscal-note convention.
 DEFAULT_COR_IIT_PROJECTIONS_M: Dict[int, float] = {
-    2027: 3050.0,
-    2028: 3127.0,
-    2029: 3205.0,
-    2030: 3285.0,
-    2031: 3367.0,
+    2025: 2_986.920,   # FY 2026
+    2026: 2_900.330,   # FY 2027
+    2027: 2_825.329,   # FY 2028
+    2028: 2_815.274,   # FY 2029
+    2029: 2_749.758,   # FY 2030
+    2030: 2_851.075,   # FY 2031
+    2031: 2_944.872,   # FY 2032
 }
 
 # DOTAX TY2022 baseline (Table A8, resident-only). Mirrors the constants in
@@ -145,7 +147,7 @@ def _back_cast_cor(year: int, cor_projections_M: Dict[int, float]) -> float:
 
     For years already in the table, return the value directly. For years
     before the earliest entry, back-cast at 2.5% nominal annual growth from
-    the earliest anchor (typically FY27 = $3,050M).
+    the earliest anchor. For years beyond the table, forward-extrapolate at 2.5%.
     """
     if year in cor_projections_M:
         return cor_projections_M[year]
@@ -288,6 +290,7 @@ def build_targets(
     low_growth: float = 0.025,
     top_differential: float = 0.010,
     rate_drift: float = 0.005,
+    population_growth_rate: float = 0.005,
     base_counts: Optional[Dict[Tuple[float, float], int]] = None,
     base_tax: Optional[Dict[Tuple[float, float], float]] = None,
     base_status: Optional[Dict[str, int]] = None,
@@ -314,6 +317,13 @@ def build_targets(
     rate_drift:
         Per-year effective-rate uplift reflecting bracket-creep into higher
         marginal rates as nominal incomes rise.
+    population_growth_rate:
+        Annual filer-count growth rate, applied uniformly across brackets
+        AFTER bracket migration. Default 0.005 (0.5%/yr) is between DBEDT's
+        ~0.34%/yr total population projection and ~0.6%/yr civilian labor
+        force projection (DBEDT 2050 series, Apr 2024). Tax filers correlate
+        most closely with the labor force. Set to 0.0 to hold filer count
+        constant (legacy behavior).
     base_counts, base_tax, base_status:
         Override the TY2022 baseline (mainly for testing the round-trip).
     base_year:
@@ -333,6 +343,14 @@ def build_targets(
     forward_counts = _migrate_filer_counts(
         bc, g_low, g_high, empirical_density=empirical_density,
     )
+
+    # Apply population growth uniformly across brackets (after migration).
+    # Source: DBEDT 2050 series (Apr 2024); 0.5%/yr default ≈ civilian labor
+    # force projection. Aggregate tax target stays anchored to COR via the
+    # uniform rescale below, so this only affects the WEIGHT distribution
+    # (more middle-bracket filer mass) not total revenue.
+    pop_factor = (1 + population_growth_rate) ** years
+    forward_counts = {b: int(round(c * pop_factor)) for b, c in forward_counts.items()}
 
     # ── 2. Tax targets: per-filer effective rate × new counts × drift ─────────
     raw_tax: Dict[Tuple[float, float], float] = {}

@@ -108,6 +108,7 @@ def project_and_recalibrate(
     top_bracket_differential: float = 0.010,
     low_growth: float = 0.025,
     rate_drift: float = 0.005,
+    population_growth_rate: float = 0.005,
     method: str = "ensemble",
     base_year: Optional[int] = None,
 ) -> Tuple[pd.DataFrame, Optional[ForwardTargets]]:
@@ -250,6 +251,7 @@ def project_and_recalibrate(
         low_growth=low_growth,
         top_differential=top_bracket_differential,
         rate_drift=rate_drift,
+        population_growth_rate=population_growth_rate,
         include_agi_targets=use_agi_reweighting,
         cbo_vintage=cbo_vintage,
         hawaii_factors=cbo_hawaii_factors,

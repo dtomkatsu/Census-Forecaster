@@ -57,6 +57,19 @@ def per_unit_tax(
     (when ``deduction_params`` was supplied during projection) — see
     ``project_tax_units_forward`` and ``year_recalibrator.project_and_recalibrate``.
 
+    Note on per-scenario itemization
+    --------------------------------
+    The SD-vs-itemize choice is computed per scenario via the ``max`` above
+    (correctly handling SD-changing bills). However, the underlying
+    ``hi_itemized_deduction`` *amount* is populated once during projection
+    using a single set of ``deduction_params`` (typically scaled to the
+    target year). For comparisons against frozen-law counterfactuals (e.g.
+    "Act 46 frozen at TY2026" baselines), callers should re-populate
+    ``hi_itemized_deduction`` per scenario with year-appropriate
+    ``scale_deduction_params_for_target_year(year)`` — frozen baselines use
+    TY2026 mortgage/SALT/charitable scales, projected scenarios use target-year
+    scales. See ``forecast_sb3125_cd1_vs_fy26base.py`` for the pattern.
+
     If ``hi_itemized_deduction`` is missing (legacy data, pre-Act-46 backtests),
     falls back to scenario SD only. There is no longer a ``deduction_col``
     override — that parameter previously caused silent bugs by forcing both
@@ -352,14 +365,16 @@ def compute_quintile_breaks(tax_units: pd.DataFrame) -> np.ndarray:
 
 
 # Hawaii Council on Revenues (COR) IIT projections, $M.
-# Source: COR Sep 2025 forecast (FY27 = 3050.0); FY28+ projected at the
-# same long-run growth rate the council uses (2.5% nominal).
+# Source: COR March 10, 2026 (files.hawaii.gov/tax/useful/cor/2026gf03-10_attach_1.pdf).
+# FY→TY mapping: FY(n+1) = TY(n) per DOTAX fiscal-note convention.
 DEFAULT_COR_IIT_PROJECTIONS_M = {
-    2027: 3050.0,
-    2028: 3127.0,
-    2029: 3205.0,
-    2030: 3285.0,
-    2031: 3367.0,
+    2025: 2_986.920,   # FY 2026
+    2026: 2_900.330,   # FY 2027
+    2027: 2_825.329,   # FY 2028
+    2028: 2_815.274,   # FY 2029
+    2029: 2_749.758,   # FY 2030
+    2030: 2_851.075,   # FY 2031
+    2031: 2_944.872,   # FY 2032
 }
 
 

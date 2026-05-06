@@ -154,7 +154,6 @@ def _per_filer_marginal_rate(
     calculator,
     income_col: str,
     fs_col: str,
-    deduction_col: Optional[str],
     exemption_count_col: Optional[str],
 ) -> np.ndarray:
     """Vectorized marginal-rate lookup per filer under ``config``.
@@ -165,20 +164,25 @@ def _per_filer_marginal_rate(
     e.g. 11.0); converted to decimals (0.11). Returns an ``ndarray`` of
     decimal rates aligned with ``df``.
 
+    Effective deduction is ``max(filing-status SD, hi_itemized_deduction)``
+    when the ``hi_itemized_deduction`` column is present.
+
     Filers with zero taxable income return MTR = 0.
     """
     incomes = df[income_col].to_numpy(dtype=float)
     statuses = df[fs_col].to_numpy()
     n = len(df)
 
-    if deduction_col and deduction_col in df.columns:
-        deductions = df[deduction_col].fillna(0.0).to_numpy(dtype=float)
+    sd_per_filer = np.empty(n, dtype=float)
+    for fs in np.unique(statuses):
+        sd_per_filer[statuses == fs] = calculator.get_standard_deduction(
+            config.standard_deduction_year, fs
+        )
+    if "hi_itemized_deduction" in df.columns:
+        itemized = df["hi_itemized_deduction"].fillna(0.0).to_numpy(dtype=float)
+        deductions = np.maximum(sd_per_filer, itemized)
     else:
-        deductions = np.empty(n, dtype=float)
-        for fs in np.unique(statuses):
-            deductions[statuses == fs] = calculator.get_standard_deduction(
-                config.standard_deduction_year, fs
-            )
+        deductions = sd_per_filer
 
     if exemption_count_col and exemption_count_col in df.columns:
         exemption_count = df[exemption_count_col].fillna(1).to_numpy(dtype=int)
@@ -218,7 +222,6 @@ def apply_eti_response(
     calculator,
     income_col: str = "income",
     fs_col: str = "filing_status",
-    deduction_col: Optional[str] = None,
     exemption_count_col: Optional[str] = None,
     inplace: bool = False,
 ) -> pd.DataFrame:
@@ -238,10 +241,13 @@ def apply_eti_response(
         ``calculator.get_brackets(year, status, scenario=...)``.
     calculator : TaxCalculator
         Provides bracket lookup and standard-deduction lookup.
-    deduction_col : str, optional
-        When supplied, used as each filer's effective deduction in the
-        taxable-income calculation. Recommended: ``"hi_standard_deduction"``
-        from the projection step (greater of std and itemized).
+
+    Notes
+    -----
+    Effective deduction per filer is automatically computed as
+    ``max(filing-status SD, hi_itemized_deduction)`` when the
+    ``hi_itemized_deduction`` column is present. The former
+    ``deduction_col`` parameter has been removed.
     """
     if params.eti <= 0:
         return df if inplace else df.copy()
@@ -252,12 +258,12 @@ def apply_eti_response(
     base_mtr = _per_filer_marginal_rate(
         out, config=baseline_cfg, calculator=calculator,
         income_col=income_col, fs_col=fs_col,
-        deduction_col=deduction_col, exemption_count_col=exemption_count_col,
+        exemption_count_col=exemption_count_col,
     )
     scen_mtr = _per_filer_marginal_rate(
         out, config=scenario_cfg, calculator=calculator,
         income_col=income_col, fs_col=fs_col,
-        deduction_col=deduction_col, exemption_count_col=exemption_count_col,
+        exemption_count_col=exemption_count_col,
     )
 
     factor = np.ones(len(out), dtype=float)
@@ -486,6 +492,20 @@ def apply_top_income_growth_premium(
     out.loc[mask, income_col] = out.loc[mask, income_col] * multiplier
     out["_top_income_premium"] = 1.0
     out.loc[mask, "_top_income_premium"] = multiplier
+
+    # Premium changed AGI; downstream tax columns are now stale on the
+    # affected rows. Clear them so any consumer reading them without
+    # first calling _compute_base_tax() gets NaN (loud failure) instead
+    # of a silently wrong pre-premium value.
+    _STALE_COLS = (
+        "hi_tax_liability", "hi_taxable_income", "hi_tax_before_credits",
+        "hi_low_income_credit", "hi_standard_deduction",
+        "hi_itemized_deduction", "hi_cg_cap_savings", "hi_state_tax",
+    )
+    for col in _STALE_COLS:
+        if col in out.columns:
+            out.loc[mask, col] = float("nan")
+
     return out
 
 
@@ -568,7 +588,6 @@ def apply_behavioral_response(
     income_col: str = "income",
     fs_col: str = "filing_status",
     weight_col: str = "weight",
-    deduction_col: Optional[str] = None,
 ) -> Tuple[pd.DataFrame, Dict[str, float]]:
     """Apply ETI + migration adjustments and report the PTE shift.
 
@@ -582,13 +601,17 @@ def apply_behavioral_response(
     ``baseline_cfg``, ``scenario_cfg``, and ``calculator`` are required so
     that ETI shrinkage can be applied based on each filer's actual
     marginal-rate change rather than a hard-coded 11% → 13% assumption.
+
+    Effective deduction per filer is automatically computed as
+    ``max(filing-status SD, hi_itemized_deduction)`` when the
+    ``hi_itemized_deduction`` column is present. The former
+    ``deduction_col`` parameter has been removed.
     """
     out = df.copy()
     out = apply_eti_response(
         out, params,
         baseline_cfg=baseline_cfg, scenario_cfg=scenario_cfg, calculator=calculator,
         income_col=income_col, fs_col=fs_col,
-        deduction_col=deduction_col,
         inplace=True,
     )
     out = apply_migration_response(
