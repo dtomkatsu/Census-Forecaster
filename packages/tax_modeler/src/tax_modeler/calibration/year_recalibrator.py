@@ -92,6 +92,7 @@ def project_and_recalibrate(
     target_year: int,
     *,
     use_forward_targets: bool = False,
+    use_agi_reweighting: bool = True,
     resynthesize_top: bool = False,
     use_soi_anchor: bool = False,
     soi_year: int = 2022,
@@ -215,12 +216,30 @@ def project_and_recalibrate(
         return projected, None
 
     # ── 2. Build forward targets for this year ───────────────────────────────
+    # Use empirical PUMS within-bracket density to migrate filer counts forward.
+    # Real bracket density is bottom-loaded (Pareto-like), so a uniform
+    # assumption over-projects upward migration into top brackets (~2× too
+    # many $300-400K filers at TY2027 under uniform vs PUMS-derived).
+    from tax_modeler.calibration.forward_targets import (
+        empirical_density_from_pums,
+        _DOTAX_FILER_TARGETS_2022,
+    )
+    pre_aging = units.copy() if "income" in units.columns else _alias_columns(units)
+    if "income" not in pre_aging.columns and "agi" in pre_aging.columns:
+        pre_aging["income"] = pre_aging["agi"]
+    empirical_density = empirical_density_from_pums(
+        pre_aging, _DOTAX_FILER_TARGETS_2022,
+    )
     forward = build_targets(
         target_year,
         cor_projections_M=cor_projections_M,
         low_growth=low_growth,
         top_differential=top_bracket_differential,
         rate_drift=rate_drift,
+        include_agi_targets=use_agi_reweighting,
+        cbo_vintage=cbo_vintage,
+        hawaii_factors=cbo_hawaii_factors,
+        empirical_density=empirical_density,
     )
     logger.info("Year recalibrator: %s", _summarize_targets(forward))
 
@@ -229,6 +248,13 @@ def project_and_recalibrate(
     # top-bracket population (the dominant driver of the ITEP gap).
     aliased = _alias_columns(projected)
     pre_top = aliased.loc[aliased["agi"] >= top_premium_threshold, "weight"].sum()
+    # Stage-2 reweighting: tier-level (5 SOI tiers within $1M+) only by default,
+    # which is the methodologically supported correction (cohort persistence
+    # at the top — Auten/Gee/Turner 2013). Per-bracket AGI mass is NOT raked
+    # because per-bracket composition assumptions are coarser than the actual
+    # PUMS filer income decomposition that cbo_aging.age_filers_with_components
+    # produces, so over-zealous bracket reweighting causes false target gaps
+    # at sub-$1M brackets (and HB 2306 alignment regresses).
     raked = phase1_reweight(
         aliased,
         filer_targets=forward.filer_targets,
@@ -328,6 +354,42 @@ def project_and_recalibrate(
             f"{pre_1m:,.0f} → {post_1m:,.0f} (forward target {fwd_1m_count:,.0f}, "
             f"target tax ${fwd_1m_tax_M:,.0f}M)"
         )
+
+        # ── 5c. Stage-2 tier-mass rake (now that synthetic_tier_lo is set) ──
+        # Phase 1 ran before SOI synthesis, so its tier-AGI-mass margin had
+        # nothing to operate on. Apply it now: rescale weights within each
+        # SOI Table 1.4 tier ($1M-$1.5M, ..., $10M+) to hit the per-tier
+        # forward AGI target. Closes the cohort-aging mis-specification at
+        # the granularity the user requested (5 SOI tiers).
+        if (
+            use_agi_reweighting
+            and forward.tier_agi_targets
+            and "synthetic_tier_lo" in raked.columns
+        ):
+            import numpy as np
+            tier_lo_arr = raked["synthetic_tier_lo"].fillna(-1).to_numpy(dtype=float)
+            agi_arr = raked["agi"].to_numpy(dtype=float)
+            w_arr = np.array(raked["weight"].to_numpy(dtype=float), copy=True)
+            for (lo, _hi), target_M in sorted(forward.tier_agi_targets.items()):
+                mask = tier_lo_arr == lo
+                if not mask.any():
+                    continue
+                current_M = float((agi_arr[mask] * w_arr[mask]).sum() / 1e6)
+                if current_M > 0 and target_M > 0:
+                    factor = target_M / current_M
+                    # Cap factor to avoid extreme weight changes
+                    factor = float(np.clip(factor, 0.5, 2.0))
+                    w_arr[mask] *= factor
+                    logger.info(
+                        f"  Tier ${lo/1e6:>4.1f}M+: ${current_M:>6.0f}M → "
+                        f"${target_M:>6.0f}M (factor {factor:.3f})"
+                    )
+            raked["weight"] = w_arr
+            # Recompute tax after weight changes (per-unit tax unchanged but
+            # aggregate moved; phase 2 will re-anchor)
+            raked = _compute_base_tax_2(raked, tax_year=target_year)
+            if "hi_tax_liability" in raked.columns:
+                raked["hi_state_tax"] = raked["hi_tax_liability"]
 
     pre_tax_M = (raked["hi_state_tax"] * raked["weight"]).sum() / 1e6
     calibrated = phase2_tax_calibrate(

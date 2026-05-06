@@ -113,25 +113,38 @@ def phase1_reweight(
     *,
     filer_targets: Optional[Dict[Tuple[float, float], int]] = None,
     status_targets: Optional[Dict[str, int]] = None,
+    agi_mass_targets: Optional[Dict[Tuple[float, float], float]] = None,
+    tier_agi_targets: Optional[Dict[Tuple[float, float], float]] = None,
 ) -> pd.DataFrame:
     """
     Adjust weights to simultaneously match DOTAX-style filer-count targets
-    across two margins: (a) AGI bracket and (b) filing status.
+    across multiple margins.
 
-    Uses iterative raking (multiplicative IPF): alternate between the two
-    margin constraints, scaling weights in each pass, until convergence.
+    Margins:
+        A) AGI-bracket filer counts (always)
+        B) Filing-status totals (always)
+        C) AGI-bracket aggregate AGI mass ($M) — when ``agi_mass_targets`` given
+        D) SOI tier aggregate AGI mass ($M) — when ``tier_agi_targets`` given;
+           applies WITHIN $1M+ filers, identified by ``synthetic_tier_lo`` column
+
+    Uses iterative raking (multiplicative IPF). With AGI-mass margins active,
+    this implements the CBO/TPC-standard "stage-2 reweighting to forward
+    distributional targets" — preventing cohort-aged $1M+ income from
+    compounding indefinitely (Auten/Gee/Turner 2013 mobility findings).
 
     Args:
         df: Tax-unit DataFrame with columns 'agi', 'filing_status', 'weight'.
+            For tier reweighting, also requires 'synthetic_tier_lo'.
         max_iterations: Maximum raking iterations.
         tolerance: Convergence when every marginal is within this fraction of target.
         weight_floor: Minimum allowed weight (prevents zeros).
         weight_ceiling_ratio: Max ratio of calibrated-to-original weight.
-        filer_targets: Optional override for AGI-bracket filer counts. When
-            ``None`` (default), uses the TY2022 DOTAX targets. Used by
-            ``year_recalibrator`` to pass forward-year targets.
-        status_targets: Optional override for filing-status totals. Same
-            default behaviour.
+        filer_targets: Optional override for AGI-bracket filer counts.
+        status_targets: Optional override for filing-status totals.
+        agi_mass_targets: ``{(agi_lo, agi_hi): aggregate_AGI_M}`` for stage-2
+            reweighting. Default ``None`` disables AGI-mass margin.
+        tier_agi_targets: ``{(tier_lo, tier_hi): aggregate_AGI_M}`` for the
+            5 SOI Table 1.4 tiers within $1M+. Default ``None`` disables.
 
     Returns:
         DataFrame with updated 'weight' column and 'weight_original' preserving
@@ -171,6 +184,19 @@ def phase1_reweight(
     # Upper bound on weight per unit (relative to the pre-rake weight)
     weight_caps = result['weight_original'] * weight_ceiling_ratio
 
+    # Pre-compute AGI array for AGI-mass margins
+    agi_array = result['agi'].to_numpy(dtype=float)
+
+    # Pre-compute synthetic tier index for tier-mass margin
+    tier_keys: list = []
+    if tier_agi_targets is not None and 'synthetic_tier_lo' in result.columns:
+        tier_keys = sorted(tier_agi_targets.keys())
+        tier_lo_array = result['synthetic_tier_lo'].fillna(-1).to_numpy(dtype=float)
+        tier_idx = np.full(len(result), -1, dtype=int)
+        for i, (lo, _hi) in enumerate(tier_keys):
+            tier_idx[tier_lo_array == lo] = i
+        result['_tier_idx'] = tier_idx
+
     converged = False
     for iteration in range(1, max_iterations + 1):
         max_deviation = 0.0
@@ -195,6 +221,41 @@ def phase1_reweight(
                 factor = target / current
                 result.loc[mask, 'weight'] *= factor
                 max_deviation = max(max_deviation, abs(factor - 1.0))
+
+        # --- Margin C: AGI-mass per AGI bracket (stage-2 reweighting) ---
+        # When tier targets are active, skip the $1M+ bracket here — its
+        # AGI mass is fully determined by the per-tier targets (margin D).
+        # Imposing it twice causes IPF oscillation (count×avg ≠ mass).
+        if agi_mass_targets is not None:
+            weights = np.array(result['weight'].to_numpy(dtype=float), copy=True)
+            for b_idx, (lo, hi) in enumerate(brackets):
+                if (lo, hi) not in agi_mass_targets:
+                    continue
+                if tier_keys and lo >= 1_000_000:
+                    continue
+                mask = (result['_bracket_idx'] == b_idx).to_numpy()
+                current_M = float((agi_array[mask] * weights[mask]).sum() / 1e6)
+                target_M = agi_mass_targets[(lo, hi)]
+                if current_M > 0 and target_M > 0:
+                    factor = target_M / current_M
+                    weights[mask] *= factor
+                    max_deviation = max(max_deviation, abs(factor - 1.0))
+            result['weight'] = weights
+
+        # --- Margin D: SOI tier AGI-mass within $1M+ ---
+        if tier_keys:
+            weights = np.array(result['weight'].to_numpy(dtype=float), copy=True)
+            for t_idx, (lo, hi) in enumerate(tier_keys):
+                mask = (result['_tier_idx'] == t_idx).to_numpy()
+                if not mask.any():
+                    continue
+                current_M = float((agi_array[mask] * weights[mask]).sum() / 1e6)
+                target_M = tier_agi_targets[(lo, hi)]
+                if current_M > 0 and target_M > 0:
+                    factor = target_M / current_M
+                    weights[mask] *= factor
+                    max_deviation = max(max_deviation, abs(factor - 1.0))
+            result['weight'] = weights
 
         # --- Enforce bounds ---
         result['weight'] = result['weight'].clip(lower=weight_floor, upper=weight_caps)
@@ -237,7 +298,37 @@ def phase1_reweight(
         pct = (actual / target - 1) * 100 if target > 0 else 0
         logger.info(f"    {s_name:<30s}  {actual:>10,.0f} vs {target:>10,d}  ({pct:>+5.1f}%)")
 
-    result.drop(columns=['_bracket_idx', '_status_idx'], inplace=True)
+    # Report AGI-mass and tier match if active
+    if agi_mass_targets is not None:
+        logger.info("\n  Phase 1 — AGI mass match by AGI bracket (stage-2 reweighting):")
+        weights = result['weight'].to_numpy(dtype=float)
+        for b_idx, (lo, hi) in enumerate(brackets):
+            if (lo, hi) not in agi_mass_targets:
+                continue
+            mask = (result['_bracket_idx'] == b_idx).to_numpy()
+            actual = float((agi_array[mask] * weights[mask]).sum() / 1e6)
+            target = agi_mass_targets[(lo, hi)]
+            pct = (actual / target - 1) * 100 if target > 0 else 0
+            label = _bracket_label(lo, hi)
+            logger.info(f"    {label:<18s}  ${actual:>10,.0f}M vs ${target:>10,.0f}M  ({pct:>+5.1f}%)")
+
+    if tier_keys:
+        logger.info("\n  Phase 1 — AGI mass match by SOI tier ($1M+):")
+        weights = result['weight'].to_numpy(dtype=float)
+        for t_idx, (lo, hi) in enumerate(tier_keys):
+            mask = (result['_tier_idx'] == t_idx).to_numpy()
+            if not mask.any():
+                continue
+            actual = float((agi_array[mask] * weights[mask]).sum() / 1e6)
+            target = tier_agi_targets[(lo, hi)]
+            pct = (actual / target - 1) * 100 if target > 0 else 0
+            label = _bracket_label(lo, hi)
+            logger.info(f"    {label:<18s}  ${actual:>10,.0f}M vs ${target:>10,.0f}M  ({pct:>+5.1f}%)")
+
+    drop_cols = ['_bracket_idx', '_status_idx']
+    if '_tier_idx' in result.columns:
+        drop_cols.append('_tier_idx')
+    result.drop(columns=drop_cols, inplace=True)
     return result
 
 

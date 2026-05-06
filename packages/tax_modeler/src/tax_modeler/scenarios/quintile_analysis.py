@@ -369,7 +369,7 @@ def generate_quintile_report(
     scenario_cfg,
     credit_overlay: dict,
     calc,
-    deduction_col: str = "hi_standard_deduction",
+    deduction_col: Optional[str] = None,
     scenario_params: Optional[dict] = None,
     quintile_breaks: Optional[np.ndarray] = None,
     cor_scale_factor: Optional[float] = None,

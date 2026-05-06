@@ -231,7 +231,7 @@ def run_one_scenario(base_calibrated, *, scenario, target_years):
     # (greater of standard and expected itemized, with Hawaii Pease applied).
     # Plumbed into compare_systems so the bracket comparison reflects
     # realistic itemized behavior at the top of the distribution.
-    DED_COL = "hi_standard_deduction"
+    DED_COL = None  # use each config's standard_deduction_year, not pre-computed column
 
     calc = TaxCalculator()
     rows = []
@@ -480,14 +480,14 @@ if __name__ == "__main__":
             # Compute year-specific COR scale factor from this scenario's
             # Act 46 microsim baseline (per-filer aggregated revenue, $M).
             act46_baseline_M = float(
-                (per_unit_tax(projected_q, base_cfg, q_calc, "hi_standard_deduction")
+                (per_unit_tax(projected_q, base_cfg, q_calc, deduction_col=None)
                  * projected_q["weight"].to_numpy(dtype=float)).sum() / 1e6
             )
             cor_factor = cor_scale_factor_for_year(yr, act46_baseline_M)
 
             q_df, b_df, _ = generate_quintile_report(
                 projected_q, base_cfg, scen_cfg, credit_ov,
-                q_calc, deduction_col="hi_standard_deduction",
+                q_calc, deduction_col=None,
                 scenario_params=mid_sc,
                 quintile_breaks=base_2026_breaks,
                 cor_scale_factor=cor_factor,

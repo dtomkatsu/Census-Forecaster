@@ -223,6 +223,34 @@ class TaxSystemRegistry:
         )
 
     @classmethod
+    def get_hb2306_orig_system(cls, year: int) -> TaxSystemConfig:
+        """HB 2306 (original / introduced version) — Gov. Green's tax-cut freeze.
+
+        Repeals the Act 46 (SLH 2024) future phase-ins for TY 2027-2031. Both
+        bracket and standard-deduction schedules are FROZEN at the TY2026
+        configuration (i.e. the rates and deductions in effect on 12/31/2026).
+        No new rates, no surcharges, no CG changes. Pure freeze of scheduled
+        tax cuts. CG alt-tax (§235-51(f)) unchanged.
+
+        DOTAX fiscal note: ~$1.83B preserved revenue over FY2028-2032.
+
+        For ``year >= 2027``, this returns:
+          - bracket_year = 2025  (the bracket schedule in effect TY2026,
+                                   since Act 46's first phase-in was TY2027)
+          - standard_deduction_year = 2026  (frozen at TY2026 deduction amount)
+        """
+        if year < 2027:
+            raise ValueError(f"HB 2306 original applies to year >= 2027, got {year}")
+        return TaxSystemConfig(
+            name=f"hb2306_orig_{year}",
+            year=year,
+            bracket_year=2025,             # frozen at TY2026 bracket schedule
+            standard_deduction_year=2026,  # frozen at TY2026 standard deduction
+            personal_exemption=cls.PERSONAL_EXEMPTIONS.get(2026, 1200),
+            description=f"HB 2306 (original) — TY {year}: freezes Act 46 phase-ins at TY2026",
+        )
+
+    @classmethod
     def get_hb2306_hd1_system(cls, year: int) -> TaxSystemConfig:
         """HB2306 HD1 — any tax year from 2027 onward.
 

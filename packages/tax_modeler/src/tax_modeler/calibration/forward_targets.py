@@ -121,12 +121,23 @@ class ForwardTargets:
         ``{filing_status: count}`` totals.
     aggregate_tax_M:
         Convenience: sum of ``tax_targets.values()``.
+    agi_mass_targets:
+        ``{(agi_lo, agi_hi): aggregate_AGI_M}`` per bracket. Used by
+        ``simultaneous_calibrator.phase1_reweight`` to anchor stage-2
+        AGI mass per bracket to forward distributional targets (CBO/TPC
+        standard reweighting). ``None`` disables AGI-mass margin.
+    tier_agi_targets:
+        ``{(tier_lo, tier_hi): aggregate_AGI_M}`` for the 5 SOI Table 1.4
+        tiers within $1M+. Refines the within-$1M+ distribution so high
+        income mobility is reflected (Auten/Gee/Turner 2013).
     """
     year: int
     filer_targets: Dict[Tuple[float, float], int]
     tax_targets:   Dict[Tuple[float, float], float]
     status_targets: Dict[str, int]
     aggregate_tax_M: float
+    agi_mass_targets: Optional[Dict[Tuple[float, float], float]] = None
+    tier_agi_targets: Optional[Dict[Tuple[float, float], float]] = None
 
 
 def _back_cast_cor(year: int, cor_projections_M: Dict[int, float]) -> float:
@@ -153,62 +164,121 @@ def _migrate_filer_counts(
     g_low: float,
     g_high: float,
     threshold: float = 200_000.0,
+    *,
+    empirical_density: Optional[Dict[Tuple[float, float], "np.ndarray"]] = None,
 ) -> Dict[Tuple[float, float], int]:
     """Migrate TY2022 filer counts to a forward year via bracket-shift.
 
-    Each TY2022 bracket ``(lo, hi)`` is treated as a uniform mass of filers
-    on ``[lo, hi)``. We scale every cut-point by ``g_low`` (below threshold)
-    or ``g_high`` (at/above threshold) and re-bucket onto the fixed nominal
+    Each TY2022 bracket ``(lo, hi)`` is treated as having ``count`` filers
+    distributed according to either:
+      - a uniform density (legacy default) — assumes filers are spread evenly
+        across the bracket, which over-projects upward migration because real
+        bracket density is bottom-loaded (Pareto-like), OR
+      - an ``empirical_density`` histogram from PUMS (preferred) — uses the
+        actual within-bracket sub-bin counts to model migration realistically.
+
+    The chosen density is scaled by ``g_low`` (below threshold) or
+    ``g_high`` (at/above threshold), then re-bucketed onto the fixed nominal
     boundaries. Total mass is preserved.
 
-    For the open-ended top bracket ``(1_000_000, inf)``, mass is preserved
-    in place (scaling shifts the lower edge but the bucket remains the top).
+    Parameters
+    ----------
+    empirical_density:
+        ``{(bracket_lo, bracket_hi): np.array of normalized sub-bin densities}``
+        keyed by DOTAX bracket. Each array represents within-bracket density
+        across N=20 sub-bins of equal width. If provided, used in place of
+        uniform density assumption.
     """
     nominal_brackets = sorted(base_counts.keys())
-    # Build "shifted" sub-pieces from each TY2022 bracket
-    shifted_pieces = []  # list of (lo_new, hi_new, count_density_per_dollar)
+    forward: Dict[Tuple[float, float], float] = {b: 0.0 for b in nominal_brackets}
+
     for (lo, hi), count in base_counts.items():
         g = g_low if lo < threshold else g_high
-        new_lo = lo * g
         if hi == np.inf:
-            new_hi = np.inf
-        else:
-            new_hi = hi * g
-        # Density per dollar (uniform within bracket) — for finite top bracket;
-        # for open bracket, treat as point mass at new_lo (scaling preserves count).
-        if new_hi == np.inf:
-            shifted_pieces.append(("point", new_lo, np.inf, count))
-        else:
-            density = count / (new_hi - new_lo) if new_hi > new_lo else 0.0
-            shifted_pieces.append(("uniform", new_lo, new_hi, density))
-
-    # Now bucket shifted pieces onto the fixed nominal schema
-    forward = {b: 0.0 for b in nominal_brackets}
-    for kind, plo, phi, val in shifted_pieces:
-        if kind == "point":
-            # Mass goes entirely into whichever nominal bracket contains plo
+            # Open-ended top bracket: treat as point mass at scaled lower edge.
+            new_lo = lo * g
             for (nlo, nhi) in nominal_brackets:
-                if nlo <= plo < nhi:
-                    forward[(nlo, nhi)] += val
+                if nlo <= new_lo < nhi:
+                    forward[(nlo, nhi)] += count
                     break
             else:
-                forward[nominal_brackets[-1]] += val
-        else:  # uniform
-            density = val
-            for (nlo, nhi) in nominal_brackets:
-                # Overlap of [plo, phi) with [nlo, nhi)
-                if nhi == np.inf:
-                    overlap_lo = max(plo, nlo)
-                    overlap_hi = phi
-                else:
-                    overlap_lo = max(plo, nlo)
-                    overlap_hi = min(phi, nhi)
-                if overlap_hi > overlap_lo:
-                    forward[(nlo, nhi)] += density * (overlap_hi - overlap_lo)
+                forward[nominal_brackets[-1]] += count
+            continue
 
-    # Round to integers; rounding noise will be absorbed by the renormalization
-    # step in build_targets.
+        # Build sub-bin densities: empirical (PUMS) or uniform (legacy).
+        n_subbins = 20
+        if empirical_density is not None and (lo, hi) in empirical_density:
+            sub_density = empirical_density[(lo, hi)]
+            # Ensure normalization (sum of sub_density = total bracket count)
+            d_sum = float(sub_density.sum())
+            if d_sum > 0:
+                sub_density = sub_density * (count / d_sum)
+            else:
+                sub_density = np.full(n_subbins, count / n_subbins)
+        else:
+            sub_density = np.full(n_subbins, count / n_subbins)
+
+        # Each sub-bin spans [lo + i*step, lo + (i+1)*step]; after growth it
+        # becomes [(lo+i*step)*g, (lo+(i+1)*step)*g]. Re-bucket onto nominal.
+        step = (hi - lo) / n_subbins
+        for i, sub_count in enumerate(sub_density):
+            sub_lo_new = (lo + i * step) * g
+            sub_hi_new = (lo + (i + 1) * step) * g
+            sub_width = sub_hi_new - sub_lo_new
+            if sub_width <= 0 or sub_count <= 0:
+                continue
+            density_per_dollar = sub_count / sub_width
+            for (nlo, nhi) in nominal_brackets:
+                if nhi == np.inf:
+                    overlap_lo = max(sub_lo_new, nlo)
+                    overlap_hi = sub_hi_new
+                else:
+                    overlap_lo = max(sub_lo_new, nlo)
+                    overlap_hi = min(sub_hi_new, nhi)
+                if overlap_hi > overlap_lo:
+                    forward[(nlo, nhi)] += density_per_dollar * (overlap_hi - overlap_lo)
+
     return {b: int(round(v)) for b, v in forward.items()}
+
+
+def empirical_density_from_pums(
+    units: "pd.DataFrame",
+    base_counts: Dict[Tuple[float, float], int],
+    n_subbins: int = 20,
+    income_col: str = "income",
+    weight_col: str = "weight",
+) -> Dict[Tuple[float, float], "np.ndarray"]:
+    """Build within-bracket density histograms from PUMS-projected units.
+
+    For each DOTAX bracket, computes a normalized density vector (length
+    ``n_subbins``) reflecting where filers fall within the bracket. Used by
+    ``_migrate_filer_counts`` to replace the unrealistic uniform assumption.
+    """
+    incomes = units[income_col].to_numpy(dtype=float)
+    weights = units[weight_col].to_numpy(dtype=float)
+
+    out: Dict[Tuple[float, float], "np.ndarray"] = {}
+    for (lo, hi) in base_counts.keys():
+        if hi == np.inf:
+            # Top bracket — use point mass at lo, no sub-bin distribution
+            out[(lo, hi)] = np.zeros(n_subbins)
+            continue
+        mask = (incomes >= lo) & (incomes < hi)
+        if not mask.any():
+            out[(lo, hi)] = np.full(n_subbins, 1.0 / n_subbins)
+            continue
+        sub_edges = np.linspace(lo, hi, n_subbins + 1)
+        hist = np.zeros(n_subbins)
+        for i in range(n_subbins):
+            sm = mask & (incomes >= sub_edges[i]) & (incomes < sub_edges[i + 1])
+            hist[i] = float(weights[sm].sum())
+        total = hist.sum()
+        if total > 0:
+            hist = hist / total
+        else:
+            hist = np.full(n_subbins, 1.0 / n_subbins)
+        out[(lo, hi)] = hist
+    return out
 
 
 def build_targets(
@@ -222,6 +292,10 @@ def build_targets(
     base_tax: Optional[Dict[Tuple[float, float], float]] = None,
     base_status: Optional[Dict[str, int]] = None,
     base_year: int = 2022,
+    include_agi_targets: bool = True,
+    cbo_vintage: str = "2025-01",
+    hawaii_factors: Optional[Dict[str, float]] = None,
+    empirical_density: Optional[Dict[Tuple[float, float], "np.ndarray"]] = None,
 ) -> ForwardTargets:
     """Construct ``ForwardTargets`` for the given year.
 
@@ -256,7 +330,9 @@ def build_targets(
     drift  = 1 + rate_drift * years
 
     # ── 1. Filer counts: bracket migration ────────────────────────────────────
-    forward_counts = _migrate_filer_counts(bc, g_low, g_high)
+    forward_counts = _migrate_filer_counts(
+        bc, g_low, g_high, empirical_density=empirical_density,
+    )
 
     # ── 2. Tax targets: per-filer effective rate × new counts × drift ─────────
     raw_tax: Dict[Tuple[float, float], float] = {}
@@ -281,12 +357,34 @@ def build_targets(
     status_scale = new_total / base_total if base_total > 0 else 1.0
     forward_status = {s: int(round(v * status_scale)) for s, v in bs.items()}
 
+    # ── 4. Forward AGI mass per bracket (stage-2 reweighting target) ────────
+    agi_mass_targets: Optional[Dict[Tuple[float, float], float]] = None
+    tier_agi_targets: Optional[Dict[Tuple[float, float], float]] = None
+    if include_agi_targets:
+        try:
+            from tax_modeler.calibration.forward_agi_targets import build_agi_targets
+            # Use the forward-projected $1M+ count to allocate SOI tier filers
+            fwd_1m_count = int(forward_counts.get((1_000_000, np.inf), 1_824))
+            agi = build_agi_targets(
+                year,
+                cbo_vintage=cbo_vintage,
+                hawaii_factors=hawaii_factors,
+                base_year=base_year,
+                soi_tier_total_filers=fwd_1m_count,
+            )
+            agi_mass_targets = agi.bracket_agi_targets
+            tier_agi_targets = agi.tier_agi_targets if agi.tier_agi_targets else None
+        except Exception as exc:
+            logger.warning("Forward AGI targets unavailable — proceeding without: %s", exc)
+
     return ForwardTargets(
         year=year,
         filer_targets=forward_counts,
         tax_targets=forward_tax,
         status_targets=forward_status,
         aggregate_tax_M=aggregate,
+        agi_mass_targets=agi_mass_targets,
+        tier_agi_targets=tier_agi_targets,
     )
 
 

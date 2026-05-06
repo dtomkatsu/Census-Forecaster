@@ -56,18 +56,26 @@ CBO_COMPONENTS: tuple[str, ...] = (
     "other",
 )
 
-# Default Hawaii calibration factors (placeholder — refine with backtest).
-# Reflects HI's documented lag in wage growth vs national tourism-economy
-# pattern and parity on capital-markets-driven components.
+# Default Hawaii calibration factors (empirical, derived TY2014-TY2022).
+# - wages 0.85: HI wage CAGR ~85% of national CBO (BEA SAINC4)
+# - business/proprietors 0.90: tourism-driven, slower growth
+# - capital_gains 0.85: HI net LTCG CAGR 9.6%/yr vs national 10.5%/yr
+#   (DOTAX TY2014-TY2022); HI wealth is real-estate-heavy (lower CG turnover);
+#   COR Jan 2026 forecast implies CG ~3-5%/yr through FY2032 (well below CBO).
+#   Confidence: medium (10 datapoints, volatile series, no published HI/S&P
+#   elasticity). See research notes 2026-05-05.
+# - dividends/interest 1.00: national financial markets, federal-rate-driven
+# - retirement 1.00: SS / pensions federally indexed
+# - other 0.90: mostly rental; HI housing market cooler post-2022
 DEFAULT_HAWAII_FACTORS: Dict[str, float] = {
-    "wages":         0.85,   # HI wage growth historically ~85% of national CBO
-    "proprietors":   0.90,   # business growth tracks tourism — slightly slower
+    "wages":         0.85,
+    "proprietors":   0.90,
     "business":      0.90,
-    "capital_gains": 1.00,   # top filers have national equity exposure
-    "dividends":     1.00,   # national financial markets
-    "interest":      1.00,   # national rate environment
-    "retirement":    1.00,   # SS / pensions indexed federally
-    "other":         0.90,   # mostly rental — HI cooler housing market lately
+    "capital_gains": 0.85,
+    "dividends":     1.00,
+    "interest":      1.00,
+    "retirement":    1.00,
+    "other":         0.90,
 }
 
 
