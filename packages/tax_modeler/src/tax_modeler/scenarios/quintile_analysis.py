@@ -48,20 +48,29 @@ def per_unit_tax(
     tax_units: pd.DataFrame,
     config,
     calc,
-    deduction_col: Optional[str] = None,
 ) -> np.ndarray:
     """Return per-filer net Hawaii state tax (after credits) under *config*.
+
+    Per-filer effective deduction is always
+    ``max(config.standard_deduction_year_SD_per_fs, hi_itemized_deduction)``.
+    The raw itemized column is populated by ``calculate_hawaii_tax`` upstream
+    (when ``deduction_params`` was supplied during projection) — see
+    ``project_tax_units_forward`` and ``year_recalibrator.project_and_recalibrate``.
+
+    If ``hi_itemized_deduction`` is missing (legacy data, pre-Act-46 backtests),
+    falls back to scenario SD only. There is no longer a ``deduction_col``
+    override — that parameter previously caused silent bugs by forcing both
+    baseline and bill scenarios to share a pre-computed effective-deduction
+    column, hiding scenario-specific SD changes (e.g. HB 2306 ORIG SD freeze).
 
     Parameters
     ----------
     tax_units:
-        Projected tax units DataFrame (from project_tax_units_forward).
+        Projected tax units DataFrame.
     config:
-        TaxSystemConfig (Act 46 or SB 3125 CD1).
+        TaxSystemConfig (Act 46, SB 3125 CD1, HB 2306 ORIG, etc.).
     calc:
         TaxCalculator instance.
-    deduction_col:
-        Column name for per-unit effective deduction override.
 
     Returns
     -------
@@ -89,34 +98,26 @@ def per_unit_tax(
     nan_dep = np.isnan(raw_dep)
     num_dependents = np.where(nan_dep, 0, raw_dep).astype(int)
 
-    if deduction_col and deduction_col in tax_units.columns:
-        # Caller-provided override (e.g. pre-computed effective deduction).
-        # NOTE: this path forces both baseline and scenario configs to use
-        # the same column value, which hides scenario-specific SD changes
-        # (e.g. HB 2306 ORIG SD freeze). Prefer deduction_col=None unless
-        # comparing scenarios that don't change the standard deduction.
-        deductions = tax_units[deduction_col].fillna(0.0).to_numpy(dtype=float)
+    # Effective deduction = max(scenario_SD_per_fs, itemized).
+    # The raw itemized column is populated upstream by calculate_hawaii_tax
+    # (when deduction_params was supplied during projection). Itemizers keep
+    # their itemized amount under any scenario; only non-itemizers see the
+    # scenario-specific SD. This is essential for SD-changing bills like
+    # HB 2306 ORIG, where applying the SD difference to itemizers would
+    # overstate the bill's revenue impact.
+    sd_per_filer = np.empty(n, dtype=float)
+    for fs in np.unique(statuses):
+        sd_per_filer[statuses == fs] = calc.get_standard_deduction(
+            config.standard_deduction_year, fs
+        )
+    if "hi_itemized_deduction" in tax_units.columns:
+        itemized = (
+            tax_units["hi_itemized_deduction"]
+            .fillna(0.0).to_numpy(dtype=float)
+        )
+        deductions = np.maximum(sd_per_filer, itemized)
     else:
-        # Compute effective deduction = max(scenario_SD_per_fs, itemized).
-        # When `hi_itemized_deduction` is present (populated upstream by
-        # calculate_hawaii_tax with TY-scaled deduction_params), itemizers
-        # keep their itemized amount under any scenario; only non-itemizers
-        # see the scenario-specific SD. This is required for SD-changing
-        # bills like HB 2306 ORIG, where applying the SD difference to
-        # itemizers would overstate the bill's revenue impact.
-        sd_per_filer = np.empty(n, dtype=float)
-        for fs in np.unique(statuses):
-            sd_per_filer[statuses == fs] = calc.get_standard_deduction(
-                config.standard_deduction_year, fs
-            )
-        if "hi_itemized_deduction" in tax_units.columns:
-            itemized = (
-                tax_units["hi_itemized_deduction"]
-                .fillna(0.0).to_numpy(dtype=float)
-            )
-            deductions = np.maximum(sd_per_filer, itemized)
-        else:
-            deductions = sd_per_filer
+        deductions = sd_per_filer
 
     exemption_amount = num_exemptions * config.personal_exemption
     taxable_full = np.maximum(0.0, incomes - deductions - exemption_amount)
@@ -389,7 +390,6 @@ def generate_quintile_report(
     scenario_cfg,
     credit_overlay: dict,
     calc,
-    deduction_col: Optional[str] = None,
     scenario_params: Optional[dict] = None,
     quintile_breaks: Optional[np.ndarray] = None,
     cor_scale_factor: Optional[float] = None,
@@ -409,8 +409,6 @@ def generate_quintile_report(
         and the sub-components needed for individual credit distribution.
     calc:
         TaxCalculator instance (shared with the scenario runner).
-    deduction_col:
-        Column for per-unit effective deduction.
     scenario_params:
         Scenario dict (label, reec, behav, reec_eff_share, …) used to
         call the REEC distribution helper. If None, credit distribution
@@ -435,8 +433,8 @@ def generate_quintile_report(
         perunit_df  — full per-filer detail
     """
     # ── Per-unit bracket tax under both systems ───────────────────────────────
-    act46_net = per_unit_tax(projected, baseline_cfg, calc, deduction_col)
-    cd1_net   = per_unit_tax(projected, scenario_cfg,  calc, deduction_col)
+    act46_net = per_unit_tax(projected, baseline_cfg, calc)
+    cd1_net   = per_unit_tax(projected, scenario_cfg,  calc)
 
     # Household-level income for ITEP-style quintile assignment. Each tax
     # unit inherits its household's total income for the purpose of binning,

@@ -480,14 +480,14 @@ if __name__ == "__main__":
             # Compute year-specific COR scale factor from this scenario's
             # Act 46 microsim baseline (per-filer aggregated revenue, $M).
             act46_baseline_M = float(
-                (per_unit_tax(projected_q, base_cfg, q_calc, deduction_col=None)
+                (per_unit_tax(projected_q, base_cfg, q_calc)
                  * projected_q["weight"].to_numpy(dtype=float)).sum() / 1e6
             )
             cor_factor = cor_scale_factor_for_year(yr, act46_baseline_M)
 
             q_df, b_df, _ = generate_quintile_report(
                 projected_q, base_cfg, scen_cfg, credit_ov,
-                q_calc, deduction_col=None,
+                q_calc,
                 scenario_params=mid_sc,
                 quintile_breaks=base_2026_breaks,
                 cor_scale_factor=cor_factor,

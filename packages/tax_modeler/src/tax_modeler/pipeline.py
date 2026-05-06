@@ -207,7 +207,7 @@ def _enrich_for_credits(df: pd.DataFrame) -> pd.DataFrame:
 
 def _compute_base_tax(
     df: pd.DataFrame,
-    deduction_params: Optional[dict] = None,
+    deduction_params=None,
     tax_year: int = 2023,
 ) -> pd.DataFrame:
     """Stage 4: compute baseline Hawaii tax + federal credits.
@@ -215,11 +215,14 @@ def _compute_base_tax(
     Parameters
     ----------
     deduction_params:
-        When provided, applies expected-value itemized deductions per
-        ``_expected_itemized_deductions``. Pass the same params used in
-        projection so the calibration target and projected tax are computed
-        on the same deduction basis (avoids the standard-only-vs-itemized
-        "double discount" at high incomes).
+        REQUIRED for tax_year ≥ 2024. Pass either scaled params from
+        ``scale_deduction_params_for_target_year(year)`` for itemizing-aware
+        computation, or ``NO_ITEMIZING`` (from ``tax_modeler.liability.hawaii``)
+        to deliberately compute SD-only tax. ``None`` raises ValueError for
+        TY ≥ 2024 — silent fallback is what caused several past bugs where
+        forecast scripts forgot the parameter and got SD-only tax mixed with
+        itemized projections downstream. For tax_year < 2024 (pre-Act-46),
+        ``None`` is accepted.
     tax_year:
         Year used to select bracket vintage and standard-deduction values.
         Default 2023 reflects the DOTAX Table A8 calibration anchor.

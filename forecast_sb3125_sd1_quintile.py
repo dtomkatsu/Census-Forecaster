@@ -142,7 +142,7 @@ def main() -> None:
         # COR scaling: ratio of official COR FY{yr} IIT projection to our
         # microsim Act 46 baseline. Brings totals into ITEP/COR comparable units.
         act46_M = float(
-            (per_unit_tax(projected, baseline_cfg, calc, deduction_col=None)
+            (per_unit_tax(projected, baseline_cfg, calc)
              * projected["weight"].to_numpy(dtype=float)).sum() / 1e6
         )
         cor_factor = cor_scale_factor_for_year(yr, act46_M)
@@ -161,7 +161,6 @@ def main() -> None:
             projected, baseline_cfg, sb3125_cfg,
             credit_overlay=credit_overlay,
             calc=calc,
-            deduction_col=None,
             scenario_params=mid_scenario_params,
             quintile_breaks=base_2026_breaks,
             cor_scale_factor=cor_factor,

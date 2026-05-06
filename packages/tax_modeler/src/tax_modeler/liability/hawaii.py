@@ -27,9 +27,78 @@ Limitations / simplifications:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
+
+
+# ---------------------------------------------------------------------------
+# Itemizing-policy sentinel
+# ---------------------------------------------------------------------------
+# ``deduction_params=None`` historically meant "skip itemizing" but that's
+# also what callers got by accident when they forgot to pass the parameter.
+# Since several silent bugs traced to forgotten ``deduction_params``, we now
+# require a non-None value for any TY ≥ 2024 (Act 46+) computation.
+#
+# Two valid choices for callers:
+#
+#   1. Pass real params from ``scale_deduction_params_for_target_year(year)``
+#      to enable expected-value itemized deductions (recommended for
+#      revenue forecasts).
+#
+#   2. Pass ``NO_ITEMIZING`` to explicitly compute SD-only tax. Use only
+#      for legacy backtests, sensitivity sweeps, or pre-Act-46 calibrations
+#      where the no-itemizing assumption is intentional.
+#
+# Forgetting the parameter (or passing ``None``) for TY ≥ 2024 is now a
+# ValueError at the entry point — caught at call site, not at silent
+# numerical drift hours later.
+
+class _NoItemizingSentinel:
+    """Singleton sentinel for explicit "compute SD-only tax" requests."""
+    __slots__ = ()
+    _instance: Optional["_NoItemizingSentinel"] = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:
+        return "NO_ITEMIZING"
+
+
+NO_ITEMIZING = _NoItemizingSentinel()
+
+
+def _normalize_deduction_params(
+    deduction_params: Any, tax_year: int, caller: str,
+) -> Optional[dict]:
+    """Validate and normalize ``deduction_params`` for tax-computation entry.
+
+    Returns the dict to pass into the per-filer logic (or None for SD-only
+    after explicit opt-in). Raises ValueError when a forecast-relevant
+    tax_year (≥ 2024) is invoked without an explicit choice.
+    """
+    if isinstance(deduction_params, _NoItemizingSentinel):
+        return None
+    if deduction_params is None:
+        if tax_year >= 2024:
+            raise ValueError(
+                f"{caller}(tax_year={tax_year}) requires an explicit "
+                "deduction_params choice. Pass either "
+                "scale_deduction_params_for_target_year(year) for "
+                "itemizing-aware computation, or NO_ITEMIZING (imported "
+                "from tax_modeler.liability.hawaii) to deliberately "
+                "compute SD-only tax."
+            )
+        return None
+    if not isinstance(deduction_params, dict):
+        raise TypeError(
+            f"{caller}: deduction_params must be a dict, NO_ITEMIZING, "
+            f"or None (TY < 2024 only). Got {type(deduction_params).__name__}."
+        )
+    return deduction_params
 
 
 # ---------------------------------------------------------------------------
@@ -307,7 +376,7 @@ def calculate_hawaii_tax(
     tax_unit: Dict,
     params: HawaiiTaxParameters = HAWAII_2023,
     tax_year: int = 2023,
-    deduction_params: Optional[dict] = None,
+    deduction_params: Any = None,
     cg_income: float = 0.0,
 ) -> Dict[str, float]:
     """
@@ -326,11 +395,13 @@ def calculate_hawaii_tax(
             - num_dependents: int
         params: HawaiiTaxParameters (defaults to 2023; used only for TY ≤ 2023)
         tax_year: Tax year for bracket/deduction vintage selection (default 2023).
-        deduction_params: When provided, expected-value itemized deductions are
-            computed via :func:`_expected_itemized_deductions` and used in place of
-            the standard deduction for filers where itemizing reduces taxable income.
-            Pass scaled params from ``scale_deduction_params_for_target_year`` when
-            projecting forward; omit (``None``) to use the standard deduction only.
+        deduction_params: REQUIRED for tax_year ≥ 2024. Pass either:
+            * scaled params from ``scale_deduction_params_for_target_year(year)``
+              for itemizing-aware computation (recommended for forecasts), or
+            * ``NO_ITEMIZING`` (imported from this module) to deliberately
+              compute SD-only tax (legacy backtests / sensitivity sweeps).
+            For tax_year < 2024 (pre-Act-46), ``None`` is permitted and
+            falls back to SD-only.
         cg_income: Net long-term capital gains included in ``income``.
             When non-zero, the HRS §235-16 cap is applied: the incremental
             bracket tax attributable to CG income is limited to
@@ -351,6 +422,10 @@ def calculate_hawaii_tax(
             - hi_tax_liability: Net Hawaii tax (may be negative if credit exceeds liability)
             - hi_cg_cap_savings: Tax reduction from CG cap (0 when cap not applied)
     """
+    deduction_params = _normalize_deduction_params(
+        deduction_params, tax_year, "calculate_hawaii_tax"
+    )
+
     result = {
         'hi_agi': 0.0,
         'hi_standard_deduction': 0.0,
@@ -489,7 +564,7 @@ def _apply_brackets(taxable_income: float, brackets: List[Tuple[float, float]]) 
 def calculate_hawaii_tax_for_units(
     tax_units_df: pd.DataFrame,
     tax_year: int = 2023,
-    deduction_params: Optional[dict] = None,
+    deduction_params: Any = None,
 ) -> pd.DataFrame:
     """
     Calculate Hawaii income tax for all tax units in a DataFrame.
@@ -503,14 +578,20 @@ def calculate_hawaii_tax_for_units(
         tax_year: Tax year for bracket/deduction vintage (default 2023).
                   Pass ``tax_year=target_year`` from projection code so that
                   TY2025+ projections use Act 46 doubled thresholds.
-        deduction_params: When provided, expected-value itemized deductions are
-            computed and used in place of the standard deduction for filers where
-            itemizing reduces taxable income.  Pass scaled params from
-            ``scale_deduction_params_for_target_year`` when projecting forward.
+        deduction_params: REQUIRED for tax_year ≥ 2024. Pass either
+            scaled params from ``scale_deduction_params_for_target_year(year)``
+            or ``NO_ITEMIZING`` to deliberately skip itemizing.
 
     Returns:
         DataFrame with Hawaii tax columns added.
     """
+    normalized = _normalize_deduction_params(
+        deduction_params, tax_year, "calculate_hawaii_tax_for_units"
+    )
+    # Forward NO_ITEMIZING (not None) into the per-unit call so the inner
+    # validation accepts it for tax_year ≥ 2024 without a redundant error.
+    inner_params: Any = normalized if normalized is not None else NO_ITEMIZING
+
     # Derive per-unit capital gains income for the §235-16 cap.
     # synthetic_cg_share is set by UltraHighIncomeSynthesizerV2 for $1M+ rows;
     # base PUMS units don't have it, so they default to 0 (no cap applied).
@@ -524,7 +605,7 @@ def calculate_hawaii_tax_for_units(
             income = float(row.get("income", 0) or 0)
             cg_income = income * cg_share
         hi_tax = calculate_hawaii_tax(
-            unit, tax_year=tax_year, deduction_params=deduction_params,
+            unit, tax_year=tax_year, deduction_params=inner_params,
             cg_income=cg_income,
         )
         unit.update(hi_tax)
