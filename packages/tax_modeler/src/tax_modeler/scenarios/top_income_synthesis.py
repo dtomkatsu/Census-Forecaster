@@ -43,6 +43,11 @@ DOTAX_1M_PLUS_FILER_TARGET = 1_824
 DOTAX_1M_PLUS_TAX_TARGET_M = 663.0   # $ millions
 PARETO_ALPHA = 1.5                    # IRS SOI 2022 tail shape
 
+# DOTAX Table A8 targets for $500K-$1M (PUMS topcode-compression range)
+DOTAX_500K_750K_FILER_TARGET = 2_549
+DOTAX_750K_1M_FILER_TARGET   = 1_004
+DOTAX_500K_1M_TAX_TARGET_M   = 234.0   # $149M ($500K-$750K) + $85M ($750K-$1M)
+
 HONOLULU_COUNTY = "Honolulu"
 HONOLULU_PUMA = "0301"               # urban Honolulu PUMA — high-income concentration
 
@@ -280,3 +285,54 @@ def rescale_synthetic_tail_to_tax_target(
         k, actual_tax_m, target_tax_m,
     )
     return out, k
+
+
+# ---------------------------------------------------------------------------
+# Mid-high-income ($500K-$1M) income redistribution — corrects PUMS topcode
+# compression while preserving PUMS demographics (filing status, household
+# structure, geography). Replaces ``synthesize_mid_high_filers`` v1 which
+# used DOTAX A8 filing-status shares (69% MFJ) and dropped the Single/MFS
+# share that drives much of the HB 2306 surcharge revenue.
+# ---------------------------------------------------------------------------
+def redistribute_mid_high_incomes(
+    df: pd.DataFrame,
+    pareto_alpha: float = PARETO_ALPHA,
+) -> pd.DataFrame:
+    """Redistribute $500K-$1M filers' ``income`` to truncated Pareto.
+
+    PUMS bottom-codes above-topcode incomes at the median above threshold,
+    compressing $500K-$1M filers near $500K. This understates HB 2306
+    surcharge revenue (which depends on income above $225K/$337.5K/$450K
+    thresholds, scaling with how far each filer's income exceeds those).
+
+    The function rewrites ``income`` for filers in [$500K, $1M) using a
+    truncated Pareto inverse-CDF mapped to each filer's weighted percentile.
+    All other columns (filing_status, hh_id, num_adults, weight, deductions,
+    credits) are preserved — so the PUMS-actual filing-status mix (~62% MFJ
+    / 26% MFS / 10% Single / 2.5% HoH for Hawaii $500K-$1M) carries through.
+
+    Caller must re-run ``_compute_base_tax`` afterward to refresh tax columns.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Tax units after IPF calibration. Must have ``income``, ``weight``.
+    pareto_alpha : float
+        Pareto shape, default 1.5 (IRS SOI 2022 Hawaii top-tail).
+
+    Returns
+    -------
+    DataFrame with ``income`` (and any AGI alias columns) redistributed.
+    """
+    from tax_modeler.adjustments.mid_high_income_synthesizer import (
+        redistribute_500k_to_1m_incomes,
+    )
+    out, _ = redistribute_500k_to_1m_incomes(df, pareto_alpha=pareto_alpha)
+
+    # Stale tax columns must be recomputed after income changes
+    mask = (out["income"] >= 500_000) & (out["income"] < 1_000_000)
+    for col in ("hi_tax_liability", "hi_state_tax", "hi_agi", "hi_taxable_income",
+                "hi_tax_before_credits"):
+        if col in out.columns:
+            out.loc[mask, col] = 0.0
+    return out

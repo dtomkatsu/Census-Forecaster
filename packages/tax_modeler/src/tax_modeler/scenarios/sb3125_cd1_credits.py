@@ -149,9 +149,13 @@ REEC_DEMAND_SCENARIOS: dict[str, dict[int, float]] = {
     "pre_obbba": {y: 1.00 for y in range(2024, 2032)},
 
     # SEIA-anchored, Hawaii-tempered. Recommended default.
-    # 2026 -10% (vs SEIA's -19%; Hawaii leases shielded), gradual recovery.
-    "obbba_mid": {2024: 1.00, 2025: 1.10, 2026: 0.90, 2027: 0.92,
-                  2028: 0.95, 2029: 0.98, 2030: 1.00, 2031: 1.00},
+    # 2025 +10% pull-forward; 2026-27 trough at -15 to -17% (vs SEIA national
+    # -19%, Hawaii buffered by $0.42/kWh electricity prices and §48E lease
+    # share). Gradual recovery as state credit becomes more decisive at
+    # the margin, but no return to pre-OBBBA — Hawaii rooftop saturation
+    # (~35%, highest in US) caps long-run demand below 2024 levels.
+    "obbba_mid": {2024: 1.00, 2025: 1.10, 2026: 0.85, 2027: 0.83,
+                  2028: 0.85, 2029: 0.87, 2030: 0.90, 2031: 0.85},
 
     # SEIA national figures applied directly + extended decay.
     # Severe case: Hawaii REEC declines as solar economics deteriorate.
@@ -246,22 +250,36 @@ def _reec_demand_factor(target_year: int, scenario: str) -> float:
     return table[max(table)]
 
 
+_CORPORATE_48E_TAPER: dict[int, float] = {
+    # §48E (commercial solar/wind ITC) active through 12/31/2027.
+    # Post-expiration, Hawaii commercial solar loses the federal tax-equity
+    # financing complement. Projects using Sunrun-style lease/PPA structures
+    # financed via §48E cannot use that credit for new projects after 2027.
+    # Hawaii's $0.42/kWh electricity prices sustain some commercial solar
+    # economics, so demand doesn't collapse — but project finance reprices
+    # and a meaningful share of marginal commercial projects no longer pencil.
+    # Taper: -15% in first year post-expiry, converging to -28% by 2031.
+    2027: 1.00,
+    2028: 0.85,
+    2029: 0.80,
+    2030: 0.75,
+    2031: 0.72,
+}
+
+
 def _reec_demand_factor_corporate(target_year: int) -> float:
     """Return the commercial REEC demand-decay multiplier at target_year.
 
-    OBBBA (PL 119-21, Jul 2025) terminated **§25D (residential)** but
-    extended **§48E (commercial)** through 12/31/2027 and tapered it
-    thereafter. Within the 2027–2031 forecast horizon, commercial Hawaii
-    solar economics are not materially altered by the federal change —
-    Sunrun-style leases use §48E rather than §25D, and Hawaii's $0.42/kWh
-    electricity prices keep commercial PV well above project-finance
-    hurdle rates. Returning 1.0 (no decay) for all forecast years is the
-    appropriate residential-vs-commercial split.
-
-    Kept as a function (rather than a constant) so a future scenario
-    layer can introduce a §48E taper if needed without changing callers.
+    Through 2027: §48E (commercial solar/wind ITC) is active → factor = 1.0.
+    Post-2027: §48E expires 12/31/2027; commercial project finance reprices,
+    depressing new REEC-eligible commercial installations by 15–28% over the
+    following years. See ``_CORPORATE_48E_TAPER`` for the year-by-year schedule.
     """
-    return 1.0
+    if target_year in _CORPORATE_48E_TAPER:
+        return _CORPORATE_48E_TAPER[target_year]
+    if target_year < min(_CORPORATE_48E_TAPER):
+        return 1.0
+    return _CORPORATE_48E_TAPER[max(_CORPORATE_48E_TAPER)]
 
 
 def _effective_claim_share_individual(nonrefundable_utilization: float) -> float:
@@ -385,6 +403,7 @@ def compute_credit_overlay(
     corp_subject_to_agi_limit: bool = False,
     reec_effective_claim_share: float = 1.0,
     cgec_annual_growth: float = 0.030,
+    reec_carryforward_utilization_m: float = 0.0,
 ) -> Dict[str, float]:
     """Compute SB 3125 CD1 credit-cap fiscal impact for ``target_year``.
 
@@ -401,6 +420,14 @@ def compute_credit_overlay(
     corp_subject_to_agi_limit : bool
         Whether REEC corporate claims fall under the AGI limit (see
         ``_reec_baseline_M`` docstring). Default False.
+    reec_carryforward_utilization_m : float
+        Estimated REEC nonrefundable carryforward utilization in TY2031
+        ($ millions). Hawaii REEC has a 5-year carryforward for nonrefundable
+        claims (§235-12.5(e)); in TY2031 when new claims are capped at $0,
+        accumulated carryforwards from TY2026-2030 can still be applied
+        against tax liability, partially offsetting savings. Default 0.0
+        (conservative: treats $0 cap as fully blocking carryforward use).
+        Set to 4–9 for realistic scenarios based on accumulated stock.
 
     Returns a dict with the breakdown described in the module docstring.
     """
@@ -423,7 +450,13 @@ def compute_credit_overlay(
         # excess of eligible demand over the cap.
         reec_after_bill = min(reec["total_eligible"], REEC_CAP_2027_2030_M)
     elif target_year >= 2031:
-        reec_after_bill = REEC_CAP_2031_PLUS_M
+        # New claims = $0 (cap eliminated). But filers may still draw down
+        # nonrefundable carryforwards accumulated from TY2026-2030 (§235-12.5(e)
+        # allows 5-year carryforward). The carryforward utilization is an
+        # offset to savings — it represents revenue the state still loses
+        # even after the $0 cap. reec_carryforward_utilization_m captures
+        # the estimated carryforward drawdown in this year.
+        reec_after_bill = min(reec_carryforward_utilization_m, reec["total_baseline"])
     else:
         reec_after_bill = reec["total_baseline"]
     reec_savings = max(0.0, reec["total_baseline"] - reec_after_bill)
@@ -431,9 +464,18 @@ def compute_credit_overlay(
     # ---- Capital Goods Excise Tax Credit --------------------------------
     # CGEC is mostly corporate / business-investment.
     # Apply effective_claim_share for nonrefundable utilization realism +
-    # additional 10% reduction for sunset-induced pull-forward (businesses
-    # accelerate capital purchases into 2026-2027 to claim before sunset).
-    PULL_FORWARD_HAIRCUT = 0.90 if target_year > CGEC_SUNSET_YEAR else 1.0
+    # a year-varying pull-forward haircut: businesses accelerate capital
+    # purchases into 2026-2027 to claim before sunset, depressing the
+    # post-sunset baseline most heavily in the immediate aftermath and
+    # fading as normal investment cadence resumes.
+    if target_year <= CGEC_SUNSET_YEAR:
+        PULL_FORWARD_HAIRCUT = 1.0
+    elif target_year == CGEC_SUNSET_YEAR + 1:   # 2028
+        PULL_FORWARD_HAIRCUT = 0.85
+    elif target_year == CGEC_SUNSET_YEAR + 2:   # 2029
+        PULL_FORWARD_HAIRCUT = 0.90
+    else:                                        # 2030+
+        PULL_FORWARD_HAIRCUT = 0.95
     cgec_baseline = (CGEC_TOTAL_M * growth_corporate
                      * reec_effective_claim_share * PULL_FORWARD_HAIRCUT)
     cgec_savings = cgec_baseline if target_year > CGEC_SUNSET_YEAR else 0.0
@@ -467,6 +509,7 @@ def compute_credit_overlay(
         "reec_baseline_$M":              round(reec["total_baseline"], 2),
         "reec_eligible_$M":              round(reec["total_eligible"], 2),
         "reec_after_bill_$M":            round(reec_after_bill, 2),
+        "reec_carryforward_utilization_$M": round(min(reec_carryforward_utilization_m, reec["total_baseline"]), 2),
         "reec_savings_$M":               round(reec_savings, 2),
         # CGEC
         "cgec_baseline_$M":              round(cgec_baseline, 2),

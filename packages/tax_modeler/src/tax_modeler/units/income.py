@@ -24,15 +24,19 @@ def extract_person_income_components(person: pd.Series) -> Dict[str, float]:
     adjinc_raw = float(person.get('ADJINC', 1_000_000) or 1_000_000)
     adjinc = adjinc_raw / 1_000_000
 
+    ssp_gross = float(person.get('SSP', 0) or 0) * adjinc
     return {
-        'wagp': float(person.get('WAGP', 0) or 0) * adjinc,
-        'semp': float(person.get('SEMP', 0) or 0) * adjinc,
-        'intp': float(person.get('INTP', 0) or 0) * adjinc,
-        'div':  float(person.get('DIV', 0) or 0) * adjinc,
-        'retp': float(person.get('RETP', 0) or 0) * adjinc,
-        'ssp':  float(person.get('SSP', 0) or 0) * 0.85 * adjinc,  # 85% taxable
-        'oip':  float(person.get('OIP', 0) or 0) * adjinc,
-        'agep': int(person.get('AGEP', 0) or 0),
+        'wagp':     float(person.get('WAGP', 0) or 0) * adjinc,
+        'semp':     float(person.get('SEMP', 0) or 0) * adjinc,
+        'intp':     float(person.get('INTP', 0) or 0) * adjinc,
+        'div':      float(person.get('DIV', 0) or 0) * adjinc,
+        'retp':     float(person.get('RETP', 0) or 0) * adjinc,
+        'ssp':      ssp_gross * 0.85,   # 85% taxable — used for AGI/tax calc
+        'ssp_full': ssp_gross,           # 100% — used for total-cash-income (TCI)
+        'oip':      float(person.get('OIP', 0) or 0) * adjinc,
+        'ssip':     float(person.get('SSIP', 0) or 0) * adjinc,  # SSI benefits
+        'pap':      float(person.get('PAP', 0) or 0) * adjinc,   # Public assistance
+        'agep':     int(person.get('AGEP', 0) or 0),
     }
 
 def calculate_person_income(

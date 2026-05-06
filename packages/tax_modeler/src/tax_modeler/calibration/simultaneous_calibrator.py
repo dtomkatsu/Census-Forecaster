@@ -110,10 +110,13 @@ def phase1_reweight(
     tolerance: float = 0.005,
     weight_floor: float = 0.05,
     weight_ceiling_ratio: float = 15.0,
+    *,
+    filer_targets: Optional[Dict[Tuple[float, float], int]] = None,
+    status_targets: Optional[Dict[str, int]] = None,
 ) -> pd.DataFrame:
     """
-    Adjust weights to simultaneously match DOTAX filer-count targets across
-    two margins: (a) AGI bracket and (b) filing status.
+    Adjust weights to simultaneously match DOTAX-style filer-count targets
+    across two margins: (a) AGI bracket and (b) filing status.
 
     Uses iterative raking (multiplicative IPF): alternate between the two
     margin constraints, scaling weights in each pass, until convergence.
@@ -124,19 +127,34 @@ def phase1_reweight(
         tolerance: Convergence when every marginal is within this fraction of target.
         weight_floor: Minimum allowed weight (prevents zeros).
         weight_ceiling_ratio: Max ratio of calibrated-to-original weight.
+        filer_targets: Optional override for AGI-bracket filer counts. When
+            ``None`` (default), uses the TY2022 DOTAX targets. Used by
+            ``year_recalibrator`` to pass forward-year targets.
+        status_targets: Optional override for filing-status totals. Same
+            default behaviour.
 
     Returns:
         DataFrame with updated 'weight' column and 'weight_original' preserving
         the pre-calibration values.
     """
+    fts = filer_targets if filer_targets is not None else DOTAX_FILER_TARGETS
+    sts = status_targets if status_targets is not None else DOTAX_STATUS_TARGETS
+    brackets = sorted(fts.keys())
+
     result = df.copy()
-    result['weight_original'] = result['weight'].copy()
+    if 'weight_original' not in result.columns:
+        result['weight_original'] = result['weight'].copy()
 
     # Pre-compute bracket assignment (integer index for speed)
-    result['_bracket_idx'] = result['agi'].apply(_bracket_index)
+    def _idx(agi: float) -> int:
+        for i, (lo, hi) in enumerate(brackets):
+            if lo <= agi < hi:
+                return i
+        return len(brackets) - 1
+    result['_bracket_idx'] = result['agi'].apply(_idx)
 
     # Map filing status to integer for fast groupby
-    status_list = sorted(DOTAX_STATUS_TARGETS.keys())
+    status_list = sorted(sts.keys())
     status_to_int = {s: i for i, s in enumerate(status_list)}
     result['_status_idx'] = result['filing_status'].map(status_to_int)
 
@@ -150,7 +168,7 @@ def phase1_reweight(
         result = result[~unmapped].copy()
         result['_status_idx'] = result['_status_idx'].astype(int)
 
-    # Upper bound on weight per unit
+    # Upper bound on weight per unit (relative to the pre-rake weight)
     weight_caps = result['weight_original'] * weight_ceiling_ratio
 
     converged = False
@@ -158,10 +176,10 @@ def phase1_reweight(
         max_deviation = 0.0
 
         # --- Margin A: AGI bracket filer counts ---
-        for b_idx, (lo, hi) in enumerate(AGI_BRACKETS):
+        for b_idx, (lo, hi) in enumerate(brackets):
             mask = result['_bracket_idx'] == b_idx
             current = result.loc[mask, 'weight'].sum()
-            target = DOTAX_FILER_TARGETS[(lo, hi)]
+            target = fts[(lo, hi)]
             if current > 0 and target > 0:
                 factor = target / current
                 result.loc[mask, 'weight'] *= factor
@@ -172,7 +190,7 @@ def phase1_reweight(
             s_idx = status_to_int[s_name]
             mask = result['_status_idx'] == s_idx
             current = result.loc[mask, 'weight'].sum()
-            target = DOTAX_STATUS_TARGETS[s_name]
+            target = sts[s_name]
             if current > 0 and target > 0:
                 factor = target / current
                 result.loc[mask, 'weight'] *= factor
@@ -202,10 +220,10 @@ def phase1_reweight(
 
     # --- Report final match quality ---
     logger.info("\n  Phase 1 — Filer count match by AGI bracket:")
-    for b_idx, (lo, hi) in enumerate(AGI_BRACKETS):
+    for b_idx, (lo, hi) in enumerate(brackets):
         mask = result['_bracket_idx'] == b_idx
         actual = result.loc[mask, 'weight'].sum()
-        target = DOTAX_FILER_TARGETS[(lo, hi)]
+        target = fts[(lo, hi)]
         pct = (actual / target - 1) * 100 if target > 0 else 0
         label = _bracket_label(lo, hi)
         logger.info(f"    {label:<18s}  {actual:>10,.0f} vs {target:>10,d}  ({pct:>+5.1f}%)")
@@ -215,7 +233,7 @@ def phase1_reweight(
         s_idx = status_to_int[s_name]
         mask = result['_status_idx'] == s_idx
         actual = result.loc[mask, 'weight'].sum()
-        target = DOTAX_STATUS_TARGETS[s_name]
+        target = sts[s_name]
         pct = (actual / target - 1) * 100 if target > 0 else 0
         logger.info(f"    {s_name:<30s}  {actual:>10,.0f} vs {target:>10,d}  ({pct:>+5.1f}%)")
 
@@ -233,10 +251,12 @@ def phase2_tax_calibrate(
     weight_col: str = 'weight',
     multiplier_floor: float = 0.3,
     multiplier_ceiling: float = 5.0,
+    *,
+    tax_targets: Optional[Dict[Tuple[float, float], float]] = None,
 ) -> pd.DataFrame:
     """
     Scale per-unit tax liabilities so that the weighted total in every AGI
-    bracket matches the DOTAX Table A8 target.
+    bracket matches a DOTAX-style target.
 
     This is a single-pass, exact calibration: one scalar multiplier per
     bracket.  No iteration, no blending, no caps that prevent convergence.
@@ -251,20 +271,31 @@ def phase2_tax_calibrate(
         weight_col: Name of the weight column.
         multiplier_floor: Minimum allowed tax multiplier.
         multiplier_ceiling: Maximum allowed tax multiplier.
+        tax_targets: Optional override for per-bracket tax-target dict
+            ``{(lo, hi): tax_M}``. Default: TY2022 DOTAX targets.
 
     Returns:
         DataFrame with adjusted tax column and new 'tax_multiplier' column.
     """
+    tts = tax_targets if tax_targets is not None else DOTAX_TAX_TARGETS
+    brackets = sorted(tts.keys())
+
     result = df.copy()
     result['tax_multiplier'] = 1.0
-    result['_bracket_idx'] = result['agi'].apply(_bracket_index)
+
+    def _idx(agi: float) -> int:
+        for i, (lo, hi) in enumerate(brackets):
+            if lo <= agi < hi:
+                return i
+        return len(brackets) - 1
+    result['_bracket_idx'] = result['agi'].apply(_idx)
 
     total_model = 0.0
     total_target = 0.0
 
     logger.info("\n  Phase 2 — Tax calibration by AGI bracket:")
 
-    for b_idx, (lo, hi) in enumerate(AGI_BRACKETS):
+    for b_idx, (lo, hi) in enumerate(brackets):
         mask = result['_bracket_idx'] == b_idx
         n_units = mask.sum()
         if n_units == 0:
@@ -273,7 +304,7 @@ def phase2_tax_calibrate(
         model_tax_m = (
             result.loc[mask, tax_col] * result.loc[mask, weight_col]
         ).sum() / 1_000_000
-        target_tax_m = DOTAX_TAX_TARGETS[(lo, hi)]
+        target_tax_m = tts[(lo, hi)]
 
         if model_tax_m > 0:
             raw_mult = target_tax_m / model_tax_m
@@ -333,11 +364,18 @@ class SimultaneousCalibrator:
         raking_tolerance: float = 0.005,
         weight_ceiling_ratio: float = 15.0,
         tax_multiplier_ceiling: float = 5.0,
+        *,
+        filer_targets: Optional[Dict[Tuple[float, float], int]] = None,
+        status_targets: Optional[Dict[str, int]] = None,
+        tax_targets: Optional[Dict[Tuple[float, float], float]] = None,
     ):
         self.raking_max_iter = raking_max_iter
         self.raking_tolerance = raking_tolerance
         self.weight_ceiling_ratio = weight_ceiling_ratio
         self.tax_multiplier_ceiling = tax_multiplier_ceiling
+        self.filer_targets = filer_targets
+        self.status_targets = status_targets
+        self.tax_targets = tax_targets
 
     def calibrate(self, df: pd.DataFrame) -> pd.DataFrame:
         """Run both calibration phases and return the calibrated DataFrame."""
@@ -361,6 +399,8 @@ class SimultaneousCalibrator:
             max_iterations=self.raking_max_iter,
             tolerance=self.raking_tolerance,
             weight_ceiling_ratio=self.weight_ceiling_ratio,
+            filer_targets=self.filer_targets,
+            status_targets=self.status_targets,
         )
 
         mid_filers = result['weight'].sum()
@@ -372,14 +412,19 @@ class SimultaneousCalibrator:
         result = phase2_tax_calibrate(
             result,
             multiplier_ceiling=self.tax_multiplier_ceiling,
+            tax_targets=self.tax_targets,
         )
 
         post_filers = result['weight'].sum()
         post_tax = (result['hi_state_tax'] * result['weight']).sum() / 1_000_000
-        gap = (post_tax / 3029 - 1) * 100
+        target_total = sum((self.tax_targets or DOTAX_TAX_TARGETS).values())
+        gap = (post_tax / target_total - 1) * 100 if target_total > 0 else 0.0
 
         logger.info("\n" + "=" * 72)
-        logger.info(f"  FINAL: {post_filers:,.0f} weighted filers, ${post_tax:,.1f}M tax  ({gap:>+.1f}% vs $3,029M)")
+        logger.info(
+            f"  FINAL: {post_filers:,.0f} weighted filers, ${post_tax:,.1f}M tax  "
+            f"({gap:>+.1f}% vs ${target_total:,.0f}M target)"
+        )
         logger.info("=" * 72)
 
         return result

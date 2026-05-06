@@ -1191,11 +1191,15 @@ class TaxUnitConstructor:
             'primary_wagp': p1['wagp'], 'primary_semp': p1['semp'],
             'primary_intp': p1['intp'], 'primary_div': p1['div'],
             'primary_retp': p1['retp'], 'primary_ssp': p1['ssp'],
+            'primary_ssp_full': p1['ssp_full'], 'primary_ssip': p1['ssip'],
+            'primary_pap': p1['pap'],
             'primary_oip': p1['oip'], 'primary_agep': p1['agep'],
             # Secondary filer income components
             'secondary_wagp': p2['wagp'], 'secondary_semp': p2['semp'],
             'secondary_intp': p2['intp'], 'secondary_div': p2['div'],
             'secondary_retp': p2['retp'], 'secondary_ssp': p2['ssp'],
+            'secondary_ssp_full': p2['ssp_full'], 'secondary_ssip': p2['ssip'],
+            'secondary_pap': p2['pap'],
             'secondary_oip': p2['oip'], 'secondary_agep': p2['agep'],
         }
 
@@ -1336,11 +1340,15 @@ class TaxUnitConstructor:
             'primary_wagp': p1['wagp'], 'primary_semp': p1['semp'],
             'primary_intp': p1['intp'], 'primary_div': p1['div'],
             'primary_retp': p1['retp'], 'primary_ssp': p1['ssp'],
+            'primary_ssp_full': p1['ssp_full'], 'primary_ssip': p1['ssip'],
+            'primary_pap': p1['pap'],
             'primary_oip': p1['oip'], 'primary_agep': p1['agep'],
             # Secondary filer income components
             'secondary_wagp': p2['wagp'], 'secondary_semp': p2['semp'],
             'secondary_intp': p2['intp'], 'secondary_div': p2['div'],
             'secondary_retp': p2['retp'], 'secondary_ssp': p2['ssp'],
+            'secondary_ssp_full': p2['ssp_full'], 'secondary_ssip': p2['ssip'],
+            'secondary_pap': p2['pap'],
             'secondary_oip': p2['oip'], 'secondary_agep': p2['agep'],
         }
 
@@ -1517,11 +1525,15 @@ class TaxUnitConstructor:
             'primary_wagp': p1['wagp'], 'primary_semp': p1['semp'],
             'primary_intp': p1['intp'], 'primary_div': p1['div'],
             'primary_retp': p1['retp'], 'primary_ssp': p1['ssp'],
+            'primary_ssp_full': p1['ssp_full'], 'primary_ssip': p1['ssip'],
+            'primary_pap': p1['pap'],
             'primary_oip': p1['oip'], 'primary_agep': p1['agep'],
             # Secondary filer (none for single filers — zero for uniform schema)
             'secondary_wagp': 0.0, 'secondary_semp': 0.0,
             'secondary_intp': 0.0, 'secondary_div': 0.0,
             'secondary_retp': 0.0, 'secondary_ssp': 0.0,
+            'secondary_ssp_full': 0.0, 'secondary_ssip': 0.0,
+            'secondary_pap': 0.0,
             'secondary_oip': 0.0, 'secondary_agep': 0,
         }
 

@@ -84,27 +84,39 @@ PTE_RATE = 0.09
 # ---------------------------------------------------------------------------
 @dataclass
 class BehavioralParams:
-    """Behavioral elasticity parameters."""
+    """Behavioral elasticity parameters.
+
+    NOTE on PTE capture: Hawaii Act 58 (SLH 2025, eff. TY2025) requires PTE
+    members to add back their share of entity-level PTE tax to Hawaii taxable
+    income before claiming the §235-110.93 credit. This makes a PTE election
+    *more* expensive for Hawaii state purposes than paying individually at any
+    rate ≥ 9%. Under SB 3125 CD1's 13% top bracket, a $1M filer pays ~$11,700
+    MORE Hawaii tax by electing PTE (vs paying individually). Existing PTE
+    elections are driven entirely by the federal SALT deduction (entity-level
+    state tax bypasses the $10K SALT cap), which is unaffected by SB 3125.
+    Therefore SB 3125 creates ZERO incremental incentive for new PTE elections
+    on Hawaii state grounds, and ``pte_capture`` is set to 0 across scenarios.
+    """
     eti: float                 # Taxable income elasticity (Saez/Slemrod/Giertz range: 0.15-0.50)
     migration_elast: float     # Top-1% migration elasticity per pp rate change (Young/Varner: 0.05-0.15)
-    pte_capture: float         # Share of $1M+ pass-through income that elects PTE under bill
+    pte_capture: float         # Share of $1M+ pass-through income that elects PTE due to bill (Act 58: =0)
     migration_phase_in_years: int = 5  # Years to fully realize migration response
 
     @classmethod
     def low(cls) -> "BehavioralParams":
-        # Conservative for revenue: weak ETI, weak migration, moderate PTE capture
-        return cls(eti=0.15, migration_elast=0.05, pte_capture=0.40)
+        # Conservative for revenue: weak ETI, weak migration. PTE=0 (Act 58).
+        return cls(eti=0.15, migration_elast=0.05, pte_capture=0.0)
 
     @classmethod
     def mid(cls) -> "BehavioralParams":
-        # Calibrated MID: state-level ETI literature for top earners (Rauh/Shyu
-        # 2024), strong PTE arbitrage given 4pp gap (13% indiv vs 9% PTE)
-        return cls(eti=0.40, migration_elast=0.10, pte_capture=0.70)
+        # Calibrated MID: state-level ETI literature for top earners
+        # (Rauh/Shyu 2024). PTE=0 (Act 58 addback eliminates Hawaii arbitrage).
+        return cls(eti=0.40, migration_elast=0.10, pte_capture=0.0)
 
     @classmethod
     def high(cls) -> "BehavioralParams":
-        # Aggressive behavioral response (cap on revenue gain)
-        return cls(eti=0.60, migration_elast=0.15, pte_capture=0.90)
+        # Aggressive behavioral response (cap on revenue gain). PTE=0 (Act 58).
+        return cls(eti=0.60, migration_elast=0.15, pte_capture=0.0)
 
     @classmethod
     def static(cls) -> "BehavioralParams":

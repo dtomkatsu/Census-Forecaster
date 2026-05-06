@@ -128,10 +128,11 @@ def _enrich_for_credits(df: pd.DataFrame) -> pd.DataFrame:
     This step replaces the person-ID list with synthetic dicts using
     ``num_dependents`` as the count, assuming each is a qualifying child aged 10.
 
-    Derived columns added (skipped if already present):
-      - ``earned_income``          wages + self-employment income
-      - ``investment_income``      interest/dividend income
-      - ``num_qualifying_children`` capped copy of num_dependents
+    Derived columns added:
+      - ``earned_income``          wages + self-employment income (skipped if present)
+      - ``investment_income``      interest/dividend income (skipped if present)
+      - ``total_cash_income``      ITEP-style TCI for quintile binning (always recomputed)
+      - ``num_qualifying_children`` capped copy of num_dependents (skipped if present)
       - ``dependents``             list of credit-ready dicts (overwrites str list)
       - ``dependents_details``     alias of dependents (for EITC code path)
     """
@@ -167,16 +168,67 @@ def _enrich_for_credits(df: pd.DataFrame) -> pd.DataFrame:
         invest = _col("primary_intp") + _col("secondary_intp")
         df["investment_income"] = invest.clip(lower=0)
 
+    # Always recompute TCI — cheap, derived, and must be consistent after
+    # synthesize_top_filers which concatenates rows that have NaN TCI.
+    # ITEP-style Total Cash Income: AGI sources + non-taxable transfers +
+    # full Social Security + imputed employer-side FICA.
+    # Used for quintile binning only — does NOT change the tax calculation.
+    _SS_WAGE_BASE = 168_600   # 2024 Social Security wage base
+    employer_fica = (
+        _col("primary_wagp").clip(upper=_SS_WAGE_BASE) * 0.0765
+        + _col("secondary_wagp").clip(upper=_SS_WAGE_BASE) * 0.0765
+    )
+    # Use ssp_full if present (new pkl); otherwise un-discount the 85% column.
+    if "primary_ssp_full" in df.columns:
+        ssp_full = _col("primary_ssp_full") + _col("secondary_ssp_full")
+    else:
+        ssp_full = _col("primary_ssp") / 0.85 + _col("secondary_ssp") / 0.85
+    ssip = _col("primary_ssip") + _col("secondary_ssip")
+    pap  = _col("primary_pap")  + _col("secondary_pap")
+    retp = _col("primary_retp") + _col("secondary_retp")
+    oip  = _col("primary_oip")  + _col("secondary_oip")
+    div  = _col("primary_div")  + _col("secondary_div")
+    intp = _col("primary_intp") + _col("secondary_intp")
+    tci = (
+        df["earned_income"]
+        + intp
+        + div
+        + retp
+        + ssp_full               # full SSP, not 85%
+        + oip
+        + ssip                   # SSI benefits (zero for old pkl without primary_ssip)
+        + pap                    # public assistance / TANF (zero for old pkl)
+        + employer_fica          # imputed employer payroll tax
+    )
+    df["total_cash_income"] = tci.clip(lower=0)
+
     return df
 
 
-def _compute_base_tax(df: pd.DataFrame) -> pd.DataFrame:
-    """Stage 4: compute baseline Hawaii tax + federal credits."""
+def _compute_base_tax(
+    df: pd.DataFrame,
+    deduction_params: Optional[dict] = None,
+    tax_year: int = 2023,
+) -> pd.DataFrame:
+    """Stage 4: compute baseline Hawaii tax + federal credits.
+
+    Parameters
+    ----------
+    deduction_params:
+        When provided, applies expected-value itemized deductions per
+        ``_expected_itemized_deductions``. Pass the same params used in
+        projection so the calibration target and projected tax are computed
+        on the same deduction basis (avoids the standard-only-vs-itemized
+        "double discount" at high incomes).
+    tax_year:
+        Year used to select bracket vintage and standard-deduction values.
+        Default 2023 reflects the DOTAX Table A8 calibration anchor.
+    """
     from tax_modeler.liability.hawaii import calculate_hawaii_tax_for_units
     from tax_modeler.credits.eitc import calculate_eitc_for_tax_units
     from tax_modeler.projection.tax_unit_projector import _recalculate_ctc
 
-    df = calculate_hawaii_tax_for_units(df)
+    df = calculate_hawaii_tax_for_units(df, tax_year=tax_year, deduction_params=deduction_params)
     df = _recalculate_ctc(df)
     df = calculate_eitc_for_tax_units(df)
     # Calibration expects 'agi' and 'hi_state_tax'; Hawaii tax produces 'hi_agi' / 'hi_tax_liability'
