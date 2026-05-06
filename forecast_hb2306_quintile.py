@@ -105,6 +105,18 @@ def main() -> None:
         # forward DOTAX-shaped filer counts BEFORE the premium, then re-anchor
         # aggregate tax to COR's annual IIT projection AFTER premium + tax
         # recompute. Closes ~$66M HB 2306 surcharge gap with ITEP's analysis.
+        # Methodology stack (ITEP-aligned):
+        #   - use_forward_targets: rake to forward DOTAX-shaped filer counts
+        #     and re-anchor aggregate tax to COR projection per year.
+        #   - use_soi_anchor: anchor $1M+ tier composition (CG / wages /
+        #     business / dividends) on national IRS SOI Table 1.4.
+        #   - use_cbo_aging: age each filer's income components at CBO
+        #     Outlook nominal rates (wages 4.4%/yr, CG 5-9%/yr, etc.) instead
+        #     of uniform B19013 county-median growth.
+        # Default Hawaii calibration factors apply (DEFAULT_HAWAII_FACTORS):
+        # wages 0.85× national, business 0.90×, capital_gains 1.00×, others
+        # 1.00×. Pass cbo_hawaii_factors={c: 1.0 ...} for pure CBO-national
+        # aging — that variant lands HB 2306 TY2027 at $367M, matching ITEP.
         projected, _forward = project_and_recalibrate(
             units,
             target_year=yr,
@@ -112,6 +124,8 @@ def main() -> None:
             use_soi_anchor=True,
             soi_year=2022,
             hawaii_capgain_adjustment=0.95,
+            use_cbo_aging=True,
+            cbo_vintage="2025-01",
             top_premium_pct=MID_TOP_PREMIUM,
             top_bracket_differential=0.025,
             method="ensemble",

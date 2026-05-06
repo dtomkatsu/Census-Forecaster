@@ -148,3 +148,68 @@ def test_tier_distribution_proportional_to_soi(anchors):
         assert abs(actual - expected_count) < 5, (
             f"Tier ${a.agi_lo/1e6:.1f}M: expected {expected_count:.0f}, got {actual:.1f}"
         )
+
+
+def test_cbo_aging_grows_tier_avg_agi(anchors, repo_data_dir):
+    """When target_year + cbo_vintage are passed, tier avg AGI is aged forward."""
+    cbo_csv = repo_data_dir / "cbo" / "cbo_components_2025-01.csv"
+    if not cbo_csv.exists():
+        pytest.skip(f"CBO rates CSV not present at {cbo_csv}")
+
+    units = _make_synthetic_units()
+    out_unaged = synthesize_top_filers_from_soi(
+        units, target_filer_count=2_700, soi_anchors=anchors,
+    )
+    out_aged = synthesize_top_filers_from_soi(
+        units, target_filer_count=2_700, soi_anchors=anchors,
+        target_year=2027, cbo_vintage="2025-01",
+        cbo_hawaii_factors={c: 1.0 for c in [
+            "wages", "business", "capital_gains", "dividends",
+            "interest", "retirement", "other",
+        ]},
+    )
+    # Aged tier average AGI should be ~25% higher (5-year aging)
+    unaged_top = out_unaged[out_unaged["is_synthetic_ultra_high"].fillna(False)]
+    aged_top = out_aged[out_aged["is_synthetic_ultra_high"].fillna(False)]
+    unaged_avg = (unaged_top["agi"] * unaged_top["weight"]).sum() / unaged_top["weight"].sum()
+    aged_avg = (aged_top["agi"] * aged_top["weight"]).sum() / aged_top["weight"].sum()
+    growth = aged_avg / unaged_avg - 1
+    assert 0.20 < growth < 0.40, (
+        f"CBO-aged tier avg AGI growth {growth:.1%} outside 20-40% sanity band"
+    )
+
+
+def test_cbo_aging_increases_capgain_share(anchors, repo_data_dir):
+    """CG growing faster than wages should shift the tier CG share upward."""
+    cbo_csv = repo_data_dir / "cbo" / "cbo_components_2025-01.csv"
+    if not cbo_csv.exists():
+        pytest.skip(f"CBO rates CSV not present at {cbo_csv}")
+
+    units = _make_synthetic_units()
+    out_unaged = synthesize_top_filers_from_soi(
+        units, target_filer_count=2_700, soi_anchors=anchors,
+        hawaii_capgain_adjustment=1.0,
+    )
+    out_aged = synthesize_top_filers_from_soi(
+        units, target_filer_count=2_700, soi_anchors=anchors,
+        hawaii_capgain_adjustment=1.0,
+        target_year=2027, cbo_vintage="2025-01",
+        cbo_hawaii_factors={c: 1.0 for c in [
+            "wages", "business", "capital_gains", "dividends",
+            "interest", "retirement", "other",
+        ]},
+    )
+    unaged_cg = (
+        (out_unaged["synthetic_cg_share"] * out_unaged["weight"])
+        [out_unaged["is_synthetic_ultra_high"].fillna(False)].sum()
+        / out_unaged.loc[out_unaged["is_synthetic_ultra_high"].fillna(False), "weight"].sum()
+    )
+    aged_cg = (
+        (out_aged["synthetic_cg_share"] * out_aged["weight"])
+        [out_aged["is_synthetic_ultra_high"].fillna(False)].sum()
+        / out_aged.loc[out_aged["is_synthetic_ultra_high"].fillna(False), "weight"].sum()
+    )
+    assert aged_cg > unaged_cg, (
+        f"CG share should rise after aging: unaged={unaged_cg:.3f}, "
+        f"aged={aged_cg:.3f}"
+    )

@@ -96,6 +96,9 @@ def project_and_recalibrate(
     use_soi_anchor: bool = False,
     soi_year: int = 2022,
     hawaii_capgain_adjustment: float = 0.95,
+    use_cbo_aging: bool = False,
+    cbo_vintage: str = "2025-01",
+    cbo_hawaii_factors: Optional[Dict[str, float]] = None,
     apply_top_premium: bool = True,
     top_premium_pct: float = 0.010,
     top_premium_base_year: int = 2024,
@@ -141,6 +144,17 @@ def project_and_recalibrate(
     hawaii_capgain_adjustment:
         Multiplier on national SOI CG share for Hawaii residents
         (default 0.95, matching DOTAX Table 21 evidence).
+    use_cbo_aging:
+        When True, replace ``project_tax_units_forward``'s uniform
+        county-median aging with per-component CBO Outlook aging
+        (different growth for wages, CG, business, etc.). Phase 1 rake +
+        SOI top anchor + Phase 2 calibration still run downstream.
+    cbo_vintage:
+        CBO Outlook publication identifier (default ``"2025-01"``).
+    cbo_hawaii_factors:
+        Per-component Hawaii calibration multipliers on CBO national
+        rates. None → use ``cbo_aging.DEFAULT_HAWAII_FACTORS`` (HI wage
+        growth ~0.85 of national, CG parity).
     cor_projections_M, top_bracket_differential, low_growth, rate_drift:
         Forwarded to ``forward_targets.build_targets`` when
         ``use_forward_targets`` is True.
@@ -164,10 +178,29 @@ def project_and_recalibrate(
         phase1_reweight, phase2_tax_calibrate,
     )
 
-    # ── 1. Standard B19013 county growth projection ──────────────────────────
-    projected = project_tax_units_forward(
-        units, target_year=target_year, base_year=base_year, method=method
-    )
+    # ── 1. Income aging — uniform county growth OR CBO component aging ───────
+    if use_cbo_aging:
+        # Per-component CBO aging replaces the uniform B19013 income growth.
+        # Geographic aging (county B19013) is dropped; the SOI-anchored
+        # synthesis at Step 5b doesn't need geographic resolution since $1M+
+        # filers all get assigned to Honolulu PUMA anyway, and PUMS
+        # below-$200K filers get income growth from CBO components rather
+        # than county medians.
+        from tax_modeler.calibration.cbo_aging import (
+            age_filers_with_components, load_cbo_rates,
+        )
+        cbo_rates = load_cbo_rates(vintage=cbo_vintage)
+        projected = age_filers_with_components(
+            units,
+            target_year=target_year,
+            base_year=2022,
+            cbo_rates=cbo_rates,
+            hawaii_factors=cbo_hawaii_factors,
+        )
+    else:
+        projected = project_tax_units_forward(
+            units, target_year=target_year, base_year=base_year, method=method
+        )
 
     if not use_forward_targets:
         # Legacy path: just apply the premium and return.
@@ -261,14 +294,20 @@ def project_and_recalibrate(
             from tax_modeler.calibration.soi_top_anchor import (
                 synthesize_top_filers_from_soi,
             )
+            # When CBO aging is on, age the SOI tier averages forward via
+            # component-specific growth so the synthesized $1M+ rows reflect
+            # TY-of-interest income levels (not TY2022 SOI vintage).
             raked = synthesize_top_filers_from_soi(
                 raked,
                 target_filer_count=fwd_1m_count,
                 target_tax_M=fwd_1m_tax_M,
                 soi_year=soi_year,
                 hawaii_capgain_adjustment=hawaii_capgain_adjustment,
+                target_year=target_year if use_cbo_aging else None,
+                cbo_vintage=cbo_vintage if use_cbo_aging else None,
+                cbo_hawaii_factors=cbo_hawaii_factors if use_cbo_aging else None,
             )
-            mode = "SOI anchor"
+            mode = "SOI anchor (CBO-aged tiers)" if use_cbo_aging else "SOI anchor"
         else:
             from tax_modeler.scenarios.top_income_synthesis import synthesize_top_filers
             raked = synthesize_top_filers(

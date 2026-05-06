@@ -141,6 +141,85 @@ def load_soi_top_anchors(
     return anchors
 
 
+def _aged_tier_avg_agi(
+    anchor: SOITierAnchor,
+    target_year: int,
+    cbo_rates,
+    hawaii_factors: Dict[str, float],
+) -> float:
+    """Age an SOI tier's average AGI forward via CBO components × HI factors.
+
+    Decomposes the tier's avg AGI into seven components using SOI shares,
+    applies per-component (CBO factor × HI factor) growth, and sums.
+    Returns the aged per-filer AGI for ``target_year``.
+
+    The "other" component soaks up the residual share so the
+    decomposition sums to 1.0.
+    """
+    other_share = max(
+        0.0,
+        1.0 - (anchor.wages_share + anchor.business_share + anchor.capgain_share
+               + anchor.dividends_share + anchor.interest_share
+               + anchor.retirement_share),
+    )
+    components = {
+        "wages":         anchor.wages_share,
+        "business":      anchor.business_share,
+        "capital_gains": anchor.capgain_share,
+        "dividends":     anchor.dividends_share,
+        "interest":      anchor.interest_share,
+        "retirement":    anchor.retirement_share,
+        "other":         other_share,
+    }
+    aged_per_dollar = 0.0
+    for comp, share in components.items():
+        cbo_f = cbo_rates.factor(comp, target_year)
+        hi_f = hawaii_factors.get(comp, 1.0)
+        aged_per_dollar += share * cbo_f * hi_f
+    return anchor.avg_agi * aged_per_dollar
+
+
+def _aged_tier_capgain_share(
+    anchor: SOITierAnchor,
+    target_year: int,
+    cbo_rates,
+    hawaii_factors: Dict[str, float],
+    hawaii_capgain_adjustment: float,
+) -> float:
+    """Recompute the tier's CG share after component aging.
+
+    CG grows faster than wages (per CBO), so the CG share drifts up over
+    the projection horizon. Returns ``aged_cg / aged_total`` for the tier,
+    times the Hawaii CG adjustment.
+    """
+    other_share = max(
+        0.0,
+        1.0 - (anchor.wages_share + anchor.business_share + anchor.capgain_share
+               + anchor.dividends_share + anchor.interest_share
+               + anchor.retirement_share),
+    )
+    components = {
+        "wages":         anchor.wages_share,
+        "business":      anchor.business_share,
+        "capital_gains": anchor.capgain_share,
+        "dividends":     anchor.dividends_share,
+        "interest":      anchor.interest_share,
+        "retirement":    anchor.retirement_share,
+        "other":         other_share,
+    }
+    aged_total = 0.0
+    aged_cg = 0.0
+    for comp, share in components.items():
+        cbo_f = cbo_rates.factor(comp, target_year)
+        hi_f = hawaii_factors.get(comp, 1.0)
+        aged = share * cbo_f * hi_f
+        aged_total += aged
+        if comp == "capital_gains":
+            aged_cg = aged
+    cg_share = aged_cg / aged_total if aged_total > 0 else 0.0
+    return min(1.0, max(0.0, cg_share * hawaii_capgain_adjustment))
+
+
 def synthesize_top_filers_from_soi(
     df: pd.DataFrame,
     *,
@@ -149,6 +228,9 @@ def synthesize_top_filers_from_soi(
     soi_anchors: Optional[List[SOITierAnchor]] = None,
     soi_year: int = 2022,
     hawaii_capgain_adjustment: float = 0.95,
+    target_year: Optional[int] = None,
+    cbo_vintage: Optional[str] = None,
+    cbo_hawaii_factors: Optional[Dict[str, float]] = None,
 ) -> pd.DataFrame:
     """Replace existing $1M+ filers with SOI-Table-1.4-anchored synthetic rows.
 
@@ -161,6 +243,18 @@ def synthesize_top_filers_from_soi(
         Forward-year DOTAX-projected $1M+ filer count (e.g., 2,703 for
         TY2027). Distributed across SOI tiers proportional to national
         tier shares.
+    target_year:
+        If provided alongside ``cbo_vintage``, age each tier's avg AGI
+        forward via per-component CBO factors × HI calibration. Without
+        this, tier AGIs are TY2022-vintage (the SOI base year) — useful
+        only if the caller has separately handled top-bracket aging.
+    cbo_vintage:
+        CBO Outlook vintage for tier aging (e.g. ``"2025-01"``). Required
+        when ``target_year`` is set.
+    cbo_hawaii_factors:
+        Per-component HI calibration multipliers. Defaults to
+        ``cbo_aging.DEFAULT_HAWAII_FACTORS``. Only used when
+        ``target_year`` and ``cbo_vintage`` are set.
     target_tax_M:
         Forward-year COR-implied $1M+ aggregate Hawaii tax ($M). If
         provided, caller should run ``rescale_synthetic_tail_to_tax_target``
@@ -186,6 +280,29 @@ def synthesize_top_filers_from_soi(
         soi_anchors = load_soi_top_anchors(year=soi_year)
     if not soi_anchors:
         raise ValueError("No SOI anchors loaded — cannot synthesize")
+
+    # Optional CBO-based tier aging: age each tier's avg AGI forward via
+    # component-specific growth rates × HI calibration. Without this, tier
+    # AGIs are SOI-vintage (TY2022) and downstream Phase 2 has to inflate
+    # per-filer tax to reach forward COR targets. With this, the tiers are
+    # already correctly sized per ITEP methodology.
+    cbo_rates = None
+    hi_factors = None
+    if target_year is not None and cbo_vintage is not None:
+        from tax_modeler.calibration.cbo_aging import (
+            DEFAULT_HAWAII_FACTORS,
+            load_cbo_rates,
+        )
+        cbo_rates = load_cbo_rates(vintage=cbo_vintage)
+        hi_factors = (
+            dict(cbo_hawaii_factors)
+            if cbo_hawaii_factors is not None
+            else dict(DEFAULT_HAWAII_FACTORS)
+        )
+        logger.info(
+            "SOI tier aging: applying CBO %s + HI factors to %d tiers, TY%d",
+            cbo_vintage, len(soi_anchors), target_year,
+        )
 
     work = df.copy()
     if "agi" not in work.columns and "income" in work.columns:
@@ -216,8 +333,17 @@ def synthesize_top_filers_from_soi(
     synthetic_rows: List[Dict] = []
     for anchor, tier_filers in tier_filer_counts:
         # Hawaii-adjusted CG share, capped at 1.0
-        cg_share = min(1.0, max(0.0, anchor.capgain_share * hawaii_capgain_adjustment))
-        avg_agi = anchor.avg_agi  # per-filer total AGI for this tier
+        if cbo_rates is not None:
+            avg_agi = _aged_tier_avg_agi(anchor, target_year, cbo_rates, hi_factors)
+            cg_share = _aged_tier_capgain_share(
+                anchor, target_year, cbo_rates, hi_factors,
+                hawaii_capgain_adjustment,
+            )
+        else:
+            avg_agi = anchor.avg_agi
+            cg_share = min(
+                1.0, max(0.0, anchor.capgain_share * hawaii_capgain_adjustment)
+            )
 
         for status, status_share in HIGH_INCOME_STATUS_SHARES.items():
             weight = tier_filers * status_share
