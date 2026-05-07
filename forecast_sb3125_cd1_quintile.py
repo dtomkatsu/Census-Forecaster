@@ -36,11 +36,8 @@ PARETO_ALPHA   = 1.5
 ITEMIZED_ADJ   = True
 TOP_PREMIUM    = 0.0   # no additional top-income growth premium for MID
 
+# Requires the workspace to be installed: `uv sync --all-packages`.
 REPO = Path(__file__).parent
-sys.path.insert(0, str(REPO / "packages" / "tax_modeler" / "src"))
-sys.path.insert(0, str(REPO / "packages" / "census_forecaster" / "src"))
-sys.path.insert(0, str(REPO / "packages" / "pums_estimator" / "src"))
-sys.path.insert(0, str(REPO / "packages" / "common" / "src"))
 
 QUINTILE_LABELS = [
     "Q1 (Bottom 20%)",

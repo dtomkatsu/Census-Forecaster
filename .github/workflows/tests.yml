@@ -6,13 +6,45 @@ on:
     paths:
       - 'packages/**'
       - 'tests/**'
+      - 'forecast_*.py'
+      - 'pipeline_run.py'
       - 'pyproject.toml'
+      - 'ruff.toml'
       - 'uv.lock'
   pull_request:
     branches: [main]
 
 jobs:
+  # Fast smoke job: synthetic-fixture-only, runs on every push, < 30s.
+  # Failures here block the slow suite below.
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install workspace (dev only, smoke fixture has no external deps)
+        run: uv sync --all-packages --extra dev
+
+      - name: Lint (allowed-to-fail; flip to required after cleanup)
+        continue-on-error: true
+        run: uv run ruff check .
+
+      - name: Run smoke tests
+        run: uv run pytest -m smoke -v --tb=short
+
   test:
+    needs: smoke
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -36,7 +68,7 @@ jobs:
       - name: Install workspace (all packages + dev + ml)
         run: uv sync --all-packages --extra dev --extra ml
 
-      - name: Run tests
+      - name: Run full test suite
         run: uv run pytest tests/ -v --tb=short
 
       - name: Show coverage summary

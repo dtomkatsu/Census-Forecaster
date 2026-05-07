@@ -1,0 +1,45 @@
+# Repo-wide lint/format config.
+# Goal: catch real bugs and import hygiene without imposing a giant cleanup
+# pass on the existing codebase.  CI runs `ruff check` allowed-to-fail
+# until a follow-up cleanup PR lands.
+
+line-length = 100
+target-version = "py310"
+extend-exclude = [
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+    "*.egg-info",
+    "data",
+    # Auto-generated / external imports
+    "packages/*/src/*/data",
+]
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes (undefined names, unused imports)
+    "I",   # isort (import ordering)
+    "UP",  # pyupgrade (modern syntax)
+    "B",   # flake8-bugbear (real bugs)
+    "SIM", # flake8-simplify (style → bug-prevention)
+]
+# Things we deliberately don't enforce yet (would generate noise without
+# catching real bugs in this codebase):
+ignore = [
+    "E501",   # line-too-long — formatting handled by ruff format
+    "B008",   # function call in default arg (we use Path(...) defaults)
+    "SIM108", # ternary collapse — sometimes hurts readability
+]
+
+[lint.per-file-ignores]
+# Tests use unconventional patterns and that's fine
+"tests/**/*.py" = ["B", "SIM"]
+# Forecast scripts are top-level analytical scripts; minimal lint
+"forecast_*.py" = ["E402", "F401"]
+"pipeline_run.py" = ["E402", "F401"]
+
+[format]
+quote-style = "double"
+indent-style = "space"

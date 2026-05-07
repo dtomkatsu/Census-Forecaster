@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+from .state_config import HAWAII, StateConfig
 from .tax_system_config import (
+    TaxCalculator,
     TaxSystemConfig,
     TaxSystemRegistry,
-    TaxCalculator,
-    compare_systems
+    compare_systems,
 )
 
 __all__ = [
-    'TaxSystemConfig',
-    'TaxSystemRegistry',
-    'TaxCalculator',
-    'compare_systems'
+    "TaxSystemConfig",
+    "TaxSystemRegistry",
+    "TaxCalculator",
+    "compare_systems",
+    "StateConfig",
+    "HAWAII",
 ]

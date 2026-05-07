@@ -370,7 +370,9 @@ class ItemizedDeductionEstimator:
 
 def scale_deduction_params_for_target_year(
     target_year: int,
-    geoid: str = "15003",
+    geoid: str | None = None,
+    *,
+    state_config=None,
 ) -> dict:
     """Return deduction params with ``mortgage_interest_tiers`` scaled to ``target_year``.
 
@@ -386,9 +388,11 @@ def scale_deduction_params_for_target_year(
     target_year:
         Tax year to project deduction parameters to.
     geoid:
-        Hawaii county FIPS for the B25077 lookup. Defaults to Honolulu
-        (15003). Pass a specific county FIPS for county-differentiated
-        deduction scaling.
+        County FIPS for the B25077 lookup.  When omitted, falls back to
+        ``state_config.default_geoid`` (Honolulu 15003 for Hawaii).
+    state_config:
+        State configuration object (see :class:`StateConfig`).  Defaults
+        to :data:`HAWAII`.  Only consulted when ``geoid`` is None.
 
     Returns
     -------
@@ -402,13 +406,17 @@ def scale_deduction_params_for_target_year(
     ::
 
         params = scale_deduction_params_for_target_year(2026, geoid="15001")
-        estimator = ItemizedDeductionEstimator.__new__(ItemizedDeductionEstimator)
-        # (populate estimator fields from params as needed)
+        # or, equivalently for the default county:
+        params = scale_deduction_params_for_target_year(2026)
     """
+    from tax_modeler.config.state_config import HAWAII
     from tax_modeler.projection.acs_supplement_forecast import scale_mortgage_deductions
 
+    cfg = state_config if state_config is not None else HAWAII
+    resolved_geoid = geoid if geoid is not None else cfg.default_geoid
+
     base_params = _load_params()
-    return scale_mortgage_deductions(base_params, target_year, geoid)
+    return scale_mortgage_deductions(base_params, target_year, resolved_geoid)
 
 
 def estimate_deduction(agi: float, filing_status: str,

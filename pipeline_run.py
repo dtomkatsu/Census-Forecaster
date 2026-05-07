@@ -11,10 +11,8 @@ DATA_DIR = Path(
 )
 CACHE_FILE = Path("/tmp/tax_units_cache.parquet")
 
-sys.path.insert(0, str(Path(__file__).parent / "packages" / "tax_modeler" / "src"))
-sys.path.insert(0, str(Path(__file__).parent / "packages" / "census_forecaster" / "src"))
-sys.path.insert(0, str(Path(__file__).parent / "packages" / "pums_estimator" / "src"))
-sys.path.insert(0, str(Path(__file__).parent / "packages" / "common" / "src"))
+# Requires the workspace to be installed: `uv sync --all-packages`.
+# (run with `uv run python pipeline_run.py` or after `uv pip install -e packages/...`)
 
 if __name__ == "__main__":
     import warnings

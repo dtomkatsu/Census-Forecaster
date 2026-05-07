@@ -190,8 +190,12 @@ def project_and_recalibrate(
     # max(scenario_SD, itemized) for SD-freezing bills like HB 2306 ORIG —
     # all filers get just the SD, which overstates revenue from SD-freeze
     # by ~$246M cumulative over TY 2027-2031.
+    # Honolulu (15003) is the Hawaii state-proxy; resolved via state_config so
+    # a future state plug-in supplies its own default_geoid without changing
+    # this site.
+    from tax_modeler.config.state_config import HAWAII
     _ded_params = scale_deduction_params_for_target_year(
-        target_year, geoid="15003"  # Honolulu state-proxy
+        target_year, state_config=HAWAII
     )
 
     # ── 1. Income aging — uniform county growth OR CBO component aging ───────

@@ -136,32 +136,17 @@ SCENARIOS = [
     },
 ]
 
+# Requires the workspace to be installed: `uv sync --all-packages`.
 REPO = Path(__file__).parent
-sys.path.insert(0, str(REPO / "packages" / "tax_modeler" / "src"))
-sys.path.insert(0, str(REPO / "packages" / "census_forecaster" / "src"))
-sys.path.insert(0, str(REPO / "packages" / "pums_estimator" / "src"))
-sys.path.insert(0, str(REPO / "packages" / "common" / "src"))
 
 
 def _scenario_worker(scenario_dict, target_years, calibrated_path):
     """Top-level worker (must be picklable) for ProcessPoolExecutor.
 
-    Each worker is a fresh Python process: re-establish sys.path so the
-    package imports inside ``run_one_scenario`` resolve, then read the
-    calibrated base from disk and run the scenario.
+    Each worker is a fresh Python process — package imports rely on
+    ``tax_modeler`` being installed in the spawned interpreter (it is
+    when launched under ``uv run`` or after ``uv pip install -e``).
     """
-    import sys
-    from pathlib import Path
-    repo = Path(__file__).parent
-    for p in (
-        repo / "packages" / "tax_modeler" / "src",
-        repo / "packages" / "census_forecaster" / "src",
-        repo / "packages" / "pums_estimator" / "src",
-        repo / "packages" / "common" / "src",
-    ):
-        if str(p) not in sys.path:
-            sys.path.insert(0, str(p))
-
     import pandas as pd
     base = pd.read_pickle(calibrated_path)
     return run_one_scenario(base, scenario=scenario_dict, target_years=target_years)

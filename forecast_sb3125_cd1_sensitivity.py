@@ -43,11 +43,8 @@ SCENARIOS = [
     ("HIGH", 1.4, "pre_obbba"),
 ]
 
+# Requires the workspace to be installed: `uv sync --all-packages`.
 REPO = Path(__file__).parent
-sys.path.insert(0, str(REPO / "packages" / "tax_modeler" / "src"))
-sys.path.insert(0, str(REPO / "packages" / "census_forecaster" / "src"))
-sys.path.insert(0, str(REPO / "packages" / "pums_estimator" / "src"))
-sys.path.insert(0, str(REPO / "packages" / "common" / "src"))
 
 
 def run_one_scenario(

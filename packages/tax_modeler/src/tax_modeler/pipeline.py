@@ -42,11 +42,14 @@ from __future__ import annotations
 
 import logging
 import time
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Optional
 
 import pandas as pd
+
+from tax_modeler.errors import MissingDataError, validate_units_schema
 
 logger = logging.getLogger(__name__)
 
@@ -93,11 +96,13 @@ def _load_pums(data_dir: Path, state: str, pums_type: str) -> tuple[pd.DataFrame
     loader = PUMSDataLoader(data_dir=data_dir)
     hh_file = loader._hh_file_path(state, pums_type)
     if not hh_file.exists():
-        raise FileNotFoundError(
-            f"PUMS household file not found: {hh_file}\n"
-            "Download the Hawaii ACS PUMS files and place them at:\n"
+        raise MissingDataError(
+            f"PUMS household file not found.\n"
+            f"Download the ACS PUMS files for state FIPS {state} and place them at:\n"
             f"  {data_dir}/psam_h{state}.parquet  (or .csv)\n"
-            f"  {data_dir}/psam_p{state}.parquet  (or .csv)"
+            f"  {data_dir}/psam_p{state}.parquet  (or .csv)",
+            path=hh_file,
+            env_var="HAWAII_PUMS_DIR",
         )
     person_df, hh_df = loader.load_data(state=state, pums_type=pums_type)
     logger.info("PUMS loaded: %d persons, %d households", len(person_df), len(hh_df))
@@ -119,7 +124,7 @@ def _construct_units(person_df: pd.DataFrame, hh_df: pd.DataFrame) -> pd.DataFra
     return units
 
 
-def _enrich_for_credits(df: pd.DataFrame) -> pd.DataFrame:
+def enrich_for_credits(df: pd.DataFrame) -> pd.DataFrame:
     """Stage 3: derive credit-calculation inputs from TaxUnitConstructor columns.
 
     TaxUnitConstructor stores dependent person IDs in ``dependents``
@@ -205,7 +210,7 @@ def _enrich_for_credits(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _compute_base_tax(
+def compute_base_tax(
     df: pd.DataFrame,
     deduction_params=None,
     tax_year: int = 2023,
@@ -242,7 +247,7 @@ def _compute_base_tax(
     return df
 
 
-def _calibrate(df: pd.DataFrame) -> pd.DataFrame:
+def calibrate(df: pd.DataFrame) -> pd.DataFrame:
     """Stage 5: IPF rake calibration against DOTAX aggregate benchmarks."""
     from tax_modeler.calibration import apply_ipf_calibration_via_rake
 
@@ -253,6 +258,50 @@ def _calibrate(df: pd.DataFrame) -> pd.DataFrame:
         calibrated["weight"].sum(),
     )
     return calibrated
+
+
+# ---------------------------------------------------------------------------
+# Deprecated underscore-prefixed aliases.
+#
+# The underscore names were the de-facto public API (imported from 5+ external
+# scripts).  They are kept as thin shims that emit DeprecationWarning so that
+# downstream scripts keep working while migration happens.  Remove in a future
+# major release once no callers remain.
+# ---------------------------------------------------------------------------
+
+
+def _enrich_for_credits(df: pd.DataFrame) -> pd.DataFrame:
+    warnings.warn(
+        "tax_modeler.pipeline._enrich_for_credits is deprecated; "
+        "use enrich_for_credits (public name) instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return enrich_for_credits(df)
+
+
+def _compute_base_tax(
+    df: pd.DataFrame,
+    deduction_params=None,
+    tax_year: int = 2023,
+) -> pd.DataFrame:
+    warnings.warn(
+        "tax_modeler.pipeline._compute_base_tax is deprecated; "
+        "use compute_base_tax (public name) instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return compute_base_tax(df, deduction_params=deduction_params, tax_year=tax_year)
+
+
+def _calibrate(df: pd.DataFrame) -> pd.DataFrame:
+    warnings.warn(
+        "tax_modeler.pipeline._calibrate is deprecated; "
+        "use calibrate (public name) instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return calibrate(df)
 
 
 # ---------------------------------------------------------------------------
@@ -318,6 +367,7 @@ def run_pipeline(
     # Stages 1–5: build calibrated base-year units (skipped if supplied)  #
     # ------------------------------------------------------------------ #
     if tax_units_df is not None:
+        validate_units_schema(tax_units_df)
         logger.info("run_pipeline: using caller-supplied tax_units_df (%d rows)", len(tax_units_df))
         calibrated = tax_units_df
     else:
@@ -334,15 +384,15 @@ def run_pipeline(
         timings["construct"] = time.perf_counter() - t0
 
         t0 = time.perf_counter()
-        units = _enrich_for_credits(units)
+        units = enrich_for_credits(units)
         timings["enrich"] = time.perf_counter() - t0
 
         t0 = time.perf_counter()
-        units = _compute_base_tax(units)
+        units = compute_base_tax(units)
         timings["base_tax"] = time.perf_counter() - t0
 
         t0 = time.perf_counter()
-        calibrated = _calibrate(units) if not skip_calibration else units
+        calibrated = calibrate(units) if not skip_calibration else units
         timings["calibrate"] = time.perf_counter() - t0
 
     # ------------------------------------------------------------------ #

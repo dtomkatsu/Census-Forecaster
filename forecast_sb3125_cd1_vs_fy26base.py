@@ -33,19 +33,15 @@ from pathlib import Path
 warnings.filterwarnings("ignore")
 logging.disable(logging.WARNING)
 
+# Requires the workspace to be installed: `uv sync --all-packages`.
 REPO = Path(__file__).parent
-for p in (
-    REPO / "packages" / "tax_modeler" / "src",
-    REPO / "packages" / "census_forecaster" / "src",
-    REPO / "packages" / "pums_estimator" / "src",
-    REPO / "packages" / "common" / "src",
-):
-    sys.path.insert(0, str(p))
 
 import numpy as np
 import pandas as pd
 
-from tax_modeler.pipeline import _compute_base_tax, _enrich_for_credits
+# Public-name imports; underscore aliases still work but emit DeprecationWarning.
+from tax_modeler.pipeline import compute_base_tax as _compute_base_tax
+from tax_modeler.pipeline import enrich_for_credits as _enrich_for_credits
 from tax_modeler.calibration.cg_imputation import impute_capital_gains_from_soi
 from tax_modeler.config.tax_system_config import TaxCalculator, TaxSystemRegistry
 from tax_modeler.scenarios.top_income_synthesis import (

@@ -32,11 +32,8 @@ CACHE_FILE = Path("/tmp/tax_units_cache.parquet")
 OUT_CSV = Path("/tmp/sb3125_cd1_fiscal_impact_2027_2031.csv")
 TARGET_YEARS = [2027, 2028, 2029, 2030, 2031]
 
+# Requires the workspace to be installed: `uv sync --all-packages`.
 REPO = Path(__file__).parent
-sys.path.insert(0, str(REPO / "packages" / "tax_modeler" / "src"))
-sys.path.insert(0, str(REPO / "packages" / "census_forecaster" / "src"))
-sys.path.insert(0, str(REPO / "packages" / "pums_estimator" / "src"))
-sys.path.insert(0, str(REPO / "packages" / "common" / "src"))
 
 if __name__ == "__main__":
     import warnings
