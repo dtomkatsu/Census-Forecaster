@@ -1,10 +1,14 @@
 """One-shot pipeline run against real PUMS data."""
 import logging
+import os
 import sys
 import traceback
 from pathlib import Path
 
-DATA_DIR = Path("/Users/dtomkatsu/ctc-and-eitc/data/raw/pums")
+DATA_DIR = Path(
+    os.environ.get("HAWAII_PUMS_DIR")
+    or Path.home() / "ctc-and-eitc" / "data" / "raw" / "pums"
+)
 CACHE_FILE = Path("/tmp/tax_units_cache.parquet")
 
 sys.path.insert(0, str(Path(__file__).parent / "packages" / "tax_modeler" / "src"))

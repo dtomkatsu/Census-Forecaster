@@ -221,47 +221,35 @@ def main() -> None:
     print("Bill     = SB 3125 CD1 brackets + Act 46 SD phase-in continues", flush=True)
     print("=" * 90, flush=True)
 
-    print("\n--- Bracket effect only (CD1 brackets vs TY2026-frozen brackets, SDs held at Act46) ---", flush=True)
-    print(f"{'Year':<6} {'<$50K':>10} {'$50K-$200K':>12} {'$200K-$1M':>12} {'$1M+':>10} {'Total':>10}", flush=True)
-    print("-" * 64, flush=True)
-    br_5yr = {k: 0.0 for k in list(INCOME_BINS.keys()) + ["total"]}
-    for yr in TARGET_YEARS:
-        r = df_summary[(df_summary["year"] == yr) & (df_summary["component"] == "bracket_delta_$M")].iloc[0]
-        for k in br_5yr:
-            br_5yr[k] += r[k]
-        print(f"{yr:<6} {r['below_50K']:>+9.1f}M {r['50K_200K']:>+11.1f}M "
-              f"{r['200K_1M']:>+11.1f}M {r['1M_plus']:>+9.1f}M {r['total']:>+9.1f}M", flush=True)
-    print("-" * 64, flush=True)
-    print(f"{'5yr':<6} {br_5yr['below_50K']:>+9.1f}M {br_5yr['50K_200K']:>+11.1f}M "
-          f"{br_5yr['200K_1M']:>+11.1f}M {br_5yr['1M_plus']:>+9.1f}M {br_5yr['total']:>+9.1f}M", flush=True)
+    def _print_component(component_label, header_title):
+        print(f"\n--- {header_title} ---", flush=True)
+        print(f"{'Year':<6} {'<$50K':>10} {'$50K-$200K':>12} {'$200K-$1M':>12} {'$1M+':>10} {'Annual':>10} {'Cumulative':>12}", flush=True)
+        print("-" * 78, flush=True)
+        cum = {k: 0.0 for k in list(INCOME_BINS.keys()) + ["total"]}
+        for yr in TARGET_YEARS:
+            r = df_summary[(df_summary["year"] == yr) & (df_summary["component"] == component_label)].iloc[0]
+            for k in cum:
+                cum[k] += r[k]
+            print(f"{yr:<6} {r['below_50K']:>+9.1f}M {r['50K_200K']:>+11.1f}M "
+                  f"{r['200K_1M']:>+11.1f}M {r['1M_plus']:>+9.1f}M "
+                  f"{r['total']:>+9.1f}M {cum['total']:>+11.1f}M", flush=True)
+        print("-" * 78, flush=True)
+        print(f"{'5yr':<6} {cum['below_50K']:>+9.1f}M {cum['50K_200K']:>+11.1f}M "
+              f"{cum['200K_1M']:>+11.1f}M {cum['1M_plus']:>+9.1f}M {cum['total']:>+9.1f}M", flush=True)
+        return cum
 
-    print("\n--- Act 46 SD-expansion effect (ongoing current law, not the bill) ---", flush=True)
-    print(f"{'Year':<6} {'<$50K':>10} {'$50K-$200K':>12} {'$200K-$1M':>12} {'$1M+':>10} {'Total':>10}", flush=True)
-    print("-" * 64, flush=True)
-    sd_5yr = {k: 0.0 for k in list(INCOME_BINS.keys()) + ["total"]}
-    for yr in TARGET_YEARS:
-        r = df_summary[(df_summary["year"] == yr) & (df_summary["component"] == "sd_expansion_delta_$M")].iloc[0]
-        for k in sd_5yr:
-            sd_5yr[k] += r[k]
-        print(f"{yr:<6} {r['below_50K']:>+9.1f}M {r['50K_200K']:>+11.1f}M "
-              f"{r['200K_1M']:>+11.1f}M {r['1M_plus']:>+9.1f}M {r['total']:>+9.1f}M", flush=True)
-    print("-" * 64, flush=True)
-    print(f"{'5yr':<6} {sd_5yr['below_50K']:>+9.1f}M {sd_5yr['50K_200K']:>+11.1f}M "
-          f"{sd_5yr['200K_1M']:>+11.1f}M {sd_5yr['1M_plus']:>+9.1f}M {sd_5yr['total']:>+9.1f}M", flush=True)
-
-    print("\n--- TOTAL: CD1 full vs TY2026-frozen (= ITEP's headline number, our microsim) ---", flush=True)
-    print(f"{'Year':<6} {'<$50K':>10} {'$50K-$200K':>12} {'$200K-$1M':>12} {'$1M+':>10} {'Total':>10}", flush=True)
-    print("-" * 64, flush=True)
-    tt_5yr = {k: 0.0 for k in list(INCOME_BINS.keys()) + ["total"]}
-    for yr in TARGET_YEARS:
-        r = df_summary[(df_summary["year"] == yr) & (df_summary["component"] == "total_delta_$M")].iloc[0]
-        for k in tt_5yr:
-            tt_5yr[k] += r[k]
-        print(f"{yr:<6} {r['below_50K']:>+9.1f}M {r['50K_200K']:>+11.1f}M "
-              f"{r['200K_1M']:>+11.1f}M {r['1M_plus']:>+9.1f}M {r['total']:>+9.1f}M", flush=True)
-    print("-" * 64, flush=True)
-    print(f"{'5yr':<6} {tt_5yr['below_50K']:>+9.1f}M {tt_5yr['50K_200K']:>+11.1f}M "
-          f"{tt_5yr['200K_1M']:>+11.1f}M {tt_5yr['1M_plus']:>+9.1f}M {tt_5yr['total']:>+9.1f}M", flush=True)
+    br_5yr = _print_component(
+        "bracket_delta_$M",
+        "Bracket effect only (CD1 brackets vs TY2026-frozen brackets, SDs held at Act46)",
+    )
+    sd_5yr = _print_component(
+        "sd_expansion_delta_$M",
+        "Act 46 SD-expansion effect (ongoing current law, not the bill)",
+    )
+    tt_5yr = _print_component(
+        "total_delta_$M",
+        "TOTAL: CD1 full vs TY2026-frozen (= ITEP's headline number, our microsim)",
+    )
 
     print("\n--- Quintile distribution (total delta, TY 2027) ---", flush=True)
     q27 = all_quintiles[all_quintiles["tax_year"] == 2027]
@@ -273,13 +261,41 @@ def main() -> None:
         "pct_pay_more", "pct_pay_less",
     ]].to_string(index=False), flush=True)
 
-    print(f"\n\nComparison to ITEP (TY 2027 total):", flush=True)
-    our_total_27 = df_summary[
-        (df_summary["year"] == 2027) & (df_summary["component"] == "total_delta_$M")
-    ].iloc[0]["total"]
-    print(f"  Our model (residents): ${our_total_27:+.1f}M", flush=True)
-    print(f"  ITEP (residents):      -$227M", flush=True)
-    print(f"  Gap:                   ${our_total_27 - (-227):+.1f}M", flush=True)
+    # ITEP's published annual figures from "26.05.06 HI SB 3125 CD Analysis.xlsx".
+    # Each year is a standalone snapshot of total drift from TY2026-frozen law
+    # ($M, residents only). NOT a running sum across years.
+    ITEP_ANNUAL = {2027: -227.0, 2028: -258.0, 2029: -534.0, 2030: -563.0, 2031: -622.0}
+
+    print(f"\n\nComparison to ITEP — annual snapshots vs TY2026-frozen baseline (residents, $M):", flush=True)
+    print(
+        f"{'Year':<6} {'Ours (total)':>14} {'Ours (bracket)':>16} "
+        f"{'ITEP':>10} {'Gap (total-ITEP)':>18}",
+        flush=True,
+    )
+    print("-" * 70, flush=True)
+    sum_tt = 0.0
+    sum_br = 0.0
+    sum_itep = 0.0
+    for yr in TARGET_YEARS:
+        ours_br = df_summary[(df_summary["year"] == yr) & (df_summary["component"] == "bracket_delta_$M")].iloc[0]["total"]
+        ours_tt = df_summary[(df_summary["year"] == yr) & (df_summary["component"] == "total_delta_$M")].iloc[0]["total"]
+        itep    = ITEP_ANNUAL[yr]
+        gap     = ours_tt - itep
+        sum_tt   += ours_tt
+        sum_br   += ours_br
+        sum_itep += itep
+        print(
+            f"{yr:<6} {ours_tt:>+12.1f}M {ours_br:>+14.1f}M "
+            f"{itep:>+8.1f}M {gap:>+16.1f}M",
+            flush=True,
+        )
+    print("-" * 70, flush=True)
+    print(
+        f"{'5yrΣ':<6} {sum_tt:>+12.1f}M {sum_br:>+14.1f}M "
+        f"{sum_itep:>+8.1f}M {sum_tt - sum_itep:>+16.1f}M",
+        flush=True,
+    )
+    print("(5yrΣ row sums annual snapshots — useful as a fiscal-note style aggregate, not a stock figure.)", flush=True)
 
     print(f"\nSaved: {Q_CSV}", flush=True)
     print(f"Saved: {B_CSV}", flush=True)

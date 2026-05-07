@@ -1,7 +1,7 @@
 # SB 3125 CD1 — Hawaii Income Tax Fiscal Impact Forecast
 ## Tax Years 2027–2031
 
-**Last updated:** May 4, 2026
+**Last updated:** May 7, 2026
 **Analyst:** Hawaii Appleseed Center for Law and Economic Justice
 **Model version:** All methodology revisions applied and forecast re-run (May 2026).
 
@@ -97,7 +97,7 @@ This forecast estimates the year-by-year fiscal impact to the State of Hawaii fr
 
 The model uses a **bottom-up microsimulation** approach: it constructs roughly 43,000 representative Hawaii income tax units from the U.S. Census Bureau's Public Use Microdata Sample, calibrates them against DOTAX administrative data, projects them forward year by year using county-level income growth forecasts, and computes each unit's tax liability under both the baseline and the proposed law. The total fiscal impact is the population-weighted difference, adjusted for behavioral responses and a separate static-scoring credit overlay.
 
-**MID scenario 5-year result: $768.9M** (after methodology corrections: per-filer ETI, deduction plumbing, REEC §25D/§48E split, premium base-year alignment, and Hawaii-specific PTE pass-through share recalibration from 0.40 → 0.20 using Hawaii IRS SOI 2022 data). Earlier runs showing $650.9M used the national top-1% pass-through share which overstates Hawaii's wage-heavy income mix.
+**MID scenario 5-year result: $673.0M** (May 7, 2026 re-run incorporating population growth, COR March 2026 projections, and updated calibration. PTE shift is currently zero in this run — see Section 8a. Credit overlay revised down to $334.6M from earlier $503.2M estimate due to updated REEC and CGEC baseline projections.)
 
 ---
 
@@ -729,24 +729,23 @@ Models a **mild-to-moderate recession with trough in 2027 and gradual recovery t
 
 The top-income extra gap captures capital gains realization collapse and pass-through business income cyclicality (historical precedent: 2008–09 saw 40–60% CG declines and 6–12% peak-to-trough top-1% income drops, with full recovery within 4 years).
 
-**Results: Recession reduces 5-year gain by $8.9M (1.4% of MID).** The 2031 RECESSION result exactly equals MID ($182.2M), confirming the macro shock is zero that year (full recovery). ✓
+**Results (May 7, 2026 re-run):** RECESSION and MID are within $1.5M over 5 years; RECESSION is slightly above MID in 2030–2031. ⚠️ *This is unexpected — recession should depress revenue, not raise it. Likely an artifact of COR scaling or income-projection interaction; needs investigation before citing.*
 
 | Year | MID | RECESSION | Δ vs MID |
 |------|----:|----------:|---------:|
-| 2027 | $69.9M | $68.0M | −$1.9M |
-| 2028 | $107.0M | $104.2M | −$2.8M |
-| 2029 | $135.2M | $132.7M | −$2.5M |
-| 2030 | $135.3M | $133.6M | −$1.7M |
-| 2031 | $182.2M | $182.2M | $0.0M |
-| **5yr** | **$629.6M** | **$620.7M** | **−$8.9M** |
+| 2027 | $101.2M | $97.5M | −$3.7M |
+| 2028 | $122.0M | $120.6M | −$1.4M |
+| 2029 | $139.7M | $138.8M | −$0.9M |
+| 2030 | $137.2M | $141.0M | +$3.8M |
+| 2031 | $173.0M | $176.5M | +$3.5M |
+| **5yr** | **$673.0M** | **$674.5M** | **+$1.5M** |
 
 **Why the effect is moderate in absolute terms:** This forecast measures the *delta* between Act 46 and SB 3125 CD1, not absolute state revenue. Both tax systems face the same income shock, so the delta is partially protected — only the marginal rate × marginal income above thresholds differs between them.
 
-1. **Bracket delta** (~$192M of $629.6M MID): drops ~$8.9M (4.6%) — spread across 2027–2030 as income remains depressed below baseline
-2. **Credit overlay** (~$437M of $629.6M MID): unchanged — REEC/CGEC claim levels don't depend on individual filer income
-3. **Behavioral offsets**: also shrink in recession (smaller PTE election pool, smaller ETI base), partially offsetting the bracket reduction
+1. **Bracket delta** (~$338M of $673M MID): small changes expected in recession as income shocks affect both systems equally
+2. **Credit overlay** (~$335M of $673M MID): unchanged — REEC/CGEC claim levels don't depend on individual filer income
 
-**Note on absolute revenue impact:** While the bill's *revenue gain* is recession-resilient (−1.4% in this scenario), absolute state individual income tax revenue would drop substantially more in a recession (likely 5–10% peak-to-trough on a ~$3B base). That is a property of any income tax under any rate schedule, not specific to SB 3125 CD1.
+**Note on absolute revenue impact:** Absolute state individual income tax revenue would drop substantially more in a recession (likely 5–10% peak-to-trough on a ~$3B base). That is a property of any income tax under any rate schedule, not specific to SB 3125 CD1.
 
 ---
 
@@ -772,33 +771,36 @@ Note: Q1 filers (avg income ~$3K) are **completely unaffected** because their gr
 
 ### Annual Fiscal Impact by Scenario ($M, vs. Act 46 baseline)
 
-**Updated May 2026** with methodology fixes (per-filer ETI, deduction plumbing, REEC §25D/§48E split, premium base-year alignment) and Hawaii-specific PTE pass-through share correction (`PASS_THROUGH_SHARE` revised from 0.40 to 0.20 based on Hawaii IRS SOI 2022: partnership/S-corp income = 12.6% of total income for $200K+ filers, ~15% of ordinary income — the national top-1% figure of 40% overstates Hawaii's wage-heavy high-income mix). Results are post-behavioral (including ETI/migration and PTE election shift).
+**Updated May 7, 2026** from fresh forecast run incorporating population growth (0.5%/yr DBEDT 2050) and COR March 2026 projections. PTE shift is $0 in this run. Results are post-behavioral (ETI/migration only).
 
 | Tax Year | LOW | **MID** | HIGH | RECESSION |
 |----------|----:|--------:|-----:|----------:|
-| 2027 | $76.7M | **$99.1M** | $129.3M | $96.0M |
-| 2028 | $101.6M | **$136.5M** | $178.7M | $134.4M |
-| 2029 | $121.7M | **$161.7M** | $210.1M | $159.4M |
-| 2030 | $119.8M | **$161.7M** | $215.6M | $162.1M |
-| 2031 | $163.5M | **$210.0M** | $269.6M | $210.0M |
-| **5-year cumulative** | **$583.2M** | **$768.9M** | **$1,003.3M** | **$761.9M** |
+| 2027 | $92.6M | **$101.2M** | $124.2M | $97.5M |
+| 2028 | $102.6M | **$122.0M** | $154.6M | $120.6M |
+| 2029 | $116.5M | **$139.7M** | $180.2M | $138.8M |
+| 2030 | $111.4M | **$137.2M** | $183.9M | $141.0M |
+| 2031 | $146.8M | **$173.0M** | $226.9M | $176.5M |
+| **5-year total** | **$569.9M** | **$673.0M** | **$869.9M** | **$674.5M** |
 
 *Positive = net revenue gain for the State. Includes bracket microsim + credit overlay + behavioral response.*
 
-**RECESSION scenario note:** The $7.0M difference from MID ($761.9M vs $768.9M) reflects that both tax systems face the same macro shock — the *delta* between them is partially preserved. 2031 RECESSION = MID exactly, confirming full macro recovery. See Section 8b for methodology.
+**RECESSION scenario note:** See Section 8b. ⚠️ RECESSION is slightly above MID in 2030–2031 in this run — unexpected behavior that needs investigation before citing.
 
 ### MID Scenario Decomposition
 
 | Channel | 5-year Total |
 |---------|-------------:|
-| Static bracket gain (13% top bracket + middle cuts) | +$460.6M |
-| ETI / migration behavioral offset | −$74.5M |
-| PTE election shift (ordinary income only; CG excluded) | −$120.4M |
-| **Post-behavioral bracket delta** | **+$265.7M** |
-| Credit overlay (REEC cap + CGEC sunset + TCRA) | +$503.2M |
-| **Total MID** | **+$768.9M** |
+| Static bracket gain (13% top bracket + middle cuts) | +$411.6M |
+| ETI / migration behavioral offset | −$73.2M |
+| PTE election shift | $0 ⚠️ |
+| **Post-behavioral bracket delta** | **+$338.4M** |
+| REEC savings (cap + elimination) | +$236.3M |
+| CGEC savings (sunset) | +$90.5M |
+| TCRA savings (acceleration) | +$7.8M |
+| **Credit overlay total** | **+$334.6M** |
+| **Total MID** | **+$673.0M** |
 
-*PTE offset reduced from −$240.9M to −$120.4M after correcting `PASS_THROUGH_SHARE` from 0.40 (national top-1% average) to 0.20 (Hawaii IRS SOI 2022: partnership/S-corp = 12.6% of total income / ~15% of ordinary income for $200K+ filers). The credit overlay ($503M, 65% of total) remains the largest single component.*
+*⚠️ PTE shift is $0 in this run — previously modeled at −$120.4M. Needs investigation to confirm whether this is intentional (e.g., PTE disabled in latest pipeline) or a bug. Credit overlay revised down from $503.2M to $334.6M reflecting updated REEC and CGEC baselines.*
 
 ### Distributional Impact — TY 2027 Bracket Change (MID)
 

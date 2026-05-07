@@ -24,11 +24,15 @@ Output:
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import traceback
 from pathlib import Path
 
-DATA_DIR = Path("/Users/dtomkatsu/ctc-and-eitc/data/raw/pums")
+DATA_DIR = Path(
+    os.environ.get("HAWAII_PUMS_DIR")
+    or Path.home() / "ctc-and-eitc" / "data" / "raw" / "pums"
+)
 CACHE_FILE = Path("/tmp/tax_units_cache.parquet")
 OUT_CSV = Path("/tmp/sb3125_cd1_sensitivity_2027_2031.csv")
 TARGET_YEARS = [2027, 2028, 2029, 2030, 2031]
