@@ -64,6 +64,9 @@ class PipelineResult:
 
     All revenue figures are population-weighted dollar totals.  Use
     ``estimator`` for additional queries not pre-computed here.
+
+    When a ``reform`` is supplied to :func:`run_pipeline`, the
+    ``reform_result`` field carries the comparison vs. baseline.
     """
 
     tax_units: pd.DataFrame          # calibrated base-year units (post-IPF)
@@ -82,6 +85,9 @@ class PipelineResult:
     elapsed_seconds: float           # wall-clock time for the full run
 
     timings: Dict[str, float] = field(default_factory=dict)
+
+    # Optional reform comparison (populated when run_pipeline receives a Reform)
+    reform_result: Optional[object] = None  # tax_modeler.reform.ReformResult | None
 
 
 # ---------------------------------------------------------------------------
@@ -210,6 +216,96 @@ def enrich_for_credits(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def enrich_for_benefits(
+    df: pd.DataFrame,
+    person_df: Optional[pd.DataFrame] = None,
+    hh_df: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
+    """Pull richer PUMS variables (DIS, HINS*, WKHP, CIT, TEN) onto tax units.
+
+    The base ``enrich_for_credits`` populates the columns needed for
+    EITC / CTC / Hawaii tax math. The benefit modules
+    (SSI, ACA PTC, childcare, SPM thresholds) need additional PUMS
+    variables that aren't aggregated by ``TaxUnitConstructor``. This
+    helper does the per-tax-unit aggregation:
+
+      * ``n_disabled``                count of disabled people in the tax unit
+      * ``n_employer_insured``        any HINS1==1
+      * ``n_medicaid_covered``        any HINS3==1
+      * ``n_medicare_covered``        any HINS4==1
+      * ``n_uninsured``               HICOV==2 count
+      * ``primary_hours_worked``      WKHP for primary filer
+      * ``secondary_hours_worked``    WKHP for spouse on MFJ returns
+      * ``n_non_citizens``            CIT==5 count
+      * ``tenure``                    "renter" / "owner_with_mortgage" /
+                                      "owner_no_mortgage" derived from TEN
+      * ``hh_received_snap``          HH-level FS column (when available)
+
+    Idempotent — existing columns are skipped. When ``person_df`` /
+    ``hh_df`` are not supplied the function is a no-op (returns ``df``
+    unchanged), so callers can opt in by passing the frames they have.
+    """
+    out = df.copy()
+
+    if hh_df is not None and "tenure" not in out.columns and "TEN" in hh_df.columns:
+        # PUMS TEN: 1=owner-mortgage, 2=owner-free, 3=renter, 4=no-rent
+        ten_map = {1: "owner_with_mortgage", 2: "owner_no_mortgage", 3: "renter", 4: "renter"}
+        hh_tenure = hh_df.set_index(hh_df["SERIALNO"].astype(str))["TEN"].map(ten_map)
+        out["tenure"] = out["SERIALNO"].astype(str).map(hh_tenure).fillna("renter")
+        if "FS" in hh_df.columns:
+            hh_fs = hh_df.set_index(hh_df["SERIALNO"].astype(str))["FS"]
+            out["hh_received_snap"] = out["SERIALNO"].astype(str).map(hh_fs == 1).fillna(False)
+
+    if person_df is None:
+        return out
+
+    # Build a per-SERIALNO aggregator
+    p = person_df.copy()
+    if "SERIALNO" not in p.columns:
+        return out
+    p["SERIALNO"] = p["SERIALNO"].astype(str)
+
+    def _agg_by_serial(col: str, predicate) -> pd.Series:
+        if col not in p.columns:
+            return pd.Series(dtype=float)
+        flag = predicate(p[col])
+        return flag.groupby(p["SERIALNO"]).sum()
+
+    serial = out["SERIALNO"].astype(str)
+
+    # Counts
+    if "n_disabled" not in out.columns:
+        out["n_disabled"] = serial.map(_agg_by_serial("DIS", lambda s: s == 1)).fillna(0).astype(int)
+    if "n_employer_insured" not in out.columns:
+        out["n_employer_insured"] = serial.map(_agg_by_serial("HINS1", lambda s: s == 1)).fillna(0).astype(int)
+    if "n_medicaid_covered" not in out.columns:
+        out["n_medicaid_covered"] = serial.map(_agg_by_serial("HINS3", lambda s: s == 1)).fillna(0).astype(int)
+    if "n_medicare_covered" not in out.columns:
+        out["n_medicare_covered"] = serial.map(_agg_by_serial("HINS4", lambda s: s == 1)).fillna(0).astype(int)
+    if "n_uninsured" not in out.columns:
+        out["n_uninsured"] = serial.map(_agg_by_serial("HICOV", lambda s: s == 2)).fillna(0).astype(int)
+    if "n_non_citizens" not in out.columns:
+        out["n_non_citizens"] = serial.map(_agg_by_serial("CIT", lambda s: s == 5)).fillna(0).astype(int)
+
+    # Per-filer hours-worked: requires linking via primary_filer_id / secondary_filer_id
+    if "WKHP" in p.columns and "primary_filer_id" in out.columns:
+        # Build person_id from SERIALNO_SPORDER
+        if "person_id" not in p.columns:
+            p["person_id"] = p["SERIALNO"].astype(str) + "_" + p["SPORDER"].astype(str)
+        wkhp_by_pid = p.set_index("person_id")["WKHP"].fillna(0).astype(float)
+        if "primary_hours_worked" not in out.columns:
+            out["primary_hours_worked"] = (
+                out["primary_filer_id"].astype(str).map(wkhp_by_pid).fillna(0.0)
+            )
+        if "secondary_hours_worked" not in out.columns:
+            out["secondary_hours_worked"] = (
+                out.get("secondary_filer_id", pd.Series("0", index=out.index))
+                   .astype(str).map(wkhp_by_pid).fillna(0.0)
+            )
+
+    return out
+
+
 def compute_base_tax(
     df: pd.DataFrame,
     deduction_params=None,
@@ -318,6 +414,7 @@ def run_pipeline(
     method: str = "ensemble",
     tax_units_df: Optional[pd.DataFrame] = None,
     skip_calibration: bool = False,
+    reform: Optional[object] = None,    # tax_modeler.reform.Reform | None
 ) -> PipelineResult:
     """Run the full Hawaii tax microsimulation pipeline.
 
@@ -350,12 +447,18 @@ def run_pipeline(
     skip_calibration:
         When ``True``, skip the IPF rake step even when building from PUMS.
         Useful for debugging the construction and projection stages in isolation.
+    reform:
+        Optional :class:`tax_modeler.reform.Reform`. When supplied, the
+        comparison between baseline and reform is computed on the projected
+        units and attached to the result as ``reform_result``. The baseline
+        DataFrames returned in the result are unchanged.
 
     Returns
     -------
     PipelineResult
         Contains calibrated base units, projected units, a RevenueEstimator
-        instance, and pre-computed summary tables.
+        instance, and pre-computed summary tables. ``reform_result`` is
+        populated when a ``reform`` is supplied.
     """
     from tax_modeler.projection.tax_unit_projector import project_tax_units_forward
     from tax_modeler.revenue.estimator import RevenueEstimator
@@ -424,6 +527,22 @@ def run_pipeline(
     by_quintile = estimator.by_income_quintile()
     timings["estimate"] = time.perf_counter() - t0
 
+    # ------------------------------------------------------------------ #
+    # Stage 8 (optional): apply a reform and compute the comparison       #
+    # ------------------------------------------------------------------ #
+    reform_result = None
+    if reform is not None:
+        from tax_modeler.reform import apply_reform
+        t0 = time.perf_counter()
+        reform_result = apply_reform(projected, reform, year=target_year)
+        timings["reform"] = time.perf_counter() - t0
+        logger.info(
+            "Reform %s applied: revenue delta = %+.1fM, avg tax delta = %+.0f",
+            reform.name,
+            reform_result.revenue_delta_millions,
+            reform_result.avg_tax_delta,
+        )
+
     elapsed = time.perf_counter() - wall_start
 
     logger.info(
@@ -449,4 +568,5 @@ def run_pipeline(
         n_weighted_filers=state_summary["total_weighted_filers"],
         elapsed_seconds=elapsed,
         timings=timings,
+        reform_result=reform_result,
     )

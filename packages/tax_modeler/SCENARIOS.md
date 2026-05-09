@@ -135,3 +135,185 @@ synthetic fixture.  Add a test under `tests/tax_modeler/smoke/` that
 calls your scenario through `compare_systems` or `run_pipeline` and
 asserts the revenue delta has the expected sign.  See
 `tests/tax_modeler/smoke/test_e2e_smoke.py` for the pattern.
+
+## Part 3 — Modeling benefit reforms
+
+The Phase 1-6 policy-impact extension adds a `Reform` DSL that handles
+both tax-rate AND benefit changes through one machinery.  Use it
+whenever the question is *"how does X change household income or
+poverty?"* rather than *"how does X change state revenue?"*
+
+### The Reform DSL
+
+```python
+from tax_modeler import Reform, apply_reform
+
+reform = Reform(
+    name="snap_minus_10pct",
+    benefit_overrides={"snap": {"max_benefit_pct": 0.90}},
+)
+result = apply_reform(taxed_units, reform, year=2026)
+
+print(result.benefit_flow_deltas_millions)  # {"snap": -X.XX}
+counterfactual = result.counterfactual_units
+```
+
+### Programs the DSL recognizes
+
+| Program key            | Module                                               | Reform knobs (multipliers default 1.0)                          |
+|------------------------|------------------------------------------------------|------------------------------------------------------------------|
+| `snap`                 | `benefits.snap`                                      | `max_benefit_pct`, `gross_income_limit_factor`, `net_income_limit_factor` |
+| `ssi`                  | `benefits.ssi`                                       | `federal_payment_pct`, `income_threshold_factor`                |
+| `ssi_hi_supplement`    | `benefits.ssi_hi_supplement`                         | `monthly_amount`, `coverage_pct`                                |
+| `eitc`                 | `credits.eitc` (federal)                             | `amount_pct` (multiplier on existing column)                   |
+| `ctc`                  | `credits.ctc` (federal)                              | `amount_pct`                                                    |
+| `hi_eitc`              | `credits.hi_eitc`                                    | `rate_of_federal`, `refundable`, `amount_pct`                  |
+| `hi_food_excise`       | `credits.hi_food_excise`                             | `per_exemption`, `amount_pct`, `income_threshold_factor`       |
+| `hi_renters`           | `credits.hi_renters`                                 | `takeup_pct`, `amount_pct`, `income_threshold_factor`          |
+| `aca_ptc`              | `benefits.aca_ptc`                                   | `credit_pct`, `benchmark_premium_pct`, `income_threshold_factor` |
+| `medicaid`             | `benefits.medicaid_hi_quest`                         | `adult_pmpm_pct`, `child_pmpm_pct`, `aged_pmpm_pct`            |
+| `wic`                  | `benefits.wic`                                       | `package_value_pct`, `income_threshold_factor`                 |
+| `liheap`               | `benefits.liheap`                                    | `benefit_amount_pct`, `income_threshold_factor`                |
+| `childcare`            | `benefits.childcare`                                 | `per_child_subsidy_pct`, `income_threshold_factor`             |
+| `housing`              | `benefits.housing`                                   | `payment_standard_pct`, `tenant_rent_pct`                      |
+
+Tax-rate reforms (e.g. SB 3125 CD1) plug in via `tax_system_factory`:
+
+```python
+from tax_modeler import TaxSystemRegistry
+
+reform = Reform(
+    name="combined",
+    tax_system_factory=TaxSystemRegistry.get_sb3125_cd1_system,
+    benefit_overrides={"snap": {"max_benefit_pct": 0.90}},
+)
+```
+
+### Computing the poverty / distribution impact
+
+`apply_reform` only computes the comparison; downstream you decide what
+to compute on the resulting frames:
+
+```python
+from tax_modeler import (
+    compute_spm_resources, hawaii_spm_threshold, poverty_rate, decile_summary,
+)
+
+base_resources, _ = compute_spm_resources(units)
+cf_resources, _   = compute_spm_resources(result.counterfactual_units)
+threshold = hawaii_spm_threshold(2024)
+
+base_rate = poverty_rate(base_resources["spm_resources"], threshold, base_resources["weight"])
+cf_rate   = poverty_rate(cf_resources["spm_resources"],   threshold, cf_resources["weight"])
+print(f"Poverty: {base_rate*100:.2f}% → {cf_rate*100:.2f}%")
+
+deciles = decile_summary(cf_resources["spm_resources"], cf_resources["weight"])
+print(deciles)
+```
+
+### TRIM3-style baseline calibration
+
+Without correction, ACS-derived simulated take-up systematically
+overcounts SNAP/SSI eligibility relative to administrative caseload.
+Calibrate baseline before applying reforms:
+
+```python
+from tax_modeler import AdminCaseload, calibrate_benefits
+
+caseload = AdminCaseload.load()
+units = calibrate_benefits(units, caseload=caseload, year=2024)
+# Per TRIM3 convention, apply_reform recomputes from eligibility on the
+# counterfactual path — the imputed take-up flag affects baseline only.
+```
+
+### Validation
+
+`tax_modeler.validation.validate_against_admin_caseload` produces a
+typed report comparing simulated vs administrative aggregates for SNAP,
+SSI, and the HI SSI supplement:
+
+```python
+from tax_modeler.validation import validate_against_admin_caseload
+
+report = validate_against_admin_caseload(units, caseload=caseload, year=2024)
+print(report.summary())
+assert report.passes  # within ±5% count, ±20% dollars
+```
+
+### End-to-end forecast scripts
+
+Three runnable demos at the repo root chain the full stack:
+
+* `forecast_snap_10pct_cut.py`     — SNAP cut → poverty/income impact
+* `forecast_eitc_doubled.py`       — federal + HI EITC expansion
+* `forecast_combined_reform.py`    — tax cut + benefit cut combined
+
+Each runs in <2s on the bundled synthetic fixture and accepts CLI flags
+(`--cut-pct`, `--year`, `--out`, etc.) for parameter sweeps.
+
+### Geographic stratification (`--by-puma`)
+
+Each `forecast_*.py` script accepts an opt-in `--by-puma` flag that
+produces a per-PUMA breakdown alongside the headline state-level table:
+
+```
+$ python forecast_snap_10pct_cut.py --by-puma --no-takeup-imputation
+
+[state-level summary printed as usual]
+
+Per-PUMA breakdown saved: /tmp/forecast_snap_10pct_cut_by_puma.csv
+       count_weighted  poverty_rate_baseline  poverty_rate_cut  delta_pp
+00100          5453.0                  0.171             0.187     +1.56
+```
+
+PUMAs with weighted count below `--puma-min-count` (default 100) are
+flagged with a `~` prefix to signal small-sample instability per Census
+SAE guidance. With Hawaii's 12 PUMAs, full PUMS-level runs typically
+produce 50K+ filers per PUMA so suppression rarely fires; the synthetic
+fixture has all units in one PUMA so the table collapses to one row.
+
+### Real CPS-ASEC donor matching (Phase 9)
+
+Phase 9 ships a real Hawaii CPS-ASEC slice at
+`packages/tax_modeler/src/tax_modeler/data/cps_donor/cps_asec_hawaii.parquet`
+(~2,575 person-records) used by `impute_moop()`,
+`impute_childcare_expense()`, and `impute_work_expense()` for SPM
+expense imputation. To regenerate from a fresh Census release:
+
+```bash
+python scripts/build_cps_asec_slice.py --year 2024
+```
+
+If the bundled parquet is missing (fresh checkout, partial install),
+the donor matchers fall back to a synthetic donor CSV so smoke tests
+still run in CI.
+
+### Multi-marginal demographic projection
+
+`project_demographics_forward(units, target_year=N, dimensions=[...])`
+rakes weights across multiple dimensions for long-horizon simulations:
+
+```python
+from tax_modeler import project_demographics_forward, hawaii_demographic_targets
+
+# Project to 2040 demographics (HI 65+ share, HH-size dist, disability prevalence)
+units_2040, result = project_demographics_forward(
+    units, target_year=2040,
+    dimensions=["senior", "hh_size", "disability"],
+)
+print(result.per_dim_results)  # post-rake shares per dimension
+```
+
+When `dimensions` is omitted, the function preserves the original
+single-dim (senior-only) behavior for backwards compatibility.
+
+### Smoke-test pattern for new reforms
+
+Phase 6 conventions live under `tests/tax_modeler/smoke/policy/`:
+
+* Test the *qualitative* shape (sign of the delta, monotonicity), not
+  exact dollar amounts — synthetic fixture is too small for tight bands.
+* Skip cleanly when the fixture has no eligible units for the program.
+* Compute SPM resources and assert ordering rather than absolute rates.
+* See `test_snap_cut_smoke.py`, `test_eitc_expansion_smoke.py`,
+  `test_combined_reform_smoke.py` for the pattern.

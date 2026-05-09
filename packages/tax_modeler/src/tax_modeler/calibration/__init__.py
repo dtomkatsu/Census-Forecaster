@@ -18,6 +18,14 @@ from .high_income_enhancement import HighIncomeEnhancer, enhance_high_income
 from .income_source_split import IncomeSourceSplitter, split_income_sources
 from .wage_growth_adjustment import WageGrowthAdjuster, generate_growth_rate_report
 from .soi_calibration import SOICalibrator
+from .admin_caseload import AdminCaseload, CaseloadTarget
+from .takeup_imputation import calibrate_benefits, impute_takeup
+from .donor_match import (
+    DonorMatcher,
+    impute_childcare_expense,
+    impute_moop,
+    impute_work_expense,
+)
 
 __all__ = [
     'CalibrationOrchestrator',
@@ -37,5 +45,16 @@ __all__ = [
     'split_income_sources',
     'WageGrowthAdjuster',
     'generate_growth_rate_report',
-    'SOICalibrator'
+    'SOICalibrator',
+    # Phase 4: take-up imputation
+    'AdminCaseload',
+    'CaseloadTarget',
+    'calibrate_benefits',
+    'impute_takeup',
+    # Phase 8: donor-matching imputation (CPS-ASEC → ACS)
+    'DonorMatcher',
+    'impute_moop',
+    # Phase 9a: extended donor-match coverage
+    'impute_childcare_expense',
+    'impute_work_expense',
 ]

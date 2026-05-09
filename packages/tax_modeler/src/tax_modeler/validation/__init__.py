@@ -11,6 +11,11 @@ from .hybrid_tax_calibration import (
     load_hybrid_benchmarks,
     get_hybrid_benchmark_summary
 )
+from .policy_crosscheck import (
+    ProgramCheck,
+    ValidationReport,
+    validate_against_admin_caseload,
+)
 
 __all__ = [
     'DotaxTable12AValidator',
@@ -18,5 +23,9 @@ __all__ = [
     'apply_hybrid_tax_calibration',
     'validate_hybrid_calibration',
     'load_hybrid_benchmarks',
-    'get_hybrid_benchmark_summary'
+    'get_hybrid_benchmark_summary',
+    # Phase 6 cross-validation
+    'ProgramCheck',
+    'ValidationReport',
+    'validate_against_admin_caseload',
 ]

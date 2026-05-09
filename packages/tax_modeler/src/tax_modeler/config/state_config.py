@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 
 
 # Repo-relative location of the bundled Hawaii tax tables.
@@ -73,6 +73,18 @@ class StateConfig:
     available_bracket_years:
         Years for which a bracket CSV exists in :attr:`tax_table_dir`.
         Used by validators to raise :class:`ConfigError` early.
+    spm_thresholds_csv:
+        Optional path to a CSV of Hawaii-elevated SPM thresholds keyed by
+        (year, n_adults, n_children, tenure). When ``None``, the
+        :mod:`tax_modeler.poverty.thresholds` module falls back to its
+        inline approximate table — fine for scaffolding, replace with a
+        real Census-derived CSV when promoting poverty analysis to
+        production.
+    admin_caseload_csv:
+        Optional path to the Hawaii DHS / SSA administrative caseload
+        CSV used by :class:`tax_modeler.calibration.AdminCaseload` to
+        calibrate benefit take-up. When ``None``, the bundled
+        ``data/admin_caseload/hawaii_caseload.csv`` is used.
     """
 
     name: str
@@ -84,6 +96,8 @@ class StateConfig:
     personal_exemption_year_inflection: int
     tax_table_dir: Path
     available_bracket_years: Tuple[int, ...] = field(default_factory=tuple)
+    spm_thresholds_csv: Optional[Path] = None
+    admin_caseload_csv: Optional[Path] = None
 
 
 HAWAII = StateConfig(

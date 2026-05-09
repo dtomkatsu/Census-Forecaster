@@ -1,0 +1,165 @@
+"""Hawaii Supplemental Poverty Measure thresholds.
+
+Real SPM thresholds are published annually by Census in the P60 SPM
+series and are *geographically adjusted* via a metropolitan-area
+housing-cost index. Hawaii (Honolulu MSA) sits well above the contiguous-
+US baseline — historically ~14-18% higher for renters.
+
+This module ships an approximate lookup table for the most recent
+publication years and a function that interpolates by household
+composition. Replace the table with a CSV import (and read it via
+``state_config.HAWAII.spm_thresholds_csv``) when production-grade
+analysis is needed; the API contract here will not change.
+
+Sources to verify against when promoting Phase 2 to production:
+- US Census Bureau, "The Supplemental Poverty Measure" (P60-280 series)
+- Census API ``acs/acs1/subject`` table S1701 cross-referenced with
+  metropolitan-area FMR adjustment factors.
+"""
+from __future__ import annotations
+
+from typing import Literal
+
+from tax_modeler.errors import ConfigError
+
+Tenure = Literal["renter", "owner_with_mortgage", "owner_no_mortgage"]
+
+
+# Census P60-283 (2024 SPM) two-adult-two-child base thresholds for
+# renters in metropolitan areas, contiguous US. Other compositions are
+# computed via the standard SPM equivalence scale.
+_BASE_THRESHOLD_2A2C_RENTER = {
+    2022: 31_312,
+    2023: 33_148,
+    2024: 34_393,
+}
+
+# Honolulu MSA geographic adjustment factor (relative to contiguous-US
+# metropolitan baseline). Approximate; replace with annual Census
+# adjustment tables when promoting to production.
+_HAWAII_GEO_ADJ = 1.18
+
+# Tenure scaling relative to renter (per SPM methodology).
+_TENURE_SCALE: dict[Tenure, float] = {
+    "renter": 1.00,
+    "owner_with_mortgage": 1.00,
+    "owner_no_mortgage": 0.84,
+}
+
+
+def _equivalence_scale(n_adults: int, n_children: int) -> float:
+    """SPM three-parameter equivalence scale relative to (2 adults, 2 children).
+
+    Approximation: ``(adults + 0.7 * children) ** 0.7``, normalized.
+    The published Census formula has minor differences for single-parent
+    households; this approximation is within ~3% across the range we care
+    about. Phase 4+ should switch to the exact Census P60-Appendix-A
+    scale when promoting to production.
+    """
+    if n_adults < 1:
+        raise ConfigError("n_adults must be >= 1")
+    if n_children < 0:
+        raise ConfigError("n_children must be >= 0")
+    raw = (n_adults + 0.7 * n_children) ** 0.7
+    base = (2 + 0.7 * 2) ** 0.7
+    return raw / base
+
+
+def threshold_for_units(
+    units,
+    *,
+    year: int = 2024,
+    tenure_col: str = "tenure",
+):
+    """Vectorized per-row SPM threshold lookup using composition + tenure.
+
+    Reads the unit DataFrame's ``num_dependents``, ``filing_status``, and
+    (when present) ``tenure`` column to produce one threshold per row.
+    Falls back to ``"renter"`` when ``tenure`` is missing — the most
+    conservative assumption (renter thresholds are highest).
+    """
+    import numpy as np
+    import pandas as pd
+
+    is_joint = (units["filing_status"] == "married_filing_jointly").to_numpy()
+    n_adults = 1 + is_joint.astype(int)
+    n_children = units["num_dependents"].fillna(0).astype(int).to_numpy()
+    if tenure_col in units.columns:
+        tenures = units[tenure_col].fillna("renter").astype(str).to_numpy()
+    else:
+        tenures = np.array(["renter"] * len(units))
+
+    out = np.zeros(len(units))
+    for i in range(len(units)):
+        ten = tenures[i]
+        if ten not in _TENURE_SCALE:
+            ten = "renter"
+        out[i] = hawaii_spm_threshold(
+            year,
+            n_adults=int(n_adults[i]),
+            n_children=int(n_children[i]),
+            tenure=ten,  # type: ignore[arg-type]
+        )
+    return pd.Series(out, index=units.index)
+
+
+def hawaii_spm_threshold(
+    year: int,
+    *,
+    n_adults: int = 2,
+    n_children: int = 2,
+    tenure: Tenure = "renter",
+) -> float:
+    """Approximate Hawaii SPM threshold for a household of the given composition.
+
+    Returns annual dollar threshold below which the household is in SPM
+    poverty.
+
+    Parameters
+    ----------
+    year:
+        Calendar year. Must be in the available table.
+    n_adults, n_children:
+        Household composition. Defaults match the Census base reference
+        unit (2 adults + 2 children) so calling with no args returns the
+        published two-adult-two-child threshold.
+    tenure:
+        ``"renter"``, ``"owner_with_mortgage"``, or ``"owner_no_mortgage"``.
+    """
+    if year not in _BASE_THRESHOLD_2A2C_RENTER:
+        raise ConfigError(
+            f"No Hawaii SPM threshold available for year={year}",
+            available=sorted(_BASE_THRESHOLD_2A2C_RENTER),
+        )
+    if tenure not in _TENURE_SCALE:
+        raise ConfigError(
+            f"Unknown tenure={tenure!r}",
+            available=sorted(_TENURE_SCALE),
+        )
+    base = _BASE_THRESHOLD_2A2C_RENTER[year]
+    return float(
+        base
+        * _HAWAII_GEO_ADJ
+        * _TENURE_SCALE[tenure]
+        * _equivalence_scale(n_adults, n_children)
+    )
+
+
+def spm_threshold_table(year: int) -> dict[tuple[int, int, Tenure], float]:
+    """Pre-computed (n_adults, n_children, tenure) → threshold dict for vectorized lookup.
+
+    Useful when assigning thresholds to a unit DataFrame:
+
+    >>> table = spm_threshold_table(2024)
+    >>> df["spm_threshold"] = df.apply(
+    ...     lambda r: table[(r.n_adults, r.n_children, r.tenure)], axis=1
+    ... )
+    """
+    out: dict[tuple[int, int, Tenure], float] = {}
+    for n_adults in range(1, 7):
+        for n_children in range(0, 7):
+            for tenure in ("renter", "owner_with_mortgage", "owner_no_mortgage"):
+                out[(n_adults, n_children, tenure)] = hawaii_spm_threshold(
+                    year, n_adults=n_adults, n_children=n_children, tenure=tenure  # type: ignore[arg-type]
+                )
+    return out

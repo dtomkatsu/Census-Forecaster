@@ -57,7 +57,19 @@ from .liability.hawaii import HawaiiTaxParameters
 
 # --- Tax liability + credits + deductions ------------------------------------
 from .liability import calculate_hawaii_tax, calculate_hawaii_tax_for_units
-from .credits import calculate_eitc, calculate_eitc_for_tax_units
+from .credits import (
+    HawaiiEitcParameters,
+    HawaiiFoodExciseParameters,
+    HawaiiRentersCreditParameters,
+    calculate_eitc,
+    calculate_eitc_for_tax_units,
+    compute_hi_eitc_for_units,
+    compute_hi_food_excise_for_units,
+    compute_hi_renters_for_units,
+    hawaii_eitc_parameters,
+    hawaii_food_excise_parameters,
+    hawaii_renters_credit_parameters,
+)
 from .brackets import HawaiiTaxCalculator, load_tax_data
 from .deductions import (
     DeductionPolicy,
@@ -78,13 +90,21 @@ from .config import (
 
 # --- Calibration -------------------------------------------------------------
 from .calibration import (
+    AdminCaseload,
     CalibrationOrchestrator,
+    CaseloadTarget,
     DOTAXSOIParser,
+    DonorMatcher,
     IPFCalibrationOrchestrator,
     IPFCalibrator,
     apply_ipf_calibration,
     apply_ipf_calibration_via_rake,
     apply_systematic_calibration,
+    calibrate_benefits,
+    impute_childcare_expense,
+    impute_moop,
+    impute_takeup,
+    impute_work_expense,
 )
 
 # --- Adjustments / credits ---------------------------------------------------
@@ -116,8 +136,66 @@ from .pipeline import (
     PipelineResult,
     calibrate,
     compute_base_tax,
+    enrich_for_benefits,
     enrich_for_credits,
     run_pipeline,
+)
+
+# --- Policy-impact extension (Phase 1: entities + reform DSL) ----------------
+from .entities import EntityGraph, Household, Person, SPMUnit, TaxUnit
+from .reform import Reform, ReformResult, apply_reform
+
+# --- Policy-impact extension (Phase 2: distribution + poverty metrics) -------
+from .metrics import (
+    atkinson,
+    decile_summary,
+    distribution_by_geography,
+    gini,
+    palma,
+    poverty_by_geography,
+    poverty_depth,
+    poverty_gap,
+    poverty_rate,
+    weighted_ntile_labels,
+)
+from .poverty import (
+    compute_spm_resources,
+    hawaii_spm_threshold,
+    spm_threshold_table,
+    threshold_for_units,
+)
+
+# --- Policy-impact extension (Phase 3 + 5: benefit modules) ------------------
+from .benefits import (
+    # Phase 3
+    HawaiiSsiSupplementParameters,
+    SnapParameters,
+    SsiParameters,
+    compute_snap_for_units,
+    compute_ssi_for_units,
+    compute_ssi_hi_supplement_for_units,
+    federal_ssi_parameters,
+    hawaii_snap_parameters,
+    hawaii_ssi_supplement_parameters,
+    # Phase 5
+    AcaPtcParameters,
+    ChildcareParameters,
+    HousingParameters,
+    LiheapParameters,
+    MedicaidParameters,
+    WicParameters,
+    aca_ptc_parameters,
+    compute_aca_ptc_for_units,
+    compute_childcare_for_units,
+    compute_housing_for_units,
+    compute_liheap_for_units,
+    compute_medicaid_for_units,
+    compute_wic_for_units,
+    hawaii_childcare_parameters,
+    hawaii_housing_parameters,
+    hawaii_liheap_parameters,
+    hawaii_medicaid_parameters,
+    hawaii_wic_parameters,
 )
 
 # --- PUMS / projection (two entry points each) ------------------------------
@@ -130,15 +208,21 @@ from .projection_adapter import project_income_growth
 from .loaders.pums_loader import PUMSDataLoader, load_pums_data
 from .projection import (
     AcsSupplement,
+    DemographicProjectionResult,
     EnsembleProjector,
     OccupationMatcher,
+    hawaii_demographic_targets,
+    hawaii_disability_share,
+    hawaii_hh_size_dist,
+    hawaii_senior_share,
     project_acs_supplement,
+    project_demographics_forward,
     project_tax_units_forward,
     scale_mortgage_deductions,
 )
 
 
-__version__ = "0.2.0"
+__version__ = "0.3.0.dev0"
 
 
 # ----------------------------------------------------------------------------
@@ -157,6 +241,7 @@ PUBLIC_API = (
     # Pipeline stages (formerly underscore-private; underscore aliases remain
     # as deprecated shims in tax_modeler.pipeline).
     "enrich_for_credits",
+    "enrich_for_benefits",
     "compute_base_tax",
     "calibrate",
     # Tax math primitives
@@ -170,6 +255,85 @@ PUBLIC_API = (
     # State configuration
     "StateConfig",
     "HAWAII",
+    # Policy-impact: reform DSL + entity layer (v0.3.0+)
+    "Reform",
+    "ReformResult",
+    "apply_reform",
+    "EntityGraph",
+    "Person",
+    "TaxUnit",
+    "SPMUnit",
+    "Household",
+    # Policy-impact: distribution + poverty metrics (v0.3.0+)
+    "decile_summary",
+    "gini",
+    "palma",
+    "atkinson",
+    "weighted_ntile_labels",
+    "poverty_rate",
+    "poverty_depth",
+    "poverty_gap",
+    "compute_spm_resources",
+    "hawaii_spm_threshold",
+    "spm_threshold_table",
+    "threshold_for_units",
+    # Policy-impact: SNAP + SSI benefit modules (v0.3.0+)
+    "compute_snap_for_units",
+    "compute_ssi_for_units",
+    "compute_ssi_hi_supplement_for_units",
+    "SnapParameters",
+    "SsiParameters",
+    "HawaiiSsiSupplementParameters",
+    "hawaii_snap_parameters",
+    "federal_ssi_parameters",
+    "hawaii_ssi_supplement_parameters",
+    # Policy-impact: take-up imputation against administrative caseload (Phase 4)
+    "AdminCaseload",
+    "CaseloadTarget",
+    "calibrate_benefits",
+    "impute_takeup",
+    # Phase 8: ACS demographic projection + donor-match + geographic stratification
+    "project_demographics_forward",
+    "hawaii_senior_share",
+    "hawaii_hh_size_dist",
+    "hawaii_disability_share",
+    "hawaii_demographic_targets",
+    "DemographicProjectionResult",
+    "DonorMatcher",
+    "impute_moop",
+    "impute_childcare_expense",
+    "impute_work_expense",
+    "poverty_by_geography",
+    "distribution_by_geography",
+    # Policy-impact: Phase 5 federal-cost-share + in-kind programs
+    "compute_aca_ptc_for_units",
+    "compute_medicaid_for_units",
+    "compute_wic_for_units",
+    "compute_liheap_for_units",
+    "compute_childcare_for_units",
+    "compute_housing_for_units",
+    "AcaPtcParameters",
+    "MedicaidParameters",
+    "WicParameters",
+    "LiheapParameters",
+    "ChildcareParameters",
+    "HousingParameters",
+    "aca_ptc_parameters",
+    "hawaii_medicaid_parameters",
+    "hawaii_wic_parameters",
+    "hawaii_liheap_parameters",
+    "hawaii_childcare_parameters",
+    "hawaii_housing_parameters",
+    # Hawaii state-level refundable credits
+    "compute_hi_eitc_for_units",
+    "compute_hi_food_excise_for_units",
+    "compute_hi_renters_for_units",
+    "HawaiiEitcParameters",
+    "HawaiiFoodExciseParameters",
+    "HawaiiRentersCreditParameters",
+    "hawaii_eitc_parameters",
+    "hawaii_food_excise_parameters",
+    "hawaii_renters_credit_parameters",
     # Errors (catch by intent)
     "TaxModelerError",
     "MissingDataError",

@@ -1,0 +1,434 @@
+"""Reform dataclass + apply_reform.
+
+The Reform DSL covers:
+
+* **Tax-rate reforms** via :func:`compare_systems` against a scenario
+  :class:`TaxSystemConfig` produced by ``reform.tax_system_factory``.
+* **Benefit reforms** via per-program override dicts under
+  ``reform.benefit_overrides``. Phase 3 supports
+  ``snap`` / ``ssi`` / ``ssi_hi_supplement`` / ``eitc`` / ``ctc``.
+  The first three are recomputed by the benefit modules with overridden
+  parameters; ``eitc`` and ``ctc`` use simple multipliers
+  (``amount_pct``) on the existing per-unit credit columns.
+
+:func:`apply_reform` returns a :class:`ReformResult` containing the
+baseline and counterfactual unit frames plus aggregate deltas.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from types import MappingProxyType
+from typing import Any, Callable, Mapping, Optional
+
+import numpy as np
+import pandas as pd
+
+from tax_modeler.config.tax_system_config import (
+    TaxCalculator,
+    TaxSystemConfig,
+    TaxSystemRegistry,
+    compare_systems,
+)
+from tax_modeler.errors import ConfigError
+
+
+# Programs the Reform DSL recognizes under benefit_overrides.
+_KNOWN_BENEFIT_PROGRAMS = frozenset(
+    {
+        # Phase 3
+        "snap", "ssi", "ssi_hi_supplement",
+        "eitc", "ctc",
+        # Phase 5
+        "aca_ptc", "medicaid", "wic", "liheap", "childcare", "housing",
+        # Hawaii state-level refundable credits
+        "hi_eitc", "hi_food_excise", "hi_renters",
+    }
+)
+
+
+# Type aliases
+TaxSystemFactory = Callable[[int], TaxSystemConfig]
+BenefitOverrides = Mapping[str, Mapping[str, Any]]
+
+
+def _frozen_metadata(meta: Optional[Mapping]) -> Mapping:
+    if meta is None:
+        return MappingProxyType({})
+    return MappingProxyType(dict(meta))
+
+
+@dataclass(frozen=True)
+class Reform:
+    """A frozen description of a policy change relative to baseline.
+
+    Parameters
+    ----------
+    name:
+        Short identifier (e.g. ``"sb3125_cd1"``, ``"snap_minus_10pct"``).
+    tax_system_factory:
+        ``year -> TaxSystemConfig`` returning the scenario tax system.
+        Defaults to ``None`` (no tax change).
+    benefit_overrides:
+        Per-program parameter overrides, e.g.
+        ``{"snap": {"max_benefit_pct": 0.90}}``. Stored on the reform
+        but unused until Phase 3 benefit modules land.
+    metadata:
+        Free-form annotations (description, source citation, etc.).
+        Frozen at construction.
+    """
+
+    name: str
+    tax_system_factory: Optional[TaxSystemFactory] = None
+    benefit_overrides: Optional[BenefitOverrides] = None
+    metadata: Mapping = field(default_factory=lambda: MappingProxyType({}))
+
+    def __post_init__(self) -> None:
+        if not self.name:
+            raise ConfigError("Reform.name must be a non-empty string")
+        # Freeze metadata if a plain dict was supplied
+        if not isinstance(self.metadata, MappingProxyType):
+            object.__setattr__(self, "metadata", _frozen_metadata(self.metadata))
+        if self.benefit_overrides is not None and not isinstance(
+            self.benefit_overrides, MappingProxyType
+        ):
+            # Deep-freeze one level (program → params); params themselves stay readable
+            frozen = MappingProxyType({
+                k: MappingProxyType(dict(v)) for k, v in self.benefit_overrides.items()
+            })
+            object.__setattr__(self, "benefit_overrides", frozen)
+
+    @property
+    def changes_taxes(self) -> bool:
+        return self.tax_system_factory is not None
+
+    @property
+    def changes_benefits(self) -> bool:
+        return bool(self.benefit_overrides)
+
+
+@dataclass
+class ReformResult:
+    """Output of :func:`apply_reform`.
+
+    Holds the baseline and counterfactual tax-system configs used, the
+    headline revenue deltas from ``compare_systems``, and (when benefit
+    overrides are present) the counterfactual unit-level DataFrame plus
+    per-program flow deltas in dollars.
+
+    Fields
+    ------
+    reform, year, baseline_system, scenario_system, comparison,
+    revenue_delta_millions, avg_tax_delta:
+        As before — the tax-side comparison.
+    counterfactual_units:
+        Full per-unit DataFrame after benefit overrides have been
+        applied. ``None`` when no benefit overrides are present.
+    benefit_flow_deltas_millions:
+        Mapping ``program -> total $M change`` (positive = more dollars
+        going to households; negative = cuts). Empty when no benefit
+        overrides are present. The deltas are weighted by
+        ``df["weight"]`` if that column exists, else unweighted.
+    """
+
+    reform: Reform
+    year: int
+    baseline_system: TaxSystemConfig
+    scenario_system: TaxSystemConfig
+    comparison: pd.DataFrame
+    revenue_delta_millions: float
+    avg_tax_delta: float
+    counterfactual_units: Optional[pd.DataFrame] = None
+    benefit_flow_deltas_millions: Mapping[str, float] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+
+
+def _ensure_baseline_benefits(units: pd.DataFrame, programs: set[str]) -> pd.DataFrame:
+    """Populate baseline benefit columns on ``units`` for any program in ``programs``.
+
+    Idempotent: existing columns are left alone. Used so that benefit
+    deltas can be computed cleanly even when the caller hasn't already
+    run the benefit modules on their baseline frame.
+    """
+    df = units
+    if "snap" in programs and "snap_amount" not in df.columns:
+        from tax_modeler.benefits.snap import compute_snap_for_units
+        df = compute_snap_for_units(df)
+    if "ssi" in programs and "ssi_amount" not in df.columns:
+        from tax_modeler.benefits.ssi import compute_ssi_for_units
+        df = compute_ssi_for_units(df)
+    if "ssi_hi_supplement" in programs and "ssi_hi_amount" not in df.columns:
+        from tax_modeler.benefits.ssi_hi_supplement import (
+            compute_ssi_hi_supplement_for_units,
+        )
+        df = compute_ssi_hi_supplement_for_units(df)
+    # Phase 5
+    if "aca_ptc" in programs and "aca_ptc_amount" not in df.columns:
+        from tax_modeler.benefits.aca_ptc import compute_aca_ptc_for_units
+        df = compute_aca_ptc_for_units(df)
+    if "medicaid" in programs and "medicaid_amount" not in df.columns:
+        from tax_modeler.benefits.medicaid_hi_quest import compute_medicaid_for_units
+        df = compute_medicaid_for_units(df)
+    if "wic" in programs and "wic_amount" not in df.columns:
+        from tax_modeler.benefits.wic import compute_wic_for_units
+        df = compute_wic_for_units(df)
+    if "liheap" in programs and "liheap_amount" not in df.columns:
+        from tax_modeler.benefits.liheap import compute_liheap_for_units
+        df = compute_liheap_for_units(df)
+    if "childcare" in programs and "childcare_amount" not in df.columns:
+        from tax_modeler.benefits.childcare import compute_childcare_for_units
+        df = compute_childcare_for_units(df)
+    if "housing" in programs and "housing_subsidy_amount" not in df.columns:
+        from tax_modeler.benefits.housing import compute_housing_for_units
+        df = compute_housing_for_units(df)
+    # Hawaii state credits
+    if "hi_eitc" in programs and "hi_eitc_amount" not in df.columns:
+        from tax_modeler.credits.hi_eitc import compute_hi_eitc_for_units
+        df = compute_hi_eitc_for_units(df)
+    if "hi_food_excise" in programs and "hi_food_excise_amount" not in df.columns:
+        from tax_modeler.credits.hi_food_excise import compute_hi_food_excise_for_units
+        df = compute_hi_food_excise_for_units(df)
+    if "hi_renters" in programs and "hi_renters_amount" not in df.columns:
+        from tax_modeler.credits.hi_renters import compute_hi_renters_for_units
+        df = compute_hi_renters_for_units(df)
+    return df
+
+
+def _apply_benefit_overrides(
+    baseline_df: pd.DataFrame,
+    overrides: Mapping[str, Mapping[str, Any]],
+) -> tuple[pd.DataFrame, dict[str, float]]:
+    """Compute counterfactual benefit columns and return per-program $M deltas.
+
+    Returns ``(counterfactual_df, deltas)`` where ``deltas`` maps program
+    name to the weighted dollar change vs baseline (in millions).
+    """
+    df = baseline_df.copy()
+    deltas: dict[str, float] = {}
+
+    weights = df.get("weight")
+    if weights is None:
+        weights = pd.Series(1.0, index=df.index)
+
+    def _record(program: str, baseline_col: str, new_values: np.ndarray) -> None:
+        baseline_vals = df[baseline_col].fillna(0).to_numpy(dtype=float)
+        delta = float(((new_values - baseline_vals) * weights.to_numpy()).sum() / 1e6)
+        deltas[program] = delta
+        df[baseline_col] = new_values
+
+    if "snap" in overrides:
+        from tax_modeler.benefits.snap import compute_snap_for_units
+        snap_df = compute_snap_for_units(
+            df, overrides=overrides["snap"], out_col="_cf_snap_amount"
+        )
+        new_vals = snap_df["_cf_snap_amount"].to_numpy()
+        _record("snap", "snap_amount", new_vals)
+
+    if "ssi" in overrides:
+        from tax_modeler.benefits.ssi import compute_ssi_for_units
+        ssi_df = compute_ssi_for_units(
+            df, overrides=overrides["ssi"], out_col="_cf_ssi_amount"
+        )
+        new_vals = ssi_df["_cf_ssi_amount"].to_numpy()
+        _record("ssi", "ssi_amount", new_vals)
+
+    if "ssi_hi_supplement" in overrides:
+        from tax_modeler.benefits.ssi_hi_supplement import (
+            compute_ssi_hi_supplement_for_units,
+        )
+        supp_df = compute_ssi_hi_supplement_for_units(
+            df,
+            overrides=overrides["ssi_hi_supplement"],
+            out_col="_cf_ssi_hi_amount",
+        )
+        new_vals = supp_df["_cf_ssi_hi_amount"].to_numpy()
+        _record("ssi_hi_supplement", "ssi_hi_amount", new_vals)
+
+    if "eitc" in overrides:
+        # Multiplier-only knob for the MVP. Bracket-by-bracket EITC reform
+        # would require re-running calculate_eitc_for_tax_units against a
+        # parameterized EITCParameters; deferred to Phase 5+.
+        pct = float(overrides["eitc"].get("amount_pct", 1.0))
+        if "eitc_amount" not in df.columns:
+            raise ConfigError(
+                "eitc reform requires 'eitc_amount' column on the input frame; "
+                "run compute_base_tax / calculate_eitc_for_tax_units first."
+            )
+        baseline_vals = df["eitc_amount"].fillna(0).to_numpy(dtype=float)
+        new_vals = baseline_vals * pct
+        _record("eitc", "eitc_amount", new_vals)
+
+    if "ctc" in overrides:
+        pct = float(overrides["ctc"].get("amount_pct", 1.0))
+        for col in ("ctc_total", "ctc_refundable", "ctc_nonrefundable"):
+            if col not in df.columns:
+                continue
+            baseline_vals = df[col].fillna(0).to_numpy(dtype=float)
+            new_vals = baseline_vals * pct
+            # Only the headline ctc_total goes into the deltas dict
+            if col == "ctc_total":
+                _record("ctc", col, new_vals)
+            else:
+                df[col] = new_vals
+
+    # Phase 5 benefit modules — recompute with overridden parameters
+    if "aca_ptc" in overrides:
+        from tax_modeler.benefits.aca_ptc import compute_aca_ptc_for_units
+        cf = compute_aca_ptc_for_units(
+            df, overrides=overrides["aca_ptc"], out_col="_cf_aca_ptc_amount"
+        )
+        _record("aca_ptc", "aca_ptc_amount", cf["_cf_aca_ptc_amount"].to_numpy())
+
+    if "medicaid" in overrides:
+        from tax_modeler.benefits.medicaid_hi_quest import compute_medicaid_for_units
+        cf = compute_medicaid_for_units(
+            df, overrides=overrides["medicaid"],
+            out_col="_cf_medicaid_amount",
+            receives_col="_cf_medicaid_receives",
+        )
+        _record("medicaid", "medicaid_amount", cf["_cf_medicaid_amount"].to_numpy())
+        df["medicaid_receives"] = cf["_cf_medicaid_receives"].to_numpy()
+
+    if "wic" in overrides:
+        from tax_modeler.benefits.wic import compute_wic_for_units
+        cf = compute_wic_for_units(
+            df, overrides=overrides["wic"], out_col="_cf_wic_amount"
+        )
+        _record("wic", "wic_amount", cf["_cf_wic_amount"].to_numpy())
+
+    if "liheap" in overrides:
+        from tax_modeler.benefits.liheap import compute_liheap_for_units
+        cf = compute_liheap_for_units(
+            df, overrides=overrides["liheap"], out_col="_cf_liheap_amount"
+        )
+        _record("liheap", "liheap_amount", cf["_cf_liheap_amount"].to_numpy())
+
+    if "childcare" in overrides:
+        from tax_modeler.benefits.childcare import compute_childcare_for_units
+        cf = compute_childcare_for_units(
+            df, overrides=overrides["childcare"], out_col="_cf_childcare_amount"
+        )
+        _record("childcare", "childcare_amount", cf["_cf_childcare_amount"].to_numpy())
+
+    if "housing" in overrides:
+        from tax_modeler.benefits.housing import compute_housing_for_units
+        cf = compute_housing_for_units(
+            df, overrides=overrides["housing"], out_col="_cf_housing_amount"
+        )
+        _record("housing", "housing_subsidy_amount", cf["_cf_housing_amount"].to_numpy())
+
+    # Hawaii state-level refundable credits
+    if "hi_eitc" in overrides:
+        from tax_modeler.credits.hi_eitc import compute_hi_eitc_for_units
+        cf = compute_hi_eitc_for_units(
+            df, overrides=overrides["hi_eitc"], out_col="_cf_hi_eitc_amount"
+        )
+        _record("hi_eitc", "hi_eitc_amount", cf["_cf_hi_eitc_amount"].to_numpy())
+
+    if "hi_food_excise" in overrides:
+        from tax_modeler.credits.hi_food_excise import compute_hi_food_excise_for_units
+        cf = compute_hi_food_excise_for_units(
+            df, overrides=overrides["hi_food_excise"], out_col="_cf_hi_food_excise_amount"
+        )
+        _record(
+            "hi_food_excise",
+            "hi_food_excise_amount",
+            cf["_cf_hi_food_excise_amount"].to_numpy(),
+        )
+
+    if "hi_renters" in overrides:
+        from tax_modeler.credits.hi_renters import compute_hi_renters_for_units
+        cf = compute_hi_renters_for_units(
+            df, overrides=overrides["hi_renters"], out_col="_cf_hi_renters_amount"
+        )
+        _record(
+            "hi_renters",
+            "hi_renters_amount",
+            cf["_cf_hi_renters_amount"].to_numpy(),
+        )
+
+    return df, deltas
+
+
+def apply_reform(
+    units: pd.DataFrame,
+    reform: Reform,
+    *,
+    year: int,
+    baseline_factory: Optional[TaxSystemFactory] = None,
+    calculator: Optional[TaxCalculator] = None,
+) -> ReformResult:
+    """Apply a reform to a tax-unit DataFrame and return the comparison.
+
+    Parameters
+    ----------
+    units:
+        Tax-unit DataFrame already enriched and tax-computed (output of
+        ``compute_base_tax`` or a projected counterpart).
+    reform:
+        The :class:`Reform` to apply.
+    year:
+        Tax year for which to materialize both baseline and scenario
+        :class:`TaxSystemConfig` objects.
+    baseline_factory:
+        Optional ``year -> TaxSystemConfig`` factory for the baseline.
+        Defaults to ``TaxSystemRegistry.get_act46_system`` (current law).
+    calculator:
+        Optional pre-initialized :class:`TaxCalculator`. One is created
+        if not supplied.
+
+    Returns
+    -------
+    ReformResult
+        Aggregate tax comparison plus, when ``benefit_overrides`` are
+        present, the counterfactual unit frame and per-program flow
+        deltas. Compose with :mod:`tax_modeler.poverty.spm` and
+        :mod:`tax_modeler.metrics` to compute downstream poverty /
+        distribution effects.
+    """
+    base_factory = baseline_factory or TaxSystemRegistry.get_act46_system
+    base_cfg = base_factory(year)
+    scen_cfg = (
+        reform.tax_system_factory(year) if reform.changes_taxes else base_cfg
+    )
+
+    if calculator is None:
+        calculator = TaxCalculator()
+
+    # If benefits are part of the reform, populate any missing baseline
+    # columns first so deltas reflect the full reform-vs-baseline diff.
+    benefit_overrides = reform.benefit_overrides or {}
+    bad_programs = set(benefit_overrides) - _KNOWN_BENEFIT_PROGRAMS
+    if bad_programs:
+        raise ConfigError(
+            f"unknown benefit programs in reform: {sorted(bad_programs)}",
+            available=sorted(_KNOWN_BENEFIT_PROGRAMS),
+        )
+
+    if benefit_overrides:
+        baseline_units = _ensure_baseline_benefits(units, set(benefit_overrides))
+    else:
+        baseline_units = units
+
+    cmp = compare_systems(baseline_units, base_cfg, scen_cfg, calculator=calculator)
+    diff_row = cmp[cmp["system"] == "Difference"].iloc[0]
+
+    counterfactual_units = None
+    benefit_deltas: Mapping[str, float] = MappingProxyType({})
+    if benefit_overrides:
+        counterfactual_units, deltas = _apply_benefit_overrides(
+            baseline_units, benefit_overrides
+        )
+        benefit_deltas = MappingProxyType(deltas)
+
+    return ReformResult(
+        reform=reform,
+        year=year,
+        baseline_system=base_cfg,
+        scenario_system=scen_cfg,
+        comparison=cmp,
+        revenue_delta_millions=float(diff_row["revenue_millions"]),
+        avg_tax_delta=float(diff_row["avg_tax"]),
+        counterfactual_units=counterfactual_units,
+        benefit_flow_deltas_millions=benefit_deltas,
+    )

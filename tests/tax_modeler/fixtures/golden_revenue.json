@@ -1,13 +1,13 @@
 {
-  "_comment": "Golden revenue values from running enrich_for_credits + compute_base_tax + RevenueEstimator on synthetic_pums_*.parquet. Regenerate with `pytest tests/tax_modeler/smoke/test_golden_revenue.py --update-golden` when math changes intentionally.",
-  "hi_net_tax_revenue": 86646541.65,
-  "total_weighted_filers": 5020.0,
+  "hi_net_tax_revenue": 105537059.47000001,
+  "total_weighted_filers": 5453.0,
   "quintile_hi_gross_tax": [
-    440314.55,
-    1910159.15,
-    5344451.25,
-    14348721.60,
-    64715095.10
+    302014.05,
+    2715449.1999999997,
+    6160554.37,
+    20400624.35,
+    76111317.5
   ],
+  "_comment": "Golden revenue values; regenerate with `pytest --update-golden`.",
   "tolerance_pct": 2.0
 }

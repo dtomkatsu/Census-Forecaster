@@ -144,6 +144,31 @@ See [`SCENARIOS.md`](./SCENARIOS.md) for:
 
 - How to add a new Hawaii bill (concrete, with an SB 3125 CD1 example).
 - How to extend to a new state (conceptual, points at `StateConfig`).
+- How to model benefit reforms via the Reform DSL.
+- How to use the per-PUMA `--by-puma` flag on each forecast script.
+
+## Real-data setup (CPS-ASEC slice)
+
+Phase 9 ships donor-matching imputation against the real Hawaii CPS-ASEC
+public-use slice. The bundled parquet at
+`src/tax_modeler/data/cps_donor/cps_asec_hawaii.parquet` is committed,
+but if you need to regenerate (e.g. after a Census September release):
+
+```bash
+python scripts/build_cps_asec_slice.py --year 2024
+```
+
+The script downloads the Census public-use file (~140MB), filters to
+Hawaii residents via the household FIPS linker, and writes a small
+parquet (~130KB). When the real parquet isn't present (fresh checkout,
+partial install), donor matchers fall back to a synthetic CSV so smoke
+tests still run in CI.
+
+To verify the full Phase 9 stack end-to-end:
+
+```bash
+python -m tax_modeler.validation.phase9_validation
+```
 
 ## Provenance
 
