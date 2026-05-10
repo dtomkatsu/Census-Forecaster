@@ -1,0 +1,17 @@
+name: sb3125_cd1_with_safety_net_cuts
+tax_system: sb3125_cd1
+benefit_overrides:
+  snap:
+    max_benefit_pct: 0.90
+  hi_eitc:
+    rate_of_federal: 0.80   # offsetting expansion
+metadata:
+  created: 2026-05-09
+  author: dtomkatsu
+  description: >
+    SB 3125 CD1 brackets paired with a 10% SNAP cut and an HI EITC
+    expansion (40% → 80% of federal). Demonstrates the Reform DSL's
+    ability to combine tax-rate and multi-program benefit changes in
+    one spec.
+  citation: Phase 11 demo
+  bill_status: hypothetical

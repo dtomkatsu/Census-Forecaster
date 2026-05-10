@@ -51,6 +51,52 @@ TaxSystemFactory = Callable[[int], TaxSystemConfig]
 BenefitOverrides = Mapping[str, Mapping[str, Any]]
 
 
+# ---------------------------------------------------------------------------
+# Phase 11: tax-system factory registry (string ↔ callable)
+# ---------------------------------------------------------------------------
+# Bridges the YAML-friendly string identifier (``"sb3125_cd1"``) and the
+# actual callable factory (``TaxSystemRegistry.get_sb3125_cd1_system``).
+# Pre-populated with every Hawaii bill currently shipped; users can
+# extend at runtime via :func:`register_tax_system`.
+
+TAX_SYSTEM_FACTORY_REGISTRY: dict[str, TaxSystemFactory] = {
+    "act46":             TaxSystemRegistry.get_act46_system,
+    "act46_2025":        lambda y: TaxSystemRegistry.get_act46_2025_system(),
+    "act46_2027":        lambda y: TaxSystemRegistry.get_act46_2027_system(),
+    "sb3125_cd1":        TaxSystemRegistry.get_sb3125_cd1_system,
+    "sb3125_sd1":        TaxSystemRegistry.get_sb3125_sd1_system,
+    "sb3125_original":   lambda y: TaxSystemRegistry.get_sb3125_original_2027_system(),
+    "hb2306_orig":       TaxSystemRegistry.get_hb2306_orig_system,
+    "hb2306_hd1":        TaxSystemRegistry.get_hb2306_hd1_system,
+    "ty2017":            lambda y: TaxSystemRegistry.get_2017_system(),
+}
+
+
+def register_tax_system(name: str, factory: TaxSystemFactory) -> None:
+    """Add a custom tax-system factory to the registry.
+
+    Once registered, the factory's name can be referenced from YAML
+    reform specs (``tax_system: my_custom_bill``) without modifying
+    :class:`TaxSystemRegistry`.
+    """
+    if not name:
+        raise ConfigError("register_tax_system: name must be non-empty")
+    TAX_SYSTEM_FACTORY_REGISTRY[name] = factory
+
+
+def _factory_to_name(factory: TaxSystemFactory) -> Optional[str]:
+    """Reverse lookup: callable → registry name (None if unregistered).
+
+    Bound methods of the same underlying function compare ``==`` even
+    when they're separate bound-method instances (Python rebinds on
+    every attribute lookup), so we use ``==`` rather than ``is``.
+    """
+    for name, f in TAX_SYSTEM_FACTORY_REGISTRY.items():
+        if f == factory:
+            return name
+    return None
+
+
 def _frozen_metadata(meta: Optional[Mapping]) -> Mapping:
     if meta is None:
         return MappingProxyType({})
@@ -104,6 +150,116 @@ class Reform:
     @property
     def changes_benefits(self) -> bool:
         return bool(self.benefit_overrides)
+
+    # ------------------------------------------------------------------
+    # Phase 11: serialization (YAML / dict) + composition
+    # ------------------------------------------------------------------
+
+    def to_dict(self) -> dict:
+        """Serialize to a plain dict (YAML/JSON-friendly).
+
+        ``tax_system_factory`` is encoded by its registered name (string)
+        from :data:`TAX_SYSTEM_FACTORY_REGISTRY` — callables are not
+        directly serializable. Custom factories not in the registry
+        raise :class:`ConfigError`.
+        """
+        out: dict = {"name": self.name}
+        if self.tax_system_factory is not None:
+            factory_name = _factory_to_name(self.tax_system_factory)
+            if factory_name is None:
+                raise ConfigError(
+                    "Reform.to_dict: tax_system_factory is not in the registry "
+                    "(register it via tax_modeler.reform.register_tax_system)"
+                )
+            out["tax_system"] = factory_name
+        if self.benefit_overrides:
+            out["benefit_overrides"] = {
+                k: dict(v) for k, v in self.benefit_overrides.items()
+            }
+        if self.metadata:
+            out["metadata"] = dict(self.metadata)
+        return out
+
+    @classmethod
+    def from_dict(cls, data: Mapping) -> "Reform":
+        """Reconstruct from a plain dict (output of :meth:`to_dict`).
+
+        Maps ``tax_system`` string back to the factory via
+        :data:`TAX_SYSTEM_FACTORY_REGISTRY`.
+        """
+        if "name" not in data:
+            raise ConfigError("Reform.from_dict requires 'name' key")
+        factory = None
+        if "tax_system" in data and data["tax_system"]:
+            ts_name = str(data["tax_system"])
+            if ts_name not in TAX_SYSTEM_FACTORY_REGISTRY:
+                raise ConfigError(
+                    f"Unknown tax_system {ts_name!r} in reform spec",
+                    available=sorted(TAX_SYSTEM_FACTORY_REGISTRY),
+                )
+            factory = TAX_SYSTEM_FACTORY_REGISTRY[ts_name]
+        return cls(
+            name=str(data["name"]),
+            tax_system_factory=factory,
+            benefit_overrides=data.get("benefit_overrides"),
+            metadata=data.get("metadata") or {},
+        )
+
+    def to_yaml(self, path) -> None:
+        """Write the reform to a YAML file."""
+        import yaml
+        with open(path, "w") as f:
+            yaml.safe_dump(self.to_dict(), f, sort_keys=False)
+
+    @classmethod
+    def from_yaml(cls, path) -> "Reform":
+        """Read a reform from a YAML file."""
+        import yaml
+        with open(path) as f:
+            return cls.from_dict(yaml.safe_load(f))
+
+    @classmethod
+    def compose(cls, *reforms: "Reform", name: Optional[str] = None,
+                metadata: Optional[Mapping] = None) -> "Reform":
+        """Combine multiple reforms into one. Last-write-wins on conflicts.
+
+        - If multiple reforms set ``tax_system_factory``, the last
+          non-None wins (with a `composed_from` annotation in metadata).
+        - ``benefit_overrides`` are merged at the program level: the
+          later reform's program overrides replace the earlier reform's
+          for that program (full replacement, not deep-merge).
+
+        Parameters
+        ----------
+        *reforms:
+            Reforms to compose, in order. At least one required.
+        name:
+            Composite name. Defaults to ``"composed:<r1>+<r2>+..."``.
+        metadata:
+            Composite metadata. Auto-populated with
+            ``composed_from=[r.name for r in reforms]``.
+        """
+        if not reforms:
+            raise ConfigError("Reform.compose requires at least one reform")
+        composed_name = name or "composed:" + "+".join(r.name for r in reforms)
+        merged_factory: Optional[TaxSystemFactory] = None
+        merged_overrides: dict[str, dict] = {}
+        for r in reforms:
+            if r.tax_system_factory is not None:
+                merged_factory = r.tax_system_factory
+            if r.benefit_overrides:
+                for prog, params in r.benefit_overrides.items():
+                    merged_overrides[prog] = dict(params)
+        composed_meta = dict(metadata or {})
+        composed_meta.setdefault(
+            "composed_from", [r.name for r in reforms],
+        )
+        return cls(
+            name=composed_name,
+            tax_system_factory=merged_factory,
+            benefit_overrides=merged_overrides or None,
+            metadata=composed_meta,
+        )
 
 
 @dataclass

@@ -19,6 +19,18 @@ baseline. Today it supports two payloads:
 """
 from __future__ import annotations
 
-from .reform import Reform, ReformResult, apply_reform
+from .reform import (
+    TAX_SYSTEM_FACTORY_REGISTRY,
+    Reform,
+    ReformResult,
+    apply_reform,
+    register_tax_system,
+)
 
-__all__ = ["Reform", "ReformResult", "apply_reform"]
+__all__ = [
+    "Reform",
+    "ReformResult",
+    "apply_reform",
+    "register_tax_system",
+    "TAX_SYSTEM_FACTORY_REGISTRY",
+]

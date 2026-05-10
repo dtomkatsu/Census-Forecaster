@@ -307,6 +307,102 @@ print(result.per_dim_results)  # post-rake shares per dimension
 When `dimensions` is omitted, the function preserves the original
 single-dim (senior-only) behavior for backwards compatibility.
 
+### Reforms as YAML files (Phase 11)
+
+`Reform` instances serialize to YAML for reproducibility, sharing,
+and audit trails. Example checked-in spec at `reforms/snap_minus_10pct.yaml`:
+
+```yaml
+name: snap_minus_10pct
+benefit_overrides:
+  snap:
+    max_benefit_pct: 0.90
+metadata:
+  created: 2026-05-09
+  author: dtomkatsu
+  description: 10% reduction in maximum SNAP allotment
+  citation: HI Senate Ways & Means request, May 2026
+  data_vintage:
+    cps_asec: 2024
+    dotax_dhs_caseload: 2024
+```
+
+Round-trip through Python:
+
+```python
+from tax_modeler import Reform
+
+reform = Reform.from_yaml("reforms/snap_minus_10pct.yaml")
+result = apply_reform(units, reform, year=2027)
+
+# After modifying...
+reform.to_yaml("reforms/snap_minus_15pct.yaml")
+```
+
+For tax-rate reforms, use the `tax_system` key (string identifier from
+`TAX_SYSTEM_FACTORY_REGISTRY`):
+
+```yaml
+name: sb3125_cd1
+tax_system: sb3125_cd1
+metadata:
+  bill_status: introduced
+  citation: HI SB 3125 CD1, conference draft (2026)
+```
+
+Combined tax-rate + benefit-overrides specs in one YAML are supported
+(see `reforms/sb3125_cd1_with_safety_net_cuts.yaml`).
+
+### Composing reforms
+
+`Reform.compose(*reforms, name=...)` merges multiple reforms with
+last-write-wins semantics on conflicting program keys:
+
+```python
+snap_cut = Reform.from_yaml("reforms/snap_minus_10pct.yaml")
+eitc_doubled = Reform.from_yaml("reforms/eitc_doubled.yaml")
+sb3125 = Reform.from_yaml("reforms/sb3125_cd1.yaml")
+
+# All three together
+combined = Reform.compose(
+    sb3125, snap_cut, eitc_doubled,
+    name="full_2027_progressive_package",
+    metadata={"author": "fiscal_team", "scenario_version": "v3"},
+)
+```
+
+The composed reform's `metadata["composed_from"]` automatically lists
+the source reform names for provenance.
+
+### Custom tax-system factories
+
+If you've added a HI bill not in `TaxSystemRegistry`, register the
+factory at runtime so YAML reform specs can reference it by name:
+
+```python
+from tax_modeler import register_tax_system, TaxSystemConfig
+
+def get_my_bill_2028(year: int) -> TaxSystemConfig:
+    return TaxSystemConfig(name=f"my_bill_{year}", year=year, ...)
+
+register_tax_system("my_bill_2028", get_my_bill_2028)
+
+# Now `tax_system: my_bill_2028` in any YAML spec resolves to it.
+```
+
+### Typed scenario-parameter dataclasses
+
+For sensitivity sweeps and parameter sets, use typed bundles
+(`ForecastScenario`, `BehavioralParams`, `TopIncomeParams`,
+`MacroScenario`) instead of loose tuples or dicts:
+
+```python
+from tax_modeler import ForecastScenario
+
+for s in [ForecastScenario.low(), ForecastScenario.mid(), ForecastScenario.high()]:
+    print(s.label, s.top.pareto_alpha, s.behavior.eti, s.macro.reec_demand_scenario)
+```
+
 ### Smoke-test pattern for new reforms
 
 Phase 6 conventions live under `tests/tax_modeler/smoke/policy/`:

@@ -100,6 +100,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--puma-min-count", type=float, default=100.0,
                         help="Weighted-count threshold below which PUMAs are flagged "
                              "(`~` prefix) due to small-sample instability")
+    parser.add_argument("--reform-yaml", type=Path, default=None,
+                        help="Path to a Reform YAML spec; overrides --cut-pct when set")
     args = parser.parse_args(argv)
 
     persons, households = _load_synthetic_fixture()
@@ -115,12 +117,16 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as e:
             print(f"  WARNING: take-up imputation skipped: {e}", flush=True)
 
-    # Apply the SNAP-cut reform
-    reform = Reform(
-        name=f"snap_minus_{int(args.cut_pct * 100)}pct",
-        benefit_overrides={"snap": {"max_benefit_pct": 1.0 - args.cut_pct}},
-    )
-    print(f"\nApplying reform: {reform.name}", flush=True)
+    # Apply the SNAP-cut reform — from YAML when supplied, else built inline
+    if args.reform_yaml:
+        reform = Reform.from_yaml(args.reform_yaml)
+        print(f"\nLoaded reform from {args.reform_yaml}", flush=True)
+    else:
+        reform = Reform(
+            name=f"snap_minus_{int(args.cut_pct * 100)}pct",
+            benefit_overrides={"snap": {"max_benefit_pct": 1.0 - args.cut_pct}},
+        )
+    print(f"Applying reform: {reform.name}", flush=True)
     result = apply_reform(units, reform, year=args.year)
     cf = result.counterfactual_units
 

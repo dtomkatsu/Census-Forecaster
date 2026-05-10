@@ -148,7 +148,19 @@ from .pipeline import (
 
 # --- Policy-impact extension (Phase 1: entities + reform DSL) ----------------
 from .entities import EntityGraph, Household, Person, SPMUnit, TaxUnit
-from .reform import Reform, ReformResult, apply_reform
+from .reform import (
+    TAX_SYSTEM_FACTORY_REGISTRY,
+    Reform,
+    ReformResult,
+    apply_reform,
+    register_tax_system,
+)
+from .scenarios import (
+    BehavioralParams,
+    ForecastScenario,
+    MacroScenario,
+    TopIncomeParams,
+)
 
 # --- Policy-impact extension (Phase 2: distribution + poverty metrics) -------
 from .metrics import (
@@ -264,11 +276,18 @@ PUBLIC_API = (
     "Reform",
     "ReformResult",
     "apply_reform",
+    "register_tax_system",
+    "TAX_SYSTEM_FACTORY_REGISTRY",
     "EntityGraph",
     "Person",
     "TaxUnit",
     "SPMUnit",
     "Household",
+    # Phase 11: typed scenario-parameter dataclasses
+    "BehavioralParams",
+    "TopIncomeParams",
+    "MacroScenario",
+    "ForecastScenario",
     # Policy-impact: distribution + poverty metrics (v0.3.0+)
     "decile_summary",
     "gini",
