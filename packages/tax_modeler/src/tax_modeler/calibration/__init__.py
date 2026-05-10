@@ -26,6 +26,13 @@ from .donor_match import (
     impute_moop,
     impute_work_expense,
 )
+from .joint_ipf import (
+    Dimension,
+    JointDistributionDrift,
+    JointIpfResult,
+    joint_ipf,
+    validate_joint_distribution,
+)
 
 __all__ = [
     'CalibrationOrchestrator',
@@ -57,4 +64,10 @@ __all__ = [
     # Phase 9a: extended donor-match coverage
     'impute_childcare_expense',
     'impute_work_expense',
+    # Phase 10: joint multi-dimensional IPF
+    'Dimension',
+    'JointIpfResult',
+    'JointDistributionDrift',
+    'joint_ipf',
+    'validate_joint_distribution',
 ]

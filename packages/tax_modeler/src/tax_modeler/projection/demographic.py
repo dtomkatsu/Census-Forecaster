@@ -166,6 +166,135 @@ class DemographicProjectionResult:
 _VALID_DIMENSIONS = ("senior", "hh_size", "disability")
 
 
+def _build_dimension_specs(
+    dimensions: list,
+    targets: dict,
+    age_threshold: int,
+    age_col: str,
+):
+    """Construct ``Dimension`` objects (for joint_ipf) from string dim names."""
+    from tax_modeler.calibration.joint_ipf import Dimension
+
+    specs = []
+    for dim in dimensions:
+        if dim == "senior":
+            target = float(targets["senior"])
+            target_shares = {"senior": target, "nonsenior": 1.0 - target}
+
+            def _cells(df, _age_col=age_col, _at=age_threshold):
+                age = df[_age_col].fillna(0).astype(float).to_numpy()
+                return np.where(age >= _at, "senior", "nonsenior")
+
+            specs.append(Dimension(
+                name="senior", cell_fn=_cells, target_shares=target_shares,
+            ))
+        elif dim == "hh_size":
+            target = targets["hh_size"]
+            target_shares = {
+                "1": float(target[0]), "2": float(target[1]),
+                "3": float(target[2]), "4": float(target[3]),
+                "5plus": float(target[4]),
+            }
+
+            def _cells(df):
+                is_joint = (df["filing_status"] == "married_filing_jointly").to_numpy()
+                n_dep = df["num_dependents"].fillna(0).astype(int).to_numpy()
+                hh_size = 1 + is_joint.astype(int) + n_dep
+                return np.where(hh_size >= 5, "5plus", hh_size.astype(str))
+
+            specs.append(Dimension(
+                name="hh_size", cell_fn=_cells, target_shares=target_shares,
+            ))
+        elif dim == "disability":
+            target = float(targets["disability"])
+            target_shares = {
+                "disabled": target, "nondisabled": 1.0 - target,
+            }
+
+            def _cells(df):
+                if "n_disabled" not in df.columns:
+                    return np.array(["nondisabled"] * len(df))
+                n_dis = df["n_disabled"].fillna(0).astype(int).to_numpy()
+                return np.where(n_dis > 0, "disabled", "nondisabled")
+
+            specs.append(Dimension(
+                name="disability", cell_fn=_cells, target_shares=target_shares,
+            ))
+        else:
+            raise ConfigError(f"unknown dimension: {dim!r}",
+                              available=list(_VALID_DIMENSIONS))
+    return specs
+
+
+def _project_via_joint_ipf(
+    units: pd.DataFrame,
+    *,
+    target_year: int,
+    dimensions: list,
+    targets: dict,
+    age_threshold: int,
+    age_col: str,
+    weight_col: str,
+    max_iter: int,
+    tol: float,
+) -> tuple[pd.DataFrame, "DemographicProjectionResult"]:
+    """Phase 10: route demographic projection through the joint IPF engine."""
+    from tax_modeler.calibration.joint_ipf import joint_ipf
+
+    specs = _build_dimension_specs(dimensions, targets, age_threshold, age_col)
+    out_df, ipf_result = joint_ipf(
+        units, dimensions=specs, weight_col=weight_col,
+        max_iter=max_iter, tol=tol,
+    )
+
+    # Translate to the legacy DemographicProjectionResult shape so callers
+    # (and existing smoke tests) don't need to change.
+    per_dim: dict = {}
+    for dim_name in [d.name for d in specs]:
+        target_shares = ipf_result.per_dim_target_shares.get(dim_name, {})
+        post_shares = ipf_result.per_dim_final_shares.get(dim_name, {})
+        skipped = ipf_result.per_dim_skipped_cells.get(dim_name, [])
+        # Compute baseline shares from the input (one rake of zero cycles)
+        baseline_shares: dict = {}
+        for cell in target_shares:
+            mask = specs[[s.name for s in specs].index(dim_name)].cell_fn(units) == cell
+            cell_w = float(units[weight_col].fillna(0).astype(float).to_numpy()[mask].sum())
+            total = float(units[weight_col].fillna(0).astype(float).to_numpy().sum())
+            baseline_shares[cell] = cell_w / total if total > 0 else 0.0
+        per_dim[dim_name] = {
+            "baseline_shares": baseline_shares,
+            "target_shares": target_shares,
+            "post_shares": post_shares,
+            "uplifts": {},  # IPF doesn't expose per-cell uplifts — multi-step
+            "skipped_empty_cells": skipped,
+        }
+
+    senior_info = per_dim.get("senior", {})
+    senior_baseline = senior_info.get("baseline_shares", {}).get("senior", 0.0)
+    senior_target_val = (
+        targets.get("senior")
+        if "senior" in dimensions
+        else hawaii_senior_share(target_year)
+    )
+
+    notes = list(ipf_result.notes)
+    notes.append(
+        f"joint_ipf converged={ipf_result.converged} after "
+        f"{ipf_result.n_iterations} iterations "
+        f"(max marginal error {ipf_result.max_marginal_error:.4f})"
+    )
+
+    return out_df, DemographicProjectionResult(
+        target_year=target_year,
+        senior_share_baseline=senior_baseline,
+        senior_share_target=senior_target_val,
+        weight_uplift_seniors=1.0,    # IPF uses iterated multi-step uplifts
+        weight_uplift_non_seniors=1.0,
+        notes=tuple(notes),
+        per_dim_results=per_dim,
+    )
+
+
 def _rake_to_cells(
     weights: np.ndarray,
     cell_ids: np.ndarray,
@@ -310,6 +439,9 @@ def project_demographics_forward(
     senior_share_target: Optional[float] = None,
     dimensions: Optional[list] = None,
     targets: Optional[dict] = None,
+    use_joint_ipf: bool = False,
+    joint_ipf_max_iter: int = 50,
+    joint_ipf_tol: float = 1e-3,
 ) -> tuple[pd.DataFrame, DemographicProjectionResult]:
     """Reweight ``units`` so the implied senior share matches ``target_year``.
 
@@ -353,6 +485,18 @@ def project_demographics_forward(
             )
         if targets is None:
             targets = hawaii_demographic_targets(target_year)
+
+        # Phase 10: use_joint_ipf=True routes through the proper joint IPF
+        # which iterates until ALL marginals converge simultaneously rather
+        # than running independent rakes that can interfere.
+        if use_joint_ipf:
+            return _project_via_joint_ipf(
+                units, target_year=target_year, dimensions=dimensions,
+                targets=targets, age_threshold=age_threshold,
+                age_col=age_col, weight_col=weight_col,
+                max_iter=joint_ipf_max_iter, tol=joint_ipf_tol,
+            )
+
         df = units.copy()
         per_dim: dict = {}
         notes: list[str] = []

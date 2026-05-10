@@ -94,9 +94,12 @@ from .calibration import (
     CalibrationOrchestrator,
     CaseloadTarget,
     DOTAXSOIParser,
+    Dimension,
     DonorMatcher,
     IPFCalibrationOrchestrator,
     IPFCalibrator,
+    JointDistributionDrift,
+    JointIpfResult,
     apply_ipf_calibration,
     apply_ipf_calibration_via_rake,
     apply_systematic_calibration,
@@ -105,6 +108,8 @@ from .calibration import (
     impute_moop,
     impute_takeup,
     impute_work_expense,
+    joint_ipf,
+    validate_joint_distribution,
 )
 
 # --- Adjustments / credits ---------------------------------------------------
@@ -305,6 +310,12 @@ PUBLIC_API = (
     "impute_work_expense",
     "poverty_by_geography",
     "distribution_by_geography",
+    # Phase 10: joint multi-dim IPF
+    "Dimension",
+    "JointIpfResult",
+    "JointDistributionDrift",
+    "joint_ipf",
+    "validate_joint_distribution",
     # Policy-impact: Phase 5 federal-cost-share + in-kind programs
     "compute_aca_ptc_for_units",
     "compute_medicaid_for_units",
