@@ -64,6 +64,7 @@ TAX_SYSTEM_FACTORY_REGISTRY: dict[str, TaxSystemFactory] = {
     "act46_2025":        lambda y: TaxSystemRegistry.get_act46_2025_system(),
     "act46_2027":        lambda y: TaxSystemRegistry.get_act46_2027_system(),
     "sb3125_cd1":        TaxSystemRegistry.get_sb3125_cd1_system,
+    "sb3125_cd2":        TaxSystemRegistry.get_sb3125_cd2_system,
     "sb3125_sd1":        TaxSystemRegistry.get_sb3125_sd1_system,
     "sb3125_original":   lambda y: TaxSystemRegistry.get_sb3125_original_2027_system(),
     "hb2306_orig":       TaxSystemRegistry.get_hb2306_orig_system,

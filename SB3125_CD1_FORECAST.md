@@ -1,11 +1,43 @@
 # SB 3125 CD1 — Hawaii Income Tax Fiscal Impact Forecast
 ## Tax Years 2027–2031
 
-**Last updated:** May 7, 2026
+**Last updated:** May 11, 2026
 **Analyst:** Hawaii Appleseed Center for Law and Economic Justice
-**Model version:** All methodology revisions applied and forecast re-run (May 2026).
+**Model version:** CD2 scenario added (May 2026).
 
 > **Maintenance note:** This document must be updated whenever forecast methodology changes — including parameter recalibration, new behavioral channels, tax treatment corrections, or data source changes. Update the relevant section(s) and the Results table before committing.
+
+---
+
+## CD2 update — May 11, 2026
+
+SB 3125 CD2 has been received and a new `sb3125_cd2` scenario has been
+added to the model.
+
+**Key finding:** The brackets loaded in the CSV under the `sb3125_cd1` tag
+already reflected the CD2-vintage bracket values (2.50%/5.00% mid rates,
+13% at $1M+ MFJ/$750K+ HoH/$500K+ Single). The CD1-labeled brackets in
+the codebase were CD2 brackets — so **running `forecast_sb3125_cd2.py`
+produces identical fiscal-impact numbers to the existing CD1 forecast**.
+
+The `sb3125_cd2` tag in the CSV and `get_sb3125_cd2_system()` in the
+registry are now the authoritative labels going forward.
+
+**What CD2 adds vs the "CD1" that was modeled:**
+
+Credit provisions — all already reflected in `sb3125_cd1_credits.py`
+(reused by `forecast_sb3125_cd2.py`):
+- §235-12.5 REEC: AGI limits $175K single / $350K MFJ, $40M cap 2027–2030, sunset after Dec 31, 2029
+- §235-110.7 CGEC: sunset after Dec 31, 2027
+- Act 261 §5 TCRA: repeal accelerated to Jan 1, 2029
+
+New repeals in CD2 **not yet modeled** (treated as $0):
+- §235-110.51 Technology Infrastructure Renovation Tax Credit: repealed TY 2028+ — no TY2023 DOTAX line data available; estimated near-zero
+- §235-110.9 High Technology Business Investment Tax Credit: repealed TY 2029+ — credit was carryforward-only by TY2023; estimated near-zero
+
+**New files added:**
+- `reforms/sb3125_cd2.yaml`
+- `forecast_sb3125_cd2.py` (output: `/tmp/sb3125_cd2_fiscal_impact_2027_2031.csv`)
 
 ---
 
@@ -814,6 +846,59 @@ Note: Q1 filers (avg income ~$3K) are **completely unaffected** because their gr
 
 *Negative = filer pays less (savings from rate cut). Positive = filer pays more. Bracket change only; credit overlay excluded.*
 
+---
+
+### SB 3125 CD2 Results — May 11, 2026
+
+**Key finding:** The bracket values loaded under the `sb3125_cd1` label in the CSV already reflected CD2-vintage numbers (2.50%/5.00% mid rates, 13% at $1M+ MFJ). Therefore, the CD2 forecast produces **identical fiscal-impact numbers to the CD1 forecast above**. The difference is in labeling and authoritative tag going forward.
+
+**CD2 vs Act 46 baseline, all scenarios, final post-behavioral numbers ($M):**
+
+| Tax Year | LOW | **MID** | HIGH | RECESSION |
+|----------|----:|--------:|-----:|----------:|
+| 2027 | $93.4M | **$102.8M** | $125.7M | $97.2M |
+| 2028 | $103.0M | **$122.4M** | $155.0M | $120.4M |
+| 2029 | $115.6M | **$140.1M** | $180.8M | $137.5M |
+| 2030 | $111.3M | **$136.9M** | $183.2M | $141.1M |
+| 2031 | $147.4M | **$172.4M** | $224.4M | $175.9M |
+| **5-year total** | **$570.7M** | **$674.5M** | **$869.2M** | **$672.1M** |
+
+**CD2 sensitivity (static scoring, no behavioral response, $M):**
+
+| Tax Year | LOW | **MID** | HIGH |
+|----------|----:|--------:|-----:|
+| 2027 | $79.3M | **$88.0M** | $107.9M |
+| 2028 | $114.1M | **$123.8M** | $143.1M |
+| 2029 | $139.0M | **$147.0M** | $165.8M |
+| 2030 | $141.8M | **$148.5M** | $165.8M |
+| 2031 | $193.0M | **$192.3M** | $214.0M** |
+| **5-year total** | **$667.2M** | **$699.6M** | **$796.7M** |
+
+**CD2 vs FY2026-frozen baseline (ITEP-comparable, $M):**
+
+*Answers: "What does CD2 cost vs if nothing had been enacted after 2026?" Negative = revenue lost.*
+
+| Tax Year | Bracket effect | SD expansion | **Total** | ITEP estimate | Gap |
+|----------|---------------:|-------------:|----------:|---------------:|-----:|
+| 2027 | −$171.4M | −$32.4M | **−$203.7M** | −$227.0M | +$23.3M |
+| 2028 | −$161.6M | −$67.2M | **−$228.9M** | −$258.0M | +$29.1M |
+| 2029 | −$387.6M | −$85.3M | **−$472.9M** | −$534.0M | +$61.1M |
+| 2030 | −$375.5M | −$123.1M | **−$498.6M** | −$563.0M | +$64.4M |
+| 2031 | −$353.6M | −$182.9M | **−$536.5M** | −$622.0M | +$85.5M |
+| **5-year Σ** | **−$1,449.7M** | **−$491.0M** | **−$1,940.6M** | **−$2,204.0M** | **+$263.4M** |
+
+Our microsim runs ~12% below ITEP on the vs-frozen baseline. Likely sources: ITEP includes non-residents and PTE pass-through attribution not in the microsim; their dynamic inflation assumptions may also differ over the 5-year window.
+
+**MID scenario quintile breakdown (bracket only, TY 2027, CD2 vs Act 46):**
+
+| Quintile | Income Range | Avg Income | N filers | Bracket Delta | Avg $/filer |
+|----------|---------------|-----------|----------|--------------|-------------|
+| Q1 (Bottom 20%) | −$18.6K – $11.2K | $2,961 | 124,948 | $0.0M | $0 |
+| Q2 | $11.2K – $31.3K | $19,834 | 124,505 | −$0.8M | −$6 |
+| Q3 | $31.3K – $56.0K | $42,628 | 125,514 | −$5.5M | −$44 |
+| Q4 | $56.0K – $103.5K | $76,346 | 125,006 | −$10.5M | −$84 |
+| Q5 (Top 20%) | $103.5K – $211.6M | $253,959 | 124,994 | **+$82.7M** | **+$662** |
+
 ### Baseline Validation
 
 The microsim TY2027 Act 46 baseline is approximately $2.26B — roughly $790M below the COR's $3.05B FY2027 projection. This gap is **expected and not a calibration error**:
@@ -849,12 +934,24 @@ The **bracket delta** (SB 3125 CD1 minus Act 46) is robust to this level-shift �
 
 ### Forecast Scripts (repo root)
 
+#### SB 3125 CD1
+
 | Script | Purpose | Output |
 |--------|---------|--------|
 | `forecast_sb3125_cd1.py` | Original forecast with decile snapshot | `/tmp/sb3125_cd1_fiscal_impact_2027_2031.csv` |
 | `forecast_sb3125_cd1_sensitivity.py` | Sensitivity across Pareto α × REEC scenarios (pre-behavioral) | `/tmp/sb3125_cd1_sensitivity_2027_2031.csv` |
 | `forecast_sb3125_cd1_enhanced.py` | **Primary forecast** — 3 behavioral scenarios + RECESSION macro scenario | `/tmp/sb3125_cd1_enhanced_2027_2031.csv` |
 | `forecast_sb3125_cd1_quintile.py` | Distributional analysis by income quintile (MID) | `/tmp/sb3125_cd1_quintile_2027_2031.csv` |
+
+#### SB 3125 CD2 (May 2026)
+
+| Script | Purpose | Output |
+|--------|---------|--------|
+| `forecast_sb3125_cd2.py` | Static forecast vs Act 46 baseline | `/tmp/sb3125_cd2_fiscal_impact_2027_2031.csv` |
+| `forecast_sb3125_cd2_sensitivity.py` | Sensitivity across Pareto α × REEC scenarios (static, no behavioral) | `/tmp/sb3125_cd2_sensitivity_2027_2031.csv` |
+| `forecast_sb3125_cd2_enhanced.py` | **Primary CD2 forecast** — 4 scenarios (LOW/MID/HIGH/RECESSION) with behavioral response | `/tmp/sb3125_cd2_enhanced_2027_2031.csv` |
+| `forecast_sb3125_cd2_quintile.py` | Distributional quintile analysis (bracket only, all 5 years) | `/tmp/sb3125_cd2_quintile_2027_2031.csv` |
+| `forecast_sb3125_cd2_vs_fy26base.py` | ITEP-comparable: CD2 vs FY2026-frozen baseline | `/tmp/cd2_vs_fy26base_*.csv` |
 
 ### Key Package Files
 
@@ -872,13 +969,35 @@ The **bracket delta** (SB 3125 CD1 minus Act 46) is robust to this level-shift �
 | `packages/tax_modeler/src/tax_modeler/scenarios/macro_scenarios.py` | Macro recession shock (`apply_macro_recession_shock`) |
 | `packages/tax_modeler/src/tax_modeler/scenarios/sb3125_cd1_credits.py` | REEC/CGEC/TCRA credit overlay |
 
-### Cache Files
+### Output Files
+
+#### CD1 Outputs
+
+| File | Description |
+|------|-------------|
+| `/tmp/sb3125_cd1_fiscal_impact_2027_2031.csv` | Static base forecast vs Act 46 |
+| `/tmp/sb3125_cd1_enhanced_2027_2031.csv` | Final calibrated forecast (all 4 scenarios, post-behavioral) |
+| `/tmp/sb3125_cd1_quintile_2027_2031.csv` | Quintile distributional results (MID, all 5 years) |
+| `/tmp/sb3125_cd1_sensitivity_2027_2031.csv` | Sensitivity range (LOW/MID/HIGH, static scoring) |
+
+#### CD2 Outputs (May 11, 2026)
+
+| File | Description |
+|------|-------------|
+| `/tmp/sb3125_cd2_fiscal_impact_2027_2031.csv` | Static base forecast vs Act 46 |
+| `/tmp/sb3125_cd2_enhanced_2027_2031.csv` | Enhanced forecast (all 4 scenarios, post-behavioral) |
+| `/tmp/sb3125_cd2_quintile_2027_2031.csv` | Per-unit quintile analysis (bracket only, TY2027–2031) |
+| `/tmp/sb3125_cd2_sensitivity_2027_2031.csv` | Sensitivity range (LOW/MID/HIGH, static scoring) |
+| `/tmp/cd2_vs_fy26base_bracket_mid_2027_2031.csv` | ITEP-comparable bracket-only vs frozen baseline |
+| `/tmp/cd2_vs_fy26base_quintile_mid_2027_2031.csv` | ITEP-comparable quintile breakdown |
+| `/tmp/sb3125_cd2_decile_TY2027.csv` | Decile snapshot from base static forecast |
+
+#### Cache
 
 | File | Description |
 |------|-------------|
 | `/tmp/tax_units_cache.parquet` | Calibrated base-year tax units (pre-synthesis); rebuilds in ~3 min if deleted |
-| `/tmp/sb3125_cd1_enhanced_2027_2031.csv` | Final calibrated forecast results (all 3 scenarios) |
-| `/tmp/sb3125_cd1_quintile_2027_2031.csv` | Quintile distributional results (MID, all 5 years) |
+| `/tmp/sb3125_calibrated_base.pkl` | Calibrated units saved after top-income synthesis (used by enhanced scripts for state-level analysis) |
 
 ---
 
