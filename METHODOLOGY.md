@@ -270,6 +270,60 @@ The calibration regeneration reads the bundled panel and needs no key
 
 ### 7. 2020 1-year ACS hole
 
+---
+
+### 8. v4 phi calibration — implementation and null result (May 2026)
+
+**What was built.** The v4 calibration layer adds a Pass 0 that derives a
+per-cell damping constant (phi) from the ACS series' own margin-of-error
+data, rather than using the global default `phi=0.85` everywhere. The idea:
+counties with high sampling noise relative to real economic signal should be
+damped more aggressively; precise large counties less so.
+
+Noise/signal is estimated by decomposing the observed year-over-year variance
+into a sampling component (derived from published ACS MOEs via
+`SE = MOE / 1.645`, then `var_sampling ≈ SE_log(t)² + SE_log(t-1)²`) and a
+residual signal component (`var_signal = max(0, var_total − var_sampling)`).
+The noise share maps to phi via an affine function bounded in `[0.70, 0.95]`:
+`phi = 0.70 + 0.25 × noise_share`.
+
+Published ACS MOEs are used rather than PUMS replicate weights — they are
+mathematically equivalent (Census Bureau computes MOEs internally from the
+same 80 replicates) and avoid a 16+ hour data fetch for a 50-state panel.
+
+**Walk-forward evaluation.** A held-out ablation was run on the 147-county
+multi-state panel: train on anchors 2014–2020, evaluate on 2021–2022,
+h ∈ {1, 2, 3}. Results:
+
+| Metric | v3 (φ = 0.85) | v4 (per-cell φ) |
+|---|---|---|
+| Median MAPE | 5.59% | 5.64% |
+| Any CI90 coverage < 80% | no | no |
+
+Acceptance bar (median MAPE drop ≥ 3% relative) was not met.
+
+**Why phi doesn't help at short horizons.** The damped trend model uses phi
+to shrink the trend component toward zero over time: the trend contribution
+at horizon h scales as `Σᵢ₌₁ʰ φⁱ`. At h = 1–3, the level component
+dominates the forecast and the trend's cumulative contribution is small.
+Varying phi in `[0.70, 0.95]` changes that contribution by less than 25%,
+which is not enough to move MAPE materially. The calibrated phi values
+further clustered near the default (median = 0.87, stdev = 0.07), so most
+cells were already close to `phi = 0.85` anyway.
+
+Phi would become a meaningful lever at h = 4–5, where the trend compounds
+across more steps and damping choices diverge. The current primary use case
+(revenue forecasting at 1–3 year horizons) sits in the insensitive range.
+
+**Status.** The phi infrastructure is implemented and ships in v4
+(`acs/acs_volatility.py`, Pass 0 in `acs/calibration.py`, `_lookup_phi` in
+`acs/ensemble.py`). It is included in the calibration output but has no
+practical effect at h ≤ 3. It is **not the default** — the bundled
+calibration index remains v3. Re-enable and re-evaluate if longer-horizon
+forecasting becomes a requirement.
+
+### 9. 2020 1-year ACS hole
+
 The 2020 1-year ACS was suspended due to COVID-19 data quality issues.
 Folds whose target year would be 2020 (e.g. anchor=2018 with h=2;
 anchor=2015 with h=5) are dropped silently by the calibration generator.
