@@ -1090,6 +1090,83 @@ def run_stratified_calibration(
         calibration_anchors = []
         evaluation_anchors = []
 
+    # ---- Pass 0: phi calibration from MOE-derived variance decomposition ----
+    # Runs before the fold-residual cache so Pass 2 uses calibrated phi values.
+    # Uses only the series data (no new fetches) — SE is derived from AcsObservation.moe.
+    phi_strata_records: list = []
+    _phi_pass_run = False
+    try:
+        from .acs_volatility import decompose_series, cell_phi, PHI_LO, PHI_HI
+        from .strata import (
+            StrataRecord as _SR, WILDCARD as _WC, classify_pop as _cp,
+            PHI_DEFAULT, PHI_N_THRESHOLD, H_BUCKET_BOUNDS,
+        )
+        # Decompose each (geoid, indicator) series
+        decomps_by_key: dict[tuple[str, str], object] = {}
+        for (geoid, indicator), full in series_by_key.items():
+            full_sorted = sorted(full, key=lambda o: (effective_year(o), o.vintage))
+            d = decompose_series(full_sorted)
+            if d is not None:
+                decomps_by_key[(geoid, indicator)] = d
+
+        # Group by (indicator, pop_bucket)
+        from collections import defaultdict
+        cell_decomps: dict[tuple[str, str], list] = defaultdict(list)
+        for (geoid, indicator), d in decomps_by_key.items():
+            pb = _cp(populations.get(geoid)) or _WC
+            cell_decomps[(indicator, pb)].append(d)
+
+        # Emit StrataRecord for each (indicator, pop_bucket) x h_bucket combo
+        # phi doesn't vary by h_bucket (decomp is series-level), but we carry
+        # the dimension so lookup shape is uniform with kappa/bias records.
+        for (indicator, pop_bucket), decomps in cell_decomps.items():
+            phi_val = cell_phi(decomps, n_min=PHI_N_THRESHOLD)
+            if phi_val is None:
+                continue
+            n_obs = sum(d.n_years for d in decomps if d.n_years > 0)
+            for h_bucket in H_BUCKET_BOUNDS:
+                phi_strata_records.append(_SR(
+                    indicator=indicator,
+                    method="trend_ensemble",
+                    pop_bucket=pop_bucket,
+                    h_bucket=h_bucket,
+                    value=phi_val,
+                    n_folds=n_obs,
+                    extra={"phi_lo": PHI_LO, "phi_hi": PHI_HI},
+                ))
+            # h-marginalised record
+            phi_strata_records.append(_SR(
+                indicator=indicator,
+                method="trend_ensemble",
+                pop_bucket=pop_bucket,
+                h_bucket=_WC,
+                value=phi_val,
+                n_folds=n_obs,
+                extra={"phi_lo": PHI_LO, "phi_hi": PHI_HI},
+            ))
+
+        # Globally marginalised records (indicator, *, *)
+        global_decomps: dict[str, list] = defaultdict(list)
+        for (indicator, _pb), decomps in cell_decomps.items():
+            global_decomps[indicator].extend(decomps)
+        for indicator, decomps in global_decomps.items():
+            phi_val = cell_phi(decomps, n_min=PHI_N_THRESHOLD)
+            if phi_val is None:
+                continue
+            n_obs = sum(d.n_years for d in decomps if d.n_years > 0)
+            phi_strata_records.append(_SR(
+                indicator=indicator,
+                method="trend_ensemble",
+                pop_bucket=_WC,
+                h_bucket=_WC,
+                value=phi_val,
+                n_folds=n_obs,
+                extra={"phi_lo": PHI_LO, "phi_hi": PHI_HI},
+            ))
+        _phi_pass_run = True
+    except Exception:
+        pass  # phi calibration is optional; fall back to DEFAULT_PHI everywhere
+
     # Pass 1 uses all anchors (per-source RMSE is not split).
     # ---- Pass 1: per-source RMSE (h-marginalised; reused from v2 path) ----
     folds_pass1: list[HoldOutFold] = []
@@ -1425,7 +1502,15 @@ def run_stratified_calibration(
     cov_post_v2 = _marginalised_v2_table(cov_post_records)
     se_override_v2 = _marginalised_v2_se_overrides(se_records, EMPIRICAL_SE_INFLATOR)
 
-    schema_v = 4 if include_conformal else 3
+    # v3 = no phi, no conformal
+    # v4 = phi calibration only
+    # v5 = phi + conformal
+    if include_conformal:
+        schema_v = 5
+    elif _phi_pass_run and phi_strata_records:
+        schema_v = 4
+    else:
+        schema_v = 3
 
     return {
         "schema_version": schema_v,
@@ -1442,6 +1527,7 @@ def run_stratified_calibration(
             "coverage_post": [record_to_dict(r) for r in cov_post_records],
             "se_inflator": [record_to_dict(r) for r in se_records],
             "bias": [record_to_dict(r) for r in bias_records],
+            "phi": [record_to_dict(r) for r in phi_strata_records],
         },
         # Phase E: split-conformal quantiles (schema_version 4 only)
         "conformal_quantile_by_stratum": [

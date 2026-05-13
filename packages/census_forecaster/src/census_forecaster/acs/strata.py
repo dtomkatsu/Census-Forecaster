@@ -79,6 +79,14 @@ H_BUCKET_BOUNDS: dict[str, tuple[int, ...]] = {
 # noise-driven κ and bias estimates.
 DEFAULT_N_THRESHOLD: int = 20
 
+# Phi (damping constant) bounds for the per-cell affine calibration.
+# The n_threshold for phi uses 15 (vs 20 for kappa/bias) because
+# weighted medians are more robust than coverage proportions at small n.
+PHI_DEFAULT: float = 0.85   # global floor when no calibrated phi is available
+PHI_LO: float = 0.70        # floor for high-signal cells
+PHI_HI: float = 0.95        # ceiling for high-noise cells
+PHI_N_THRESHOLD: int = 15
+
 
 # -----------------------------------------------------------------------------
 # Classifiers
