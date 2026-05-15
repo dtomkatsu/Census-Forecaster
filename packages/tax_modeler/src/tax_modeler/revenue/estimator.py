@@ -20,8 +20,11 @@ Key output columns (all dollar amounts are weighted population estimates):
     total_credits        - ctc_total + eitc_amount (all credits claimed)
 
 Note: Federal credits (CTC, EITC) reduce FEDERAL revenue, not Hawaii revenue.
-Hawaii does not currently have a state CTC or EITC. If Hawaii were to enact
-one, those costs would come out of Hawaii net_revenue.
+Hawaii has a refundable state EITC at 40% of federal EITC under HRS §235-55.75
+(Act 209, 2023; rate raised from 20% non-refundable for TY 2023+). The state
+cost flows through as ``hi_eitc_amount`` and reduces Hawaii net revenue once
+:func:`~tax_modeler.credits.hi_eitc.compute_hi_eitc_for_units` has run.
+Hawaii has no state CTC as of 2026.
 """
 
 from __future__ import annotations

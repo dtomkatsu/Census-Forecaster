@@ -578,6 +578,68 @@ sees exactly the keys it expects.
 
 ---
 
+## Federal EITC / CTC by geography (May 2026)
+
+Year-keyed federal credit calculators (`tax_modeler.credits.eitc`,
+`tax_modeler.credits.ctc`) carry IRS Rev. Proc. parameters for TY
+2022 → TY 2025 — max-credit, phase-in completion income, single-
+and joint-filer phaseout starts, ACTC refundable cap. Statutory rates
+(phase-in / phase-out percentages, $200K/$400K phaseout thresholds,
+$2,000/child max under TCJA) do not move year-to-year and live in
+shared constants.
+
+### Parameter vintages
+
+| Year | EITC max (2 kids) | ACTC refundable cap | IRS Rev. Proc. |
+|-----:|------------------:|--------------------:|----------------|
+| 2022 |           $6,164 |              $1,500 |        2021-45 |
+| 2023 |           $6,604 |              $1,600 |        2022-38 |
+| 2024 |           $6,960 |              $1,700 |        2023-34 |
+| 2025 |           $7,152 |              $1,700 |        2024-40 |
+
+`project_tax_units_forward(target_year=Y)` plumbs `Y` into both
+`_recalculate_ctc` and `calculate_eitc_for_tax_units` so projected
+nominal incomes are credited against `Y`'s statutory parameters
+(this matches the IRS chained-CPI inflation-indexing treatment).
+For `target_year` beyond the latest published Rev. Proc., the
+projector clamps to the most recent supported year and logs the
+substitution — older callers projecting to 2026+ continue to work.
+
+### Take-up imputation
+
+Eligibility ≠ claim. PUMS-derived eligible amounts overstate IRS
+take-up. The `tax_modeler.pipeline.apply_credit_takeup` helper
+(opt-in via `run_pipeline(apply_credit_takeup=True)`) ranks eligible
+filers by their eligible credit dollars descending and zeroes credits
+on non-claimants until weighted recipient counts match the IRS
+state-total benchmark. Anchors (IRS SOI ZIP=00000 row, TY 2022):
+
+* **EITC**: 84,010 returns / $184.7M
+* **CTC** (nonref + ACTC): 154,580 returns / $469.5M
+* **ACTC alone**: 60,600 returns / $117.8M
+
+The take-up *rate* is treated as behavioral and constant across
+forward projection; only the target count is anchored at the 2022
+vintage. Re-run when newer IRS SOI Hawaii state-totals publish.
+
+### CBPP comparison caveats
+
+`scripts/eitc_ctc_geo_report.py --compare-cbpp` produces a senate-
+district delta table against CBPP table 367 (TY 2022). Two systematic
+caveats apply:
+
+1. **Geographic resolution**: CBPP uses IRS SOI ZIP-code claims data
+   raked to 2024 SLDs. The modeler uses PUMA-level signal hashed to
+   HD/SD via the bundled crosswalk, which preserves PUMA-level
+   variance but smears within-PUMA. A future enhancement would
+   ingest IRS SOI ZIP data and rake the modeler's LD column to it.
+2. **Suppression and AGI<$1**: CBPP suppresses small-cell districts
+   and excludes AGI<$1 returns; the modeler does neither. Expect
+   some absolute discrepancy on small-population SDs even with
+   perfect raking.
+
+---
+
 ## References
 
 * **Damped trend, ETS variance:** Hyndman, R., Koehler, A., Ord, J.,

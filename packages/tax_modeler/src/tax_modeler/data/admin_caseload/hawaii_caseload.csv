@@ -5,3 +5,6 @@ ssi,2023,person,22300,225.1,"SSA Annual Statistical Supplement 2023, Table 7.A4 
 ssi,2024,person,22600,232.4,"SSA Annual Statistical Supplement 2024 provisional"
 ssi_hi_supplement,2023,person,22300,1.3,"Derived from SSI count × $5/month state supplement"
 ssi_hi_supplement,2024,person,22600,1.4,"Derived from SSI count × $5/month state supplement"
+eitc,2022,return,84010,184.7,"IRS SOI ZIP Code Data 2022 (ZIP=00000 state-total row), Hawaii — Earned income credit columns N59660/A59660"
+ctc,2022,return,154580,469.5,"IRS SOI ZIP Code Data 2022 (ZIP=00000 state-total row), Hawaii — nonrefundable CTC ($351.7M) + ACTC ($117.8M); equivalent to IRS SOI Historic Table 2"
+actc,2022,return,60600,117.8,"IRS SOI ZIP Code Data 2022 (ZIP=00000 state-total row), Hawaii — Additional/refundable CTC columns N11070/A11070"

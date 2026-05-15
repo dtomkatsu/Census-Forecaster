@@ -27,9 +27,16 @@ sourced from census_forecaster's ensemble projector on the bundled ACS panel
 (same projector used by project_revenue_per_filer). Counties not present in the
 panel fall back to the Honolulu (15003) B19013 as a Hawaii-wide proxy.
 
-Tax recalculation uses the 2023 Hawaii bracket schedule
-(calculate_hawaii_tax_for_units). CTC and EITC are recalculated on the scaled
-incomes using the 2023 federal parameters.
+Tax recalculation uses the target-year Hawaii bracket schedule via
+``calculate_hawaii_tax_for_units(tax_year=target_year)``. CTC and EITC
+are recalculated on the scaled (nominal) incomes using the **target
+year's statutory federal parameters** — the IRS phase-in/phase-out
+thresholds and refundable caps are inflation-indexed via chained CPI per
+the relevant Rev. Procs. (e.g. Rev. Proc. 2024-40 for TY 2025), so
+applying them to nominal income mirrors the actual taxpayer experience.
+Supported credit years: 2022, 2023, 2024, 2025 (see
+``credits/eitc.py`` and ``credits/ctc.py``). Years outside that range
+raise ``KeyError``.
 """
 from __future__ import annotations
 
@@ -187,21 +194,25 @@ def _apply_bls_income_projection(
     return df
 
 
-def _recalculate_ctc(df: pd.DataFrame) -> pd.DataFrame:
+def _recalculate_ctc(df: pd.DataFrame, tax_year: int = 2023) -> pd.DataFrame:
     """
-    Recalculate CTC on scaled incomes.
+    Recalculate CTC on scaled incomes using the requested year's parameters.
 
     Calls calculate_ctc() per row and merges results directly (unit.update
     pattern), producing ctc_total / ctc_refundable / ctc_nonrefundable columns
     as RevenueEstimator expects.  The DataFrame-level calculate_ctc_for_tax_units
     adds a redundant 'ctc_' prefix (producing ctc_ctc_total), so we bypass it.
+
+    ``tax_year`` selects the inflation-indexed refundable cap
+    ($1,500 in TY 2022 → $1,700 in TY 2024-2025); the $2,000 max-credit
+    and $200K/$400K phaseout thresholds are TCJA statutory and unchanged.
     """
     from tax_modeler.credits.ctc import calculate_ctc
 
     results = []
     for _, row in df.iterrows():
         unit = row.to_dict()
-        unit.update(calculate_ctc(unit))
+        unit.update(calculate_ctc(unit, tax_year=tax_year))
         results.append(unit)
     return pd.DataFrame(results)
 
@@ -480,10 +491,36 @@ def project_tax_units_forward(
         df = calculate_hawaii_tax_for_units(df, tax_year=target_year, deduction_params=state_ded)
 
     # --- Recalculate CTC and EITC on scaled incomes --------------------------
-    df = _recalculate_ctc(df)
+    # Use the target year's inflation-indexed credit parameters.  Per IRS
+    # Rev. Procs., EITC max-credit / phase-in / phaseout thresholds and the
+    # ACTC refundable cap move with chained CPI each year; the projector
+    # scales nominal income, so applying nominal target-year parameters is
+    # the consistent treatment.  For target_year beyond the latest published
+    # Rev. Proc., the most-recent supported year is used (currently TY 2025).
+    from tax_modeler.credits.eitc import (
+        _EITC_PARAMS_BY_YEAR,
+        calculate_eitc_for_tax_units,
+    )
+    supported = sorted(_EITC_PARAMS_BY_YEAR)
+    if target_year in _EITC_PARAMS_BY_YEAR:
+        credit_year = target_year
+    elif target_year > supported[-1]:
+        credit_year = supported[-1]
+        logger.info(
+            "target_year %d beyond latest published credit parameters; "
+            "using TY %d statutory params for EITC/CTC.",
+            target_year, credit_year,
+        )
+    else:
+        credit_year = supported[0]
+        logger.info(
+            "target_year %d below earliest supported credit parameters; "
+            "using TY %d statutory params for EITC/CTC.",
+            target_year, credit_year,
+        )
 
-    from tax_modeler.credits.eitc import calculate_eitc_for_tax_units
-    df = calculate_eitc_for_tax_units(df)
+    df = _recalculate_ctc(df, tax_year=credit_year)
+    df = calculate_eitc_for_tax_units(df, tax_year=credit_year)
 
     # --- Poverty rate correction on EITC (S1701 signal) ----------------------
     # project_acs_supplement results are lru_cache'd from the deduction step,

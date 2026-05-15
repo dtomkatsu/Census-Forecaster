@@ -7,7 +7,16 @@ including the Child Tax Credit (CTC) and Earned Income Tax Credit (EITC).
 
 from __future__ import annotations
 
-from .eitc import calculate_eitc, calculate_eitc_for_tax_units
+from .eitc import (
+    calculate_eitc,
+    calculate_eitc_for_tax_units,
+    eitc_parameters_for_year,
+)
+from .ctc import (
+    calculate_ctc,
+    calculate_ctc_for_tax_units,
+    ctc_parameters_for_year,
+)
 # Hawaii state-level refundable credits (Reform-DSL-friendly)
 from .hi_eitc import (
     HawaiiEitcParameters,
@@ -28,6 +37,10 @@ from .hi_renters import (
 __all__ = [
     'calculate_eitc',
     'calculate_eitc_for_tax_units',
+    'eitc_parameters_for_year',
+    'calculate_ctc',
+    'calculate_ctc_for_tax_units',
+    'ctc_parameters_for_year',
     # Hawaii state credits
     'HawaiiEitcParameters',
     'hawaii_eitc_parameters',

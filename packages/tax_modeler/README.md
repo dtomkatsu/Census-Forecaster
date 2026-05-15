@@ -170,6 +170,29 @@ To verify the full Phase 9 stack end-to-end:
 python -m tax_modeler.validation.phase9_validation
 ```
 
+## EITC / CTC by geography
+
+Federal EITC and CTC totals (plus HI state EITC at 40% of federal) can be
+rolled up to state, county, House district, and Senate district via the
+report script. Year-keyed credit parameters cover TY 2022–2025 (IRS Rev.
+Procs. 2021-45, 2022-38, 2023-34, 2024-40); forward projections clamp to
+the most recent published vintage.
+
+```bash
+# TY 2025 projection
+python scripts/eitc_ctc_geo_report.py --tax-year 2025 \
+    --out reports/eitc_ctc_2025/
+
+# TY 2022 backtest, with delta vs. CBPP table 367 by senate district
+python scripts/eitc_ctc_geo_report.py --tax-year 2022 --compare-cbpp \
+    --out reports/eitc_ctc_2022_backtest/
+```
+
+Pass `--apply-takeup` to apply IRS-anchored take-up imputation (zero out
+federal EITC + ACTC for non-claimants per the rank-based rule calibrated
+to the IRS SOI Hawaii TY 2022 state totals). The opt-out default keeps
+raw eligibility numbers intact.
+
 ## Provenance
 
 Imported via `git subtree add` on 2026-04-29 from
