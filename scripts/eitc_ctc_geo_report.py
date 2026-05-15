@@ -166,13 +166,17 @@ def _aggregate(df: pd.DataFrame, group_col: Optional[str]) -> pd.DataFrame:
     rows = []
     for key, g in groups:
         w = g["weight"].astype(float)
-        eitc_eligible = g.get("eitc_eligible", g["eitc_amount"] > 0).astype(bool)
-        ctc_eligible = g["ctc_total"] > 0
+        # CBPP table 367 counts *claimants*, not the eligibility universe.
+        # When take-up imputation has run, eitc_amount is zeroed for
+        # non-claimants, so eitc_amount>0 is the correct post-takeup proxy.
+        # Without takeup it degrades gracefully to "eligible & positive".
+        receives_eitc = g["eitc_amount"] > 0
+        receives_ctc = g["ctc_total"] > 0
         row = {
             "weighted_filers":         float(w.sum()),
-            "filers_receiving_eitc":   float(w[eitc_eligible].sum()),
+            "filers_receiving_eitc":   float(w[receives_eitc].sum()),
             "total_eitc_dollars":      float((g["eitc_amount"] * w).sum()),
-            "filers_receiving_ctc":    float(w[ctc_eligible].sum()),
+            "filers_receiving_ctc":    float(w[receives_ctc].sum()),
             "total_ctc_dollars":       float((g["ctc_total"] * w).sum()),
             "refundable_ctc_dollars":  float((g["ctc_refundable"] * w).sum()),
             "hi_eitc_dollars":         float((g.get("hi_eitc_amount", 0.0) * w).sum()),
