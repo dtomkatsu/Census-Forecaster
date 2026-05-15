@@ -125,6 +125,22 @@ CGEC_SUNSET_YEAR     = 2027   # Sunsets after Dec 31, 2027 -> applies TY 2028+
 TCRA_BILL_REPEAL_YEAR = 2029  # Bill: Act 261 Part II takes effect 1/1/2029
 TCRA_ACT46_REPEAL_YEAR = 2030 # Baseline (Act 46): repeal was 1/1/2030
 
+# Bill effective dates (HI SB 3125 CD2, Section 9):
+#   - Section 1 (REEC amendment) applies retroactively to TY beginning after 12/31/2025
+#   - §235-12.5(a) AGI limit applies only to TY beginning after 12/31/2026
+#   - §235-12.5(p) sunset: no new credits for TY beginning after 12/31/2029
+#   - §235-12.5(c) cap of $40M applies to calendar years 2027-2030 only
+REEC_BILL_RETROACTIVE_YEAR = 2026          # Section 1 retroactive to TY2026
+REEC_AGI_LIMIT_FIRST_YEAR  = 2027          # AGI limits start TY2027
+REEC_SUNSET_LAST_VINTAGE   = 2029          # Last TY for new credits
+
+# Carryforward stock simulation parameters
+# §235-12.5(j) carryforward "until exhausted" — no time limit.
+# REEC effective from 2009; we simulate from 2010 onward (stock converges to
+# steady state within ~5-6 years given util=0.65).
+REEC_SIM_START_YEAR        = 2010
+REEC_BACKCAST_GROWTH       = 0.03   # 3%/yr nominal industry growth for pre-2023 backcast
+
 # ---------------------------------------------------------------------------
 # REEC demand decay scenarios (post-OBBBA federal Section 25D termination)
 # ---------------------------------------------------------------------------
@@ -163,6 +179,61 @@ REEC_DEMAND_SCENARIOS: dict[str, dict[int, float]] = {
                      2028: 0.80, 2029: 0.85, 2030: 0.90, 2031: 0.95},
 }
 DEFAULT_REEC_DEMAND_SCENARIO = "obbba_mid"
+
+
+# ---------------------------------------------------------------------------
+# DOTAX historical actuals (TY2018-2022) — replaces 3%/yr synthetic backcast
+# ---------------------------------------------------------------------------
+# Loaded once at module import from
+#   packages/tax_modeler/src/tax_modeler/data/raw/dotax_reec_historical.csv
+# produced by scripts/fetch_dotax_credits_historical.py.
+#
+# Cells suppressed by DOTAX (disclosure protection on small populations) are
+# stored as 0 in the CSV. The `corporate_plus_other_$M` figure is derived as
+# `all_total - individual_total`, which captures the full non-individual pool
+# including suppressed financial-corp values.
+_DOTAX_HISTORICAL: dict[int, dict[str, float]] = {}
+
+
+def _load_dotax_historical() -> dict[int, dict[str, float]]:
+    """Load DOTAX TY2018-2022 actuals into a year-keyed dict. Idempotent."""
+    global _DOTAX_HISTORICAL
+    if _DOTAX_HISTORICAL:
+        return _DOTAX_HISTORICAL
+    import csv
+    from pathlib import Path
+    csv_path = (
+        Path(__file__).resolve().parent.parent
+        / "data" / "raw" / "dotax_reec_historical.csv"
+    )
+    if not csv_path.exists():
+        return _DOTAX_HISTORICAL
+    with open(csv_path) as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                year = int(row["year"])
+            except (KeyError, ValueError):
+                continue
+            ind_total = float(row.get("individual_total_$M", 0) or 0)
+            all_total = float(row.get("all_total_$M", 0) or 0)
+            corp_plus_other = max(0.0, all_total - ind_total)
+            _DOTAX_HISTORICAL[year] = {
+                "all_total_$M":         all_total,
+                "individual_total_$M":  ind_total,
+                "corp_plus_other_$M":   corp_plus_other,
+                "individual_<$10K_$M":  float(row.get("individual_<$10K_$M", 0) or 0),
+                "individual_$10K-$30K_$M": float(row.get("individual_$10K-$30K_$M", 0) or 0),
+                "individual_$30K-$60K_$M": float(row.get("individual_$30K-$60K_$M", 0) or 0),
+                "individual_$60K-$100K_$M": float(row.get("individual_$60K-$100K_$M", 0) or 0),
+                "individual_$100K-$200K_$M": float(row.get("individual_$100K-$200K_$M", 0) or 0),
+                "individual_$200K+_$M": float(row.get("individual_$200K+_$M", 0) or 0),
+            }
+    return _DOTAX_HISTORICAL
+
+
+_load_dotax_historical()
+
 
 # ---------------------------------------------------------------------------
 # Growth factors
@@ -225,6 +296,70 @@ def _reec_eligible_individual_M() -> float:
     share (from PUMS). Assumes within-bin uniformity (filer-share ≈ dollar-share).
     """
     return sum(claim * elig for _, claim, elig in REEC_INDIVIDUAL_BY_AGI_BIN)
+
+
+# AGI thresholds in §235-12.5(a) — NOT indexed to inflation, so real value erodes
+# as nominal incomes grow.
+REEC_AGI_THRESHOLD_INDIVIDUAL = 175_000.0   # single / HoH / MFS
+REEC_AGI_THRESHOLD_JOINT      = 350_000.0   # MFJ / surviving spouse
+
+
+def compute_dynamic_agi_eligibility_share(
+    projected_units,
+    *,
+    income_col: str = "income",
+    weight_col: str = "weight",
+    filing_status_col: str = "filing_status",
+) -> float:
+    """Recompute aggregate individual REEC AGI-eligibility share from a
+    projected-tax-units DataFrame.
+
+    Weights each AGI bin by the TY2023 DOTAX dollar shares in
+    `REEC_INDIVIDUAL_BY_AGI_BIN` (so REEC claimants' income distribution
+    is approximated by the historical claim distribution), then within each
+    bin computes the population-weighted fraction of filers whose AGI is
+    within the §235-12.5(a) thresholds ($175K single/HoH/MFS, $350K MFJ).
+
+    As nominal income grows year-over-year, more filers cross above the
+    unindexed thresholds — eligibility share declines.
+    """
+    import pandas as pd  # local import keeps the module import-light
+
+    bin_edges = [0, 10_000, 30_000, 60_000, 100_000, 200_000, float("inf")]
+    bin_labels = ["<$10K", "$10K-$30K", "$30K-$60K", "$60K-$100K",
+                  "$100K-$200K", "$200K+"]
+
+    df = projected_units
+    inc = df[income_col]
+    wt = df[weight_col]
+    fs = df[filing_status_col].astype(str)
+
+    # Eligibility flag per row
+    joint_thresh = (fs.str.contains("joint", case=False)) | (
+        fs.str.contains("surviving", case=False)
+    )
+    elig_mask = (
+        (joint_thresh & (inc <= REEC_AGI_THRESHOLD_JOINT))
+        | (~joint_thresh & (inc <= REEC_AGI_THRESHOLD_INDIVIDUAL))
+    )
+
+    eligible_dollars = 0.0
+    total_dollars    = 0.0
+    for i, (label, claim_M, _ty23_elig) in enumerate(REEC_INDIVIDUAL_BY_AGI_BIN):
+        if label != bin_labels[i]:
+            # Defensive: bins should align by index
+            continue
+        in_bin = (inc >= bin_edges[i]) & (inc < bin_edges[i + 1])
+        bin_w = wt[in_bin].sum()
+        if bin_w <= 0:
+            continue
+        bin_elig = wt[in_bin & elig_mask].sum() / bin_w
+        eligible_dollars += claim_M * bin_elig
+        total_dollars    += claim_M
+
+    if total_dollars <= 0:
+        return _reec_eligible_individual_M() / REEC_INDIVIDUAL_TOTAL_M
+    return eligible_dollars / total_dollars
 
 
 def _reec_demand_factor(target_year: int, scenario: str) -> float:
@@ -397,6 +532,323 @@ def _reec_baseline_M(
     }
 
 
+# ---------------------------------------------------------------------------
+# Vintage carryforward simulation
+# ---------------------------------------------------------------------------
+# Background: §235-12.5(j) preserves "until exhausted" carryforward. The bill
+# does not void pre-2027 vintages. The $40M cap (§235-12.5(c)) applies only to
+# DBEDT certifications in cap years, not to utilization of credits certified
+# in prior years (subsection (h) and the certification process in (f)-(g)
+# confirm: the cap is on annual certification of NEW credits).
+#
+# Therefore state revenue cost in 2027-2030 = capped new credits + drawdown
+# from all pre-cap vintage stock. The static overlay above misses the
+# pre-existing stock channel. This vintage simulation captures it.
+#
+# The simulation tracks individual and corporate nonrefundable stock
+# separately because they have different growth (income vs business),
+# different demand decay (§25D vs §48E), and different effective claim
+# shares.
+
+
+def _historical_reec_individual(year: int, demand_scenario: str) -> float:
+    """Total individual REEC claims ($M) for vintage `year`.
+
+    Priority order:
+        1. TY2023 — hardcoded DOTAX actual ($58.293M, Dec 2025 publication)
+        2. TY2018-2022 — DOTAX actuals loaded from
+           `dotax_reec_historical.csv`
+        3. Pre-2018 — backcast at REEC_BACKCAST_GROWTH (3%/yr) from TY2018
+           actual (or TY2023 if CSV unavailable)
+        4. Post-2023 — projected via Hawaii nominal income growth × OBBBA
+           demand factor for residential §25D channel
+    """
+    base = REEC_INDIVIDUAL_TOTAL_M  # TY2023 baseline $58.293M
+    if year == 2023:
+        return base
+    if year in _DOTAX_HISTORICAL:
+        return _DOTAX_HISTORICAL[year]["individual_total_$M"]
+    if year < 2023:
+        # Pre-2018 (or fallback if CSV missing): backcast from earliest anchor
+        earliest_actual_year = min(_DOTAX_HISTORICAL) if _DOTAX_HISTORICAL else 2023
+        anchor = (_DOTAX_HISTORICAL[earliest_actual_year]["individual_total_$M"]
+                  if _DOTAX_HISTORICAL else base)
+        return anchor / (1.0 + REEC_BACKCAST_GROWTH) ** (earliest_actual_year - year)
+    g = _hawaii_nominal_growth(year)
+    d = _reec_demand_factor(year, demand_scenario)
+    return base * g * d
+
+
+def _historical_reec_corporate(year: int, cgec_annual_growth: float) -> float:
+    """Total corporate + other REEC claims ($M) for vintage `year`.
+
+    Corporate REEC is volatile year-over-year (large commercial PV
+    tax-equity transactions create lumpy claims). For TY2018-2022 we use
+    `all_total - individual_total` from DOTAX, which captures both the
+    reported corporate column and any disclosure-suppressed financial-corp
+    rows that the disclosure-protected DOTAX corporate column omits.
+    For TY2023, retain the hardcoded $41.8M (corporate $38.565M + other $3.217M)
+    from the December 2025 publication.
+    """
+    base = REEC_CORPORATE_TOTAL_M + REEC_OTHER_TOTAL_M  # ~$41.8M
+    if year == 2023:
+        return base
+    if year in _DOTAX_HISTORICAL:
+        return _DOTAX_HISTORICAL[year]["corp_plus_other_$M"]
+    if year < 2023:
+        earliest_actual_year = min(_DOTAX_HISTORICAL) if _DOTAX_HISTORICAL else 2023
+        anchor = (_DOTAX_HISTORICAL[earliest_actual_year]["corp_plus_other_$M"]
+                  if _DOTAX_HISTORICAL else base)
+        return anchor / (1.0 + REEC_BACKCAST_GROWTH) ** (earliest_actual_year - year)
+    g = _hawaii_corporate_growth(year, annual_rate=cgec_annual_growth)
+    d = _reec_demand_factor_corporate(year)
+    return base * g * d
+
+
+def _refundable_share_individual_for_eligibility(
+    eligibility_share: float,
+) -> float:
+    """Estimate the refundable share of the individual REEC pool *after* the
+    §235-12.5(a) AGI screen.
+
+    The TY2023 hardcoded share (~23% refundable) is computed across the
+    *whole* claimant pool. The AGI screen removes high-income / high-tax-
+    liability filers — the very claimants who use nonrefundable credits
+    efficiently. The remaining pool skews lower-income; under §235-12.5(l)
+    filers below $20K single / $40K MFJ qualify automatically for
+    refundability, and under §235-12.5(k) any filer can elect 30%-reduced
+    refundability. Lower-income filers have less tax to offset → both
+    elections become more attractive.
+
+    Piecewise-linear estimate anchored to:
+        eligibility_share=1.00 → 0.23 (full population, TY2023 actual)
+        eligibility_share=0.80 → ~0.30
+        eligibility_share=0.70 → ~0.35
+        eligibility_share=0.50 → ~0.45
+    Extrapolated linearly outside [0.50, 1.00]; clamped to [0.20, 0.60].
+    """
+    # Slope: (0.45 - 0.23) / (0.50 - 1.00) = -0.44 per unit
+    base = 0.23 + 0.44 * (1.0 - eligibility_share)
+    return max(0.20, min(0.60, base))
+
+
+def _certified_credits_for_vintage(
+    year: int,
+    *,
+    cap_enabled: bool,
+    demand_scenario: str,
+    cgec_annual_growth: float,
+    corp_subject_to_agi_limit: bool,
+    agi_eligibility_share: float | None = None,
+    pro_rata_elasticity: float = 0.0,
+    interpretation: str = "B",
+) -> tuple[float, float, dict]:
+    """Return (individual_certified, corporate_certified, diag) ($M) for vintage year.
+
+    ``diag`` carries year-level diagnostics (nominal vs suppressed demand,
+    binding ratio, eligibility share used).
+
+    Under baseline (cap_enabled=False): full demand is certified.
+    Under bill (cap_enabled=True):
+      - TY < REEC_BILL_RETROACTIVE_YEAR (2026): full demand (bill not yet effective)
+      - TY = 2026: interpretation "B" (default) keeps full demand (cap starts
+        TY2027 by TY-mapping); interpretation "A" applies the $40M cap (since
+        CY2027 cap = TY2026 certifications). Neither variant applies AGI
+        (Section 9(1) defers AGI to TY2027+).
+      - TY in [2027, REEC_SUNSET_LAST_VINTAGE] (2027-2029): AGI filter
+        applied, $40M cap.
+      - TY > REEC_SUNSET_LAST_VINTAGE: 0 (subsection (p) sunset overrides
+        subsection (c)(4) for TY2030).
+
+    Parameters
+    ----------
+    agi_eligibility_share : float | None
+        Override for the individual REEC AGI-eligibility share. ``None``
+        falls back to the static TY2023 PUMS-derived share
+        (~0.796). Use with
+        :func:`compute_dynamic_agi_eligibility_share` for per-year recompute.
+    pro_rata_elasticity : float
+        Demand elasticity to the pro-rata cap factor; 0.0 disables
+        suppression (default). Positive values reduce certified demand
+        when the cap binds.
+    interpretation : "A" | "B"
+        Whether CY in §235-12.5(c) maps to TY of certification (A) or TY of
+        install (B, default). Affects only the TY2026 vintage.
+    """
+    ind_total = _historical_reec_individual(year, demand_scenario)
+    corp_total = _historical_reec_corporate(year, cgec_annual_growth)
+
+    diag = {
+        "ind_total_nominal":  ind_total,
+        "corp_total_nominal": corp_total,
+        "eligibility_share":  1.0,
+        "pro_rata_factor":    1.0,
+        "suppression_factor": 1.0,
+    }
+
+    if not cap_enabled:
+        return ind_total, corp_total, diag
+
+    # Bill scenario
+    if year > REEC_SUNSET_LAST_VINTAGE:
+        return 0.0, 0.0, diag  # subsection (p) sunset
+
+    if year < REEC_BILL_RETROACTIVE_YEAR:
+        # Pre-2026: bill not yet effective
+        return ind_total, corp_total, diag
+
+    # TY2026 + TY2027-2029: certification-process and possibly cap apply
+    apply_agi = year >= REEC_AGI_LIMIT_FIRST_YEAR
+    apply_cap = (
+        year >= REEC_AGI_LIMIT_FIRST_YEAR  # TY2027+ always capped
+        or (year == REEC_BILL_RETROACTIVE_YEAR and interpretation == "A")
+    )
+
+    if apply_agi:
+        if agi_eligibility_share is None:
+            ind_elig_share = _reec_eligible_individual_M() / REEC_INDIVIDUAL_TOTAL_M
+        else:
+            ind_elig_share = float(agi_eligibility_share)
+        ind_eligible = ind_total * ind_elig_share
+        diag["eligibility_share"] = ind_elig_share
+    else:
+        ind_eligible = ind_total
+
+    if apply_agi and corp_subject_to_agi_limit:
+        corp_eligible = corp_total * REEC_INDIVIDUAL_BY_AGI_BIN[-1][2]
+    else:
+        corp_eligible = corp_total
+
+    if not apply_cap:
+        return ind_eligible, corp_eligible, diag
+
+    total_eligible = ind_eligible + corp_eligible
+    if total_eligible <= REEC_CAP_2027_2030_M:
+        return ind_eligible, corp_eligible, diag
+
+    # Pro-rata allocation per §235-12.5(h). Optionally apply endogenous
+    # demand suppression: a rational filer at install time discounts the
+    # nominal credit value by the binding ratio, and the marginal install
+    # falls if expected value drops too far.
+    pro_rata_nominal = REEC_CAP_2027_2030_M / total_eligible
+    if pro_rata_elasticity > 0.0 and pro_rata_nominal < 1.0:
+        suppression = pro_rata_nominal ** pro_rata_elasticity
+        ind_eligible_supp = ind_eligible * suppression
+        corp_eligible_supp = corp_eligible * suppression
+        total_supp = ind_eligible_supp + corp_eligible_supp
+        if total_supp <= REEC_CAP_2027_2030_M:
+            diag["pro_rata_factor"] = 1.0
+            diag["suppression_factor"] = suppression
+            return ind_eligible_supp, corp_eligible_supp, diag
+        pro_rata_final = REEC_CAP_2027_2030_M / total_supp
+        diag["pro_rata_factor"] = pro_rata_final
+        diag["suppression_factor"] = suppression
+        return ind_eligible_supp * pro_rata_final, corp_eligible_supp * pro_rata_final, diag
+
+    diag["pro_rata_factor"] = pro_rata_nominal
+    return ind_eligible * pro_rata_nominal, corp_eligible * pro_rata_nominal, diag
+
+
+def simulate_reec_state_cost_path(
+    target_years: list[int],
+    *,
+    cap_enabled: bool,
+    util_rate_individual: float,
+    util_rate_corporate: float,
+    demand_scenario: str,
+    cgec_annual_growth: float,
+    corp_subject_to_agi_limit: bool,
+    agi_eligibility_by_year: dict[int, float] | None = None,
+    pro_rata_elasticity: float = 0.0,
+    interpretation: str = "B",
+    dynamic_refundable_share: bool = False,
+) -> dict[int, dict[str, float]]:
+    """Simulate refundable + nonref-usage state cost path year-by-year.
+
+    Returns dict {year: {certified, refundable, nonref_usage, total,
+    end_stock_ind, end_stock_corp, ind_certified, corp_certified,
+    eligibility_share, pro_rata_factor, suppression_factor}}.
+
+    Stock dynamics (per pool, ind / corp):
+        usage(t)       = util × (stock(t-1) + nonref_certs(t))
+        end_stock(t)   = (1 - util) × (stock(t-1) + nonref_certs(t))
+    Refundable certs are paid in full in year of certification.
+
+    Parameters
+    ----------
+    agi_eligibility_by_year : dict[int, float] | None
+        Per-year override for the individual AGI eligibility share. Keys
+        should cover at least the AGI-relevant vintages (TY2027 onward).
+        Missing years fall back to the static TY2023 share.
+    pro_rata_elasticity, interpretation
+        Passed through to :func:`_certified_credits_for_vintage`.
+    dynamic_refundable_share : bool
+        If True, recompute the individual refundable share each cert year
+        as a function of the realized AGI-eligibility share (post-screen
+        pool skews lower-income → higher refundable election rate).
+        Default False (uses TY2023 hardcoded 23%).
+    """
+    if not target_years:
+        return {}
+
+    stock_ind = 0.0
+    stock_corp = 0.0
+    out: dict[int, dict[str, float]] = {}
+
+    end_year = max(target_years)
+    for y in range(REEC_SIM_START_YEAR, end_year + 1):
+        elig_override = (
+            agi_eligibility_by_year.get(y) if agi_eligibility_by_year else None
+        )
+        ind_cert, corp_cert, diag = _certified_credits_for_vintage(
+            y,
+            cap_enabled=cap_enabled,
+            demand_scenario=demand_scenario,
+            cgec_annual_growth=cgec_annual_growth,
+            corp_subject_to_agi_limit=corp_subject_to_agi_limit,
+            agi_eligibility_share=elig_override,
+            pro_rata_elasticity=pro_rata_elasticity,
+            interpretation=interpretation,
+        )
+
+        if dynamic_refundable_share and cap_enabled and y >= REEC_AGI_LIMIT_FIRST_YEAR:
+            ind_ref_share = _refundable_share_individual_for_eligibility(
+                diag["eligibility_share"]
+            )
+        else:
+            ind_ref_share = REEC_REFUNDABLE_SHARE_INDIVIDUAL
+        ind_nonref_share = 1.0 - ind_ref_share
+
+        ind_ref      = ind_cert  * ind_ref_share
+        ind_nonref   = ind_cert  * ind_nonref_share
+        corp_ref     = corp_cert * REEC_REFUNDABLE_SHARE_CORPORATE
+        corp_nonref  = corp_cert * REEC_NONREFUNDABLE_SHARE_CORPORATE
+
+        ind_usage  = util_rate_individual * (stock_ind  + ind_nonref)
+        corp_usage = util_rate_corporate  * (stock_corp + corp_nonref)
+
+        stock_ind  = (1 - util_rate_individual) * (stock_ind  + ind_nonref)
+        stock_corp = (1 - util_rate_corporate)  * (stock_corp + corp_nonref)
+
+        if y in target_years:
+            out[y] = {
+                "ind_certified":  ind_cert,
+                "corp_certified": corp_cert,
+                "certified":     ind_cert + corp_cert,
+                "refundable":    ind_ref + corp_ref,
+                "nonref_usage":  ind_usage + corp_usage,
+                "end_stock_ind":  stock_ind,
+                "end_stock_corp": stock_corp,
+                "total":         ind_ref + corp_ref + ind_usage + corp_usage,
+                "eligibility_share":  diag["eligibility_share"],
+                "pro_rata_factor":    diag["pro_rata_factor"],
+                "suppression_factor": diag["suppression_factor"],
+                "ind_ref_share":      ind_ref_share,
+            }
+
+    return out
+
+
 def compute_credit_overlay(
     target_year: int,
     reec_demand_scenario: str = DEFAULT_REEC_DEMAND_SCENARIO,
@@ -404,6 +856,11 @@ def compute_credit_overlay(
     reec_effective_claim_share: float = 1.0,
     cgec_annual_growth: float = 0.030,
     reec_carryforward_utilization_m: float = 0.0,
+    model_carryforward_pool: bool = False,
+    agi_eligibility_by_year: dict[int, float] | None = None,
+    pro_rata_elasticity: float = 0.0,
+    interpretation: str = "B",
+    dynamic_refundable_share: bool = False,
 ) -> Dict[str, float]:
     """Compute SB 3125 CD1 credit-cap fiscal impact for ``target_year``.
 
@@ -421,13 +878,21 @@ def compute_credit_overlay(
         Whether REEC corporate claims fall under the AGI limit (see
         ``_reec_baseline_M`` docstring). Default False.
     reec_carryforward_utilization_m : float
-        Estimated REEC nonrefundable carryforward utilization in TY2031
-        ($ millions). Hawaii REEC has a 5-year carryforward for nonrefundable
-        claims (§235-12.5(e)); in TY2031 when new claims are capped at $0,
-        accumulated carryforwards from TY2026-2030 can still be applied
-        against tax liability, partially offsetting savings. Default 0.0
-        (conservative: treats $0 cap as fully blocking carryforward use).
-        Set to 4–9 for realistic scenarios based on accumulated stock.
+        TY2031 carryforward utilization ($M) under the static overlay
+        (legacy path; ignored when ``model_carryforward_pool=True``).
+        Default 0.0.
+    model_carryforward_pool : bool
+        If True, replace the static REEC savings calc with a vintage-level
+        simulation that tracks nonrefundable stock from TY2010 onward and
+        applies §235-12.5(j) "until exhausted" carryforward dynamics.
+        Bill scenario: AGI filter from TY2027, $40M cap on TY2027-2029
+        certifications, sunset for TY2030+ vintages. Baseline scenario:
+        no filter, no cap. Reported savings = baseline state cost −
+        scenario state cost, where state cost = refundable + nonref-stock
+        usage in target_year. Pre-2027 stock drawdown is identical in
+        both scenarios and cancels; the differential captures (a) ineligible
+        demand permanently lost in cap years and (b) reduced future
+        drawdown from capped vintages. Default False (legacy behavior).
 
     Returns a dict with the breakdown described in the module docstring.
     """
@@ -444,22 +909,84 @@ def compute_credit_overlay(
         effective_claim_share=reec_effective_claim_share,
         cgec_annual_growth=cgec_annual_growth,
     )
-    if 2027 <= target_year <= 2030:
+
+    cf_keys: Dict[str, float] = {}
+    if model_carryforward_pool:
+        # Vintage simulation: derive util rates per pool from the same
+        # refundable/nonrefundable split logic as the static overlay.
+        util_ind  = _effective_claim_share_individual(reec_effective_claim_share)
+        util_corp = _effective_claim_share_corporate(reec_effective_claim_share)
+
+        # The util_rate in the simulation is the *nonrefundable* utilization
+        # rate (the rate at which stock is drawn down). Refundable claims
+        # are paid in full in the year of certification (handled separately
+        # inside the simulator). So pass the nonrefundable utilization rate
+        # directly, not the blended effective share.
+        sim_target_years = [target_year]
+        sim_baseline = simulate_reec_state_cost_path(
+            sim_target_years,
+            cap_enabled=False,
+            util_rate_individual=reec_effective_claim_share,
+            util_rate_corporate=reec_effective_claim_share,
+            demand_scenario=reec_demand_scenario,
+            cgec_annual_growth=cgec_annual_growth,
+            corp_subject_to_agi_limit=corp_subject_to_agi_limit,
+            agi_eligibility_by_year=None,  # baseline never applies AGI filter
+            pro_rata_elasticity=0.0,        # baseline has no cap, no suppression
+            interpretation=interpretation,
+            dynamic_refundable_share=False,
+        )[target_year]
+        sim_bill = simulate_reec_state_cost_path(
+            sim_target_years,
+            cap_enabled=True,
+            util_rate_individual=reec_effective_claim_share,
+            util_rate_corporate=reec_effective_claim_share,
+            demand_scenario=reec_demand_scenario,
+            cgec_annual_growth=cgec_annual_growth,
+            corp_subject_to_agi_limit=corp_subject_to_agi_limit,
+            agi_eligibility_by_year=agi_eligibility_by_year,
+            pro_rata_elasticity=pro_rata_elasticity,
+            interpretation=interpretation,
+            dynamic_refundable_share=dynamic_refundable_share,
+        )[target_year]
+
+        reec_after_bill = sim_bill["total"]
+        reec_baseline_cost = sim_baseline["total"]
+        reec_savings = max(0.0, reec_baseline_cost - reec_after_bill)
+
+        cf_keys = {
+            "reec_baseline_state_cost_$M":  round(reec_baseline_cost, 2),
+            "reec_scenario_state_cost_$M":  round(reec_after_bill, 2),
+            "reec_scenario_new_certs_$M":   round(sim_bill["certified"], 2),
+            "reec_scenario_refundable_$M":  round(sim_bill["refundable"], 2),
+            "reec_scenario_nonref_usage_$M": round(sim_bill["nonref_usage"], 2),
+            "reec_baseline_new_certs_$M":   round(sim_baseline["certified"], 2),
+            "reec_baseline_refundable_$M":  round(sim_baseline["refundable"], 2),
+            "reec_baseline_nonref_usage_$M": round(sim_baseline["nonref_usage"], 2),
+            "reec_scenario_end_stock_$M":   round(
+                sim_bill["end_stock_ind"] + sim_bill["end_stock_corp"], 2),
+            "reec_baseline_end_stock_$M":   round(
+                sim_baseline["end_stock_ind"] + sim_baseline["end_stock_corp"], 2),
+            # Round-2 diagnostics
+            "reec_eligibility_share":        round(sim_bill["eligibility_share"], 4),
+            "reec_pro_rata_factor":          round(sim_bill["pro_rata_factor"], 4),
+            "reec_suppression_factor":       round(sim_bill["suppression_factor"], 4),
+            "reec_ind_refundable_share":     round(sim_bill["ind_ref_share"], 4),
+            "reec_interpretation":           interpretation,
+        }
+    elif 2027 <= target_year <= 2030:
         # Cap binds on the eligible portion. Total revenue gain =
         # ineligible-by-AGI demand (filtered out entirely) +
         # excess of eligible demand over the cap.
         reec_after_bill = min(reec["total_eligible"], REEC_CAP_2027_2030_M)
+        reec_savings = max(0.0, reec["total_baseline"] - reec_after_bill)
     elif target_year >= 2031:
-        # New claims = $0 (cap eliminated). But filers may still draw down
-        # nonrefundable carryforwards accumulated from TY2026-2030 (§235-12.5(e)
-        # allows 5-year carryforward). The carryforward utilization is an
-        # offset to savings — it represents revenue the state still loses
-        # even after the $0 cap. reec_carryforward_utilization_m captures
-        # the estimated carryforward drawdown in this year.
+        # Legacy path: new claims = $0; carryforward proxy via parameter.
         reec_after_bill = min(reec_carryforward_utilization_m, reec["total_baseline"])
+        reec_savings = max(0.0, reec["total_baseline"] - reec_after_bill)
     else:
         reec_after_bill = reec["total_baseline"]
-    reec_savings = max(0.0, reec["total_baseline"] - reec_after_bill)
+        reec_savings = max(0.0, reec["total_baseline"] - reec_after_bill)
 
     # ---- Capital Goods Excise Tax Credit --------------------------------
     # CGEC is mostly corporate / business-investment.
@@ -493,12 +1020,13 @@ def compute_credit_overlay(
 
     total_credit_savings = reec_savings + cgec_savings + tcra_savings
 
-    return {
+    result = {
         "growth_individual":     round(growth_individual, 4),
         "growth_corporate":      round(growth_corporate, 4),
         "reec_demand_factor":    round(reec["demand_factor"], 4),
         "reec_demand_scenario":  reec_demand_scenario,
         "corp_subject_to_agi_limit": corp_subject_to_agi_limit,
+        "model_carryforward_pool":   model_carryforward_pool,
         # REEC breakdown
         "reec_individual_eligible_$M":   round(reec["individual_eligible"], 2),
         "reec_individual_ineligible_$M": round(reec["individual_ineligible"], 2),
@@ -520,3 +1048,5 @@ def compute_credit_overlay(
         # Totals
         "total_credit_savings_$M":       round(total_credit_savings, 2),
     }
+    result.update(cf_keys)
+    return result

@@ -1,11 +1,167 @@
 # SB 3125 CD1 — Hawaii Income Tax Fiscal Impact Forecast
 ## Tax Years 2027–2031
 
-**Last updated:** May 11, 2026
+**Last updated:** May 14, 2026
 **Analyst:** Hawaii Appleseed Center for Law and Economic Justice
-**Model version:** CD2 scenario added (May 2026).
+**Model version:** CD2 vintage carryforward model + Round-2 REEC refinements (May 14, 2026).
 
 > **Maintenance note:** This document must be updated whenever forecast methodology changes — including parameter recalibration, new behavioral channels, tax treatment corrections, or data source changes. Update the relevant section(s) and the Results table before committing.
+
+---
+
+## CD2 REEC model — Round 2 refinements (May 14, 2026, late)
+
+Following the May 14 vintage-carryforward correction, five additional
+refinements were folded into the REEC fiscal model. Each is independently
+toggle-able via parameters on `compute_credit_overlay`; default values
+preserve backward compatibility.
+
+### 1. DOTAX TY2018-2022 historical actuals
+
+Replaced the 3%/yr synthetic backcast with measured DOTAX
+"Tax Credits Claimed" actuals for TY2018-2022:
+
+| Vintage | Individual ($M) | Corporate+Other ($M) | All ($M) |
+|---------|----------------:|---------------------:|---------:|
+| TY2018  | $34.21M | $36.29M | $70.50M |
+| TY2019  | $44.02M | $16.29M | $60.31M |
+| TY2020  | $46.59M | $66.03M | $112.61M |
+| TY2021  | $51.45M | $15.86M | $67.32M |
+| TY2022  | $55.02M | $50.74M | $105.76M |
+| TY2023  | $58.29M | $41.78M | $100.07M |
+
+Individual REEC grew ~10%/yr 2018→2023 — substantially faster than the
+3%/yr synthetic backcast. Corporate is volatile (commercial PV
+tax-equity transaction timing) and uses `all_total - individual_total`
+to capture the disclosure-protected financial-corp pool. Loader is
+`scripts/fetch_dotax_credits_historical.py` (one-shot fetch);
+parsed CSV at
+`packages/tax_modeler/src/tax_modeler/data/raw/dotax_reec_historical.csv`.
+
+### 2. Dynamic AGI eligibility recomputation per year
+
+§235-12.5(a) thresholds ($175K single/HoH/MFS, $350K MFJ) are
+unindexed. New helper `compute_dynamic_agi_eligibility_share(projected_units)`
+computes the aggregate eligibility share each forecast year from the
+projected tax-unit AGI distribution, weighted by TY2023 DOTAX REEC
+dollar shares per bin. Replaces the frozen TY2023 PUMS-derived 0.796.
+The enhanced forecast calls it for each TY 2027-2031 and passes a
+year-specific override.
+
+### 3. Pro-rata demand suppression (endogenous)
+
+§235-12.5(h)'s pro-rata cap allocation discounts the expected value of
+each filer's credit when the cap binds. New `pro_rata_elasticity`
+parameter applies suppression factor `s = pro_rata^η` to demand. Scenario
+bands: LOW η=0.5, MID η=0.3, HIGH η=0.15. Disabled (η=0) for backward
+compat.
+
+### 4. Refundable share adjustment for AGI-screened pool
+
+AGI filter removes high-income / high-tax-liability filers; the remaining
+pool skews lower-income. Per §235-12.5(k) (30% reduced refundable) and
+§235-12.5(l) (auto-refundable for low-AGI), lower-income filers elect
+refundability more. New
+`_refundable_share_individual_for_eligibility(eligibility_share)` returns
+a piecewise estimate (0.23 at 1.0 eligibility → 0.45 at 0.5).
+
+### 5. TY2026 retroactive cap interpretation (A vs B)
+
+Section 9(1) makes Section 1 retroactive to TY2026. §235-12.5(c)(1) caps
+CY2027 certifications at $40M. Under interpretation A (CY of certification =
+TY of install + 1), CY2027 cap binds TY2026 installations. Under
+interpretation B (CY = TY, default), TY2026 is uncapped. New
+`interpretation: "A" | "B"` parameter. LOW uses A (conservative for the
+State); MID/HIGH/RECESSION use B.
+
+### Round-2 impact on MID 5-year cumulative
+
+| Channel | After May 14 vintage | After Round 2 | Δ |
+|---------|---------------------:|--------------:|--:|
+| Total fiscal impact | $781.8M | $781.9M | +$0.1M |
+| Credit total | $441.9M | $442.0M | +$0.1M |
+| Bracket delta | $339.9M | $339.9M | unchanged |
+
+MID barely moves: TY2027 income hasn't grown enough from TY2023 to
+materially shift dynamic eligibility (0.796 → ~0.795); pro-rata suppression
+reduces both new certs and future drawdown ~symmetrically; the refundable
+share shift moves the timing of state cost but not the total. **LOW
+shifts +$11M (to $703.7M) because interpretation A caps the TY2026 vintage,
+reducing the pre-2027 stock entering the simulation window.**
+
+The bigger value of Round 2 is **diagnostic transparency** rather than
+headline fiscal impact: per-year eligibility share, pro-rata factor,
+suppression factor, refundable share, and interpretation flag are now
+reported per forecast year, enabling clean sensitivity sweeps.
+
+### Files changed
+
+- `packages/tax_modeler/src/tax_modeler/scenarios/sb3125_cd1_credits.py` —
+  DOTAX loader, `compute_dynamic_agi_eligibility_share`,
+  `_refundable_share_individual_for_eligibility`,
+  `_certified_credits_for_vintage` extended, `simulate_reec_state_cost_path`
+  extended, `compute_credit_overlay` gains four optional params
+- `scripts/fetch_dotax_credits_historical.py` — DOTAX XLSX fetcher/parser
+- `packages/tax_modeler/src/tax_modeler/data/raw/dotax_reec_historical.csv`
+- `forecast_sb3125_cd2_enhanced.py` — scenario knobs + per-year AGI
+  eligibility computation
+- `tests/tax_modeler/scenarios/test_sb3125_cd1_credits_v2.py` — 16 new tests
+
+---
+
+## CD2 vintage carryforward correction — May 14, 2026
+
+After reviewing the enrolled CD2 text, the REEC fiscal model was extended to
+track nonrefundable credit stock by vintage year. Three findings from the
+bill review drove the change:
+
+1. **§235-12.5(j) preserves "until exhausted" carryforward** with no time
+   limit and no AGI re-test. The bill amendments do not void or restrict
+   credits certified before TY2027 — they remain usable indefinitely
+   against future tax liability.
+2. **§235-12.5(h) cap applies to DBEDT certifications**, not to utilization
+   of previously-certified credits. The $40M aggregate cap therefore does
+   not constrain drawdown of pre-2027 vintage stock.
+3. **§235-12.5(p) sunset prevails over §235-12.5(c)(4)**: the section
+   "shall not apply to taxable years beginning after December 31, 2029."
+   TY2030 has no new certifications even though (c)(4) lists a $40M cap
+   for CY2030. The legacy static-overlay model treated TY2030 as a cap
+   year ($40M payout), materially understating savings.
+
+**Modeling approach.** A vintage simulation tracks individual and corporate
+nonrefundable stock from TY2010 forward using the dynamic
+`stock_t = (1-u)·(stock_{t-1} + nonref_certs_t)` with `usage_t = u·(stock_{t-1} + nonref_certs_t)`,
+where `u = reec_effective_claim_share`. Pre-2023 vintages are back-cast at 3%/yr nominal growth; TY2024–2026 use the model's
+nominal income growth × OBBBA demand decay. The simulator is run twice per
+target year — once with `cap_enabled=False` (baseline: no cap, no AGI filter,
+no sunset) and once with `cap_enabled=True` (bill: AGI filter for TY2027+,
+$40M cap for TY2027–2029, zero for TY2030+). State cost in target year =
+refundable payments certified that year + nonref stock drawdown. Savings =
+baseline state cost − scenario state cost. Pre-2027 stock drawdown is
+identical under both paths and cancels in the differential; what remains is
+(a) ineligible-by-AGI demand permanently lost in cap years and (b) reduced
+future drawdown from capped 2027–2029 vintages.
+
+**Impact on MID results (5-year cumulative, 2027–2031):**
+
+| Channel | Legacy static | Vintage simulation | Δ |
+|---------|--------------:|-------------------:|--:|
+| REEC savings | $236.3M | $343.3M | +$107.0M |
+| Total credit | $334.6M | $441.9M | +$107.3M |
+| Total fiscal impact | $674.5M | $781.8M | +$107.3M |
+
+The TY2030 row carries most of the correction (+$50M from properly applying
+the (p) sunset instead of treating TY2030 as a $40M cap year).
+
+**Files changed:**
+- `packages/tax_modeler/src/tax_modeler/scenarios/sb3125_cd1_credits.py` — added `simulate_reec_state_cost_path`, `_historical_reec_individual/corporate`, `_certified_credits_for_vintage`; added `model_carryforward_pool` flag to `compute_credit_overlay` (default `False` for backward compatibility).
+- `forecast_sb3125_cd2_enhanced.py` — now calls overlay with `model_carryforward_pool=True`.
+
+**Interpretation note.** The model uses interpretation B (CY in §235-12.5(c)
+maps directly to TY of installation). Interpretation A (CY = TY of
+certification = TY of install + 1) produces the same qualitative results —
+TY2026–2029 installations are capped at $40M each, TY2030+ blocked by (p).
+The difference is bookkeeping only.
 
 ---
 
@@ -848,7 +1004,59 @@ Note: Q1 filers (avg income ~$3K) are **completely unaffected** because their gr
 
 ---
 
-### SB 3125 CD2 Results — May 11, 2026
+### SB 3125 CD2 Results — May 14, 2026 (vintage carryforward correction)
+
+**Key finding (revised May 14):** The previous static credit overlay
+understated REEC savings by ~$107M over 5 years because it (a) treated
+TY2030 as a $40M cap year rather than applying the §235-12.5(p) sunset,
+and (b) did not track pre-existing carryforward stock drawdown. The
+vintage simulation corrects both. Numbers in the tables below reflect the
+new vintage-pool model.
+
+**CD2 vs Act 46 baseline, post-behavioral, post-Round-2 ($M):**
+
+| Tax Year | LOW | **MID** | HIGH | RECESSION |
+|----------|----:|--------:|-----:|----------:|
+| 2027 | $108.8M | **$108.3M** | $129.1M | $102.7M |
+| 2028 | $122.3M | **$135.2M** | $164.7M | $133.3M |
+| 2029 | $137.0M | **$155.8M** | $191.8M | $153.2M |
+| 2030 | $164.2M | **$187.9M** | $231.2M | $192.1M |
+| 2031 | $171.5M | **$194.7M** | $244.7M | $198.2M |
+| **5-year total** | **$703.7M** | **$781.9M** | **$961.4M** | **$779.5M** |
+
+*LOW uses interpretation A (TY2026 cap binds) + pro-rata η=0.5; other scenarios
+use interpretation B + scenario-band η. All scenarios use DOTAX
+TY2018-2022 actuals, dynamic AGI eligibility, and dynamic refundable share.*
+
+**Pre-Round-2 results (May 14 vintage carryforward only, for comparison):**
+
+| Tax Year | LOW | **MID** | HIGH | RECESSION |
+|----------|----:|--------:|-----:|----------:|
+| 2027 | $103.8M | **$108.8M** | $129.4M | $103.2M |
+| 2028 | $119.8M | **$135.4M** | $164.7M | $133.5M |
+| 2029 | $135.8M | **$155.9M** | $191.8M | $153.3M |
+| 2030 | $162.3M | **$187.3M** | $230.8M | $191.4M |
+| 2031 | $170.6M | **$194.4M** | $244.6M | $198.0M |
+| **5-year total** | **$692.4M** | **$781.8M** | **$961.3M** | **$779.4M** |
+
+**Credit savings breakdown, MID scenario ($M) — illustrating vintage carryforward correction:**
+
+*"Vintage model" column is pre-Round-2; Round-2 final MID numbers are in the table above ($47.3M, $72.0M, $85.5M, $116.5M, $120.6M).*
+
+| Year | Legacy static | Vintage model (pre-R2) | TY2030 driver |
+|------|--------------:|-----------------------:|---------------|
+| 2027 | $41.8M | $47.9M | Pre-2027 stock + ineligibles |
+| 2028 | $59.2M | $72.2M | Higher baseline (steady-state cost) |
+| 2029 | $69.8M | $85.6M | Higher baseline |
+| 2030 | $65.5M | **$115.8M** | **§235-12.5(p) sunset (was treated as $40M cap)** |
+| 2031 | $98.3M | $120.4M | Includes 2027–2029 vintage drawdown |
+
+---
+
+### SB 3125 CD2 Results — May 11, 2026 (legacy static overlay, pre-correction)
+
+**Note:** Superseded by May 14 vintage-corrected results above. Retained for
+historical reference.
 
 **Key finding:** The bracket values loaded under the `sb3125_cd1` label in the CSV already reflected CD2-vintage numbers (2.50%/5.00% mid rates, 13% at $1M+ MFJ). Therefore, the CD2 forecast produces **identical fiscal-impact numbers to the CD1 forecast above**. The difference is in labeling and authoritative tag going forward.
 

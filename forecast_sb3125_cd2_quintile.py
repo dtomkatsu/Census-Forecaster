@@ -5,7 +5,8 @@ vs Act 46 baseline) and aggregates into five equal-population income quintiles.
 
 Scope: bracket change only (§235-51).  REEC/CGEC/TCRA credit components are
 aggregate static-scoring overlays not attributable to individual filers and are
-excluded from the quintile breakdown.
+excluded from the quintile breakdown but shown in a separate REEC section of
+the PDF.
 
 Scenario: MID (Pareto α=1.5, itemized_adj=True) — calibrated best-estimate.
 Static incidence scoring: per-unit tax is computed at projected income before
@@ -14,6 +15,7 @@ ETI/migration adjustments, consistent with standard distributional analysis
 
 Output:
   /tmp/sb3125_cd2_quintile_2027_2031.csv
+  /tmp/sb3125_cd2_quintile_distributional_report.pdf
 """
 from __future__ import annotations
 
@@ -273,9 +275,447 @@ if __name__ == "__main__":
                   flush=True)
 
         print(f"\nSaved: {OUT_CSV}", flush=True)
+
+        print("\nRendering PDF...", flush=True)
+        _make_pdf(df_out)
+
         print(f"Total elapsed: {time.perf_counter()-wall_start:.1f}s", flush=True)
 
     except Exception as e:
         print(f"\nERROR: {e}", flush=True)
         traceback.print_exc()
-        sys.exit(1)
+
+
+def _make_pdf(df: "pd.DataFrame") -> None:
+    import matplotlib
+    matplotlib.rcParams["text.parse_math"] = False
+    matplotlib.rcParams["font.family"] = ["DejaVu Sans"]
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import pandas as pd
+    from matplotlib.backends.backend_pdf import PdfPages
+
+    PDF_OUT      = Path("/tmp/sb3125_cd2_quintile_distributional_report.pdf")
+    ENHANCED_CSV = Path("/tmp/sb3125_cd2_enhanced_2027_2031.csv")
+
+    HH_BREAKS = [28_336, 60_915, 100_510, 168_638]
+    Q_LABELS  = ["Q1 (Bottom 20%)", "Q2", "Q3", "Q4", "Q5 (Top 20%)"]
+    Q_NAMES   = ["Bottom 20%", "2nd 20%", "3rd 20%", "4th 20%", "Top 20%"]
+    Q_RANGES  = [
+        f"under ${HH_BREAKS[0]//1000}K",
+        f"${HH_BREAKS[0]//1000}K – ${HH_BREAKS[1]//1000}K",
+        f"${HH_BREAKS[1]//1000}K – ${HH_BREAKS[2]//1000}K",
+        f"${HH_BREAKS[2]//1000}K – ${HH_BREAKS[3]//1000}K",
+        f"${HH_BREAKS[3]//1000}K+",
+    ]
+
+    NAVY     = "#1e3a5f"
+    TEAL     = "#2c8c87"
+    ORANGE   = "#c05e2b"
+    PILL_BG  = "#e8eef7"
+    PILL_FG  = "#1e3a5f"
+    TXT_GREY = "#4a5568"
+    RULE     = "#cbd5e0"
+    BLUE     = "#2b6cb0"
+
+    years = sorted(df["tax_year"].unique())
+
+    def _fmt(val, fmt):
+        if fmt == "dollar":
+            return f"{'+' if val >= 0 else '-'}${abs(val):,.0f}"
+        if fmt == "pct":
+            return f"{val:.1f}%"
+        if fmt == "millions":
+            return f"{'+' if val >= 0 else '-'}${abs(val):,.1f}M"
+        return str(val)
+
+    # ---- Page 1: summary tables ----
+
+    def table_page(pdf):
+        fig = plt.figure(figsize=(11, 11))
+        fig.suptitle(
+            "SB 3125 CD2 vs Act 46 — Distributional Impact (MID Scenario)",
+            fontsize=15, fontweight="bold", y=0.97, color=NAVY,
+        )
+        fig.text(
+            0.5, 0.935,
+            "Per-filer bracket-change impact by income quintile, TY 2027–2031  "
+            "·  §235-51 only  ·  REEC/CGEC/TCRA shown separately on pages 5–6",
+            ha="center", fontsize=10, style="italic", color=TXT_GREY,
+        )
+        specs = [
+            ("Avg Tax Change per Filer",          "avg_delta_per_filer_$",  "dollar"),
+            ("Share of Filers with Any Change",   "pct_filers_with_change", "pct"),
+            ("Total Tax Change for Quintile",     "delta_total_$M",         "millions"),
+        ]
+        n = len(specs)
+        top, bot, pad = 0.90, 0.06, 0.025
+        ph = (top - bot - (n - 1) * pad) / n
+        for i, (title, col, fmt) in enumerate(specs):
+            y0 = top - i * (ph + pad)
+            ax = fig.add_axes([0.05, y0 - ph, 0.90, ph])
+            ax.axis("off")
+            ax.text(0, 1.0, title, transform=ax.transAxes,
+                    fontsize=11.5, fontweight="bold", color=NAVY, va="top")
+            rows = []
+            for ql, qn, qr in zip(Q_LABELS, Q_NAMES, Q_RANGES):
+                row = [qn, qr]
+                for yr in years:
+                    sub = df[(df["tax_year"] == yr) & (df["quintile"] == ql)]
+                    row.append(_fmt(float(sub.iloc[0][col]), fmt) if not sub.empty else "—")
+                rows.append(row)
+            col_labels = ["Quintile", "Household income"] + [str(y) for y in years]
+            col_widths  = [0.16, 0.22] + [0.124] * len(years)
+            tbl = ax.table(cellText=rows, colLabels=col_labels,
+                           colWidths=col_widths, loc="upper left",
+                           bbox=[0, 0, 1, 0.85], cellLoc="center")
+            tbl.auto_set_font_size(False)
+            tbl.set_fontsize(9)
+            for j in range(len(col_labels)):
+                c = tbl[(0, j)]
+                c.set_facecolor(NAVY)
+                c.set_text_props(color="white", fontweight="bold")
+                c.set_edgecolor("white")
+            for r in range(1, len(rows) + 1):
+                for j in range(len(col_labels)):
+                    c = tbl[(r, j)]
+                    c.set_edgecolor(RULE)
+                    if j == 0:
+                        c.set_text_props(fontweight="bold", color=NAVY)
+                        c.set_facecolor(PILL_BG)
+                    elif j == 1:
+                        c.set_text_props(color=TXT_GREY)
+                        c.set_facecolor(PILL_BG)
+                    if r == len(rows) and j >= 2:
+                        c.set_facecolor("#fff5f5")
+        fig.text(
+            0.05, 0.025,
+            "Positive = filer pays more under SB 3125 CD2 vs Act 46 (bracket change only). "
+            "Bottom quintiles see tax cuts from lower mid-bracket rates; top quintile sees "
+            "increases from the new 13% bracket. Credit-cap savings (REEC) shown on pages 5–6.",
+            ha="left", fontsize=7.5, style="italic", color=TXT_GREY,
+        )
+        pdf.savefig(fig, bbox_inches="tight")
+        plt.close(fig)
+
+    # ---- Pages 2–4: bar chart pages ----
+
+    def _panel(ax, yr, col, fmt, bar_color):
+        vals = []
+        for ql in Q_LABELS:
+            sub = df[(df["tax_year"] == yr) & (df["quintile"] == ql)]
+            vals.append(float(sub.iloc[0][col]) if not sub.empty else 0.0)
+        yp   = np.arange(len(Q_LABELS))[::-1]
+        ax.barh(yp, vals, height=0.55, color=bar_color, edgecolor="none")
+        vmax = max(abs(min(vals)), abs(max(vals))) or 1.0
+        pad  = vmax * 0.04
+        for y, v in zip(yp, vals):
+            lbl = _fmt(v, fmt)
+            if v >= 0:
+                ax.text(v + pad, y, lbl, va="center", ha="left",
+                        fontsize=10, fontweight="bold", color="#2d3748")
+            else:
+                ax.text(v - pad, y, lbl, va="center", ha="right",
+                        fontsize=10, fontweight="bold", color="#2d3748")
+        ax.set_yticks(yp)
+        ax.set_yticklabels([])
+        for y, name, rng in zip(yp, Q_NAMES, Q_RANGES):
+            ax.text(-0.01, y + 0.12, name, transform=ax.get_yaxis_transform(),
+                    ha="right", va="center", fontsize=9.5, fontweight="bold", color=PILL_FG,
+                    bbox=dict(boxstyle="round,pad=0.35", facecolor=PILL_BG, edgecolor="none"))
+            ax.text(-0.01, y - 0.22, rng, transform=ax.get_yaxis_transform(),
+                    ha="right", va="center", fontsize=8.5, color=TXT_GREY)
+        ax.set_title(f"Tax Year {yr}", loc="left", fontsize=12, fontweight="bold", color=NAVY)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_visible(False)
+        ax.spines["bottom"].set_color(RULE)
+        ax.tick_params(axis="y", length=0)
+        ax.tick_params(axis="x", colors=TXT_GREY, labelsize=8)
+        ax.grid(axis="x", linestyle=":", alpha=0.35, color=RULE)
+        ax.axvline(0, color=RULE, lw=0.7)
+        if min(vals) < 0:
+            ax.set_xlim(min(vals) - vmax * 0.30, max(vals) + vmax * 0.30)
+        else:
+            ax.set_xlim(0, max(vals) * 1.30)
+
+    def chart_page(pdf, title, subtitle, col, fmt, bar_color):
+        fig = plt.figure(figsize=(11, 10))
+        fig.suptitle(title, fontsize=14, fontweight="bold", y=0.965, color=NAVY)
+        fig.text(0.5, 0.93, subtitle, ha="center", fontsize=10, style="italic", color=TXT_GREY)
+        for i, yr in enumerate([2027, 2031]):
+            ax = fig.add_axes([0.22, 0.50 - i * 0.42, 0.72, 0.36])
+            _panel(ax, yr, col, fmt, bar_color)
+        fig.text(0.5, 0.02,
+                 "Source: Census-Forecaster microsim. Quintiles defined on 2026 household income.",
+                 ha="center", fontsize=8, style="italic", color=TXT_GREY)
+        pdf.savefig(fig, bbox_inches="tight")
+        plt.close(fig)
+
+    # ---- Page 5: REEC incidence by income group ----
+
+    # DOTAX TY2023 actuals: (label, individual_claim_$M, agi_eligible_share)
+    REEC_IND_BINS = [
+        ("<$10K",       4.731, 1.000),
+        ("$10K–$30K",   2.522, 1.000),
+        ("$30K–$60K",   3.121, 1.000),
+        ("$60K–$100K",  5.752, 1.000),
+        ("$100K–$200K", 16.150, 0.972),
+        ("$200K+",      26.018, 0.561),
+    ]
+    REEC_CORP_M = 38.565 + 3.217  # corp + other TY2023
+
+    def _reec_rows(pro_rata: float) -> list:
+        rows = []
+        for label, claim, elig in REEC_IND_BINS:
+            eligible  = claim * elig
+            after_cap = eligible * pro_rata
+            rows.append({
+                "group":      label,
+                "baseline":   claim,
+                "eligible":   eligible,
+                "lost_agi":   claim - eligible,
+                "after_cap":  after_cap,
+                "lost_cap":   eligible - after_cap,
+                "total_lost": (claim - eligible) + (eligible - after_cap),
+                "pct_lost":   ((claim - eligible) + (eligible - after_cap)) / claim * 100,
+            })
+        corp_after = REEC_CORP_M * pro_rata
+        rows.append({
+            "group":      "Corporate / Other",
+            "baseline":   REEC_CORP_M,
+            "eligible":   REEC_CORP_M,
+            "lost_agi":   0.0,
+            "after_cap":  corp_after,
+            "lost_cap":   REEC_CORP_M - corp_after,
+            "total_lost": REEC_CORP_M - corp_after,
+            "pct_lost":   (REEC_CORP_M - corp_after) / REEC_CORP_M * 100,
+        })
+        return rows
+
+    def reec_incidence_page(pdf, pro_rata: float = 0.7806):
+        rows = _reec_rows(pro_rata)
+        fig  = plt.figure(figsize=(11, 10))
+        fig.suptitle(
+            "REEC Credit Restriction — Impact by Income Group",
+            fontsize=14, fontweight="bold", y=0.97, color=NAVY,
+        )
+        fig.text(
+            0.5, 0.935,
+            f"TY2023 DOTAX actuals  ·  TY2027 MID pro-rata factor {pro_rata:.0%}  "
+            f"·  §235-12.5 AGI limits ($175K single / $350K joint) + $40M aggregate cap",
+            ha="center", fontsize=9.5, style="italic", color=TXT_GREY,
+        )
+        retained = [r["after_cap"]  for r in rows]
+        lost_cap = [r["lost_cap"]   for r in rows]
+        lost_agi = [r["lost_agi"]   for r in rows]
+        yp       = np.arange(len(rows))[::-1]
+        ax       = fig.add_axes([0.26, 0.18, 0.68, 0.70])
+
+        ax.barh(yp, retained, height=0.55, color=TEAL,   edgecolor="none", label="Retained after cap")
+        ax.barh(yp, lost_cap, height=0.55, color=ORANGE, edgecolor="none",
+                left=retained, label="Lost to cap (pro-rata)")
+        ax.barh(yp, lost_agi, height=0.55, color=NAVY,   edgecolor="none",
+                left=[r + c for r, c in zip(retained, lost_cap)], label="Lost to AGI filter")
+
+        for ypos, row in zip(yp, rows):
+            ax.text(
+                row["baseline"] + 0.4, ypos,
+                f"-${row['total_lost']:.1f}M  ({row['pct_lost']:.0f}%)",
+                va="center", ha="left", fontsize=9, color=NAVY, fontweight="bold",
+            )
+
+        ax.set_yticks(yp)
+        ax.set_yticklabels([])
+        for ypos, row in zip(yp, rows):
+            is_corp = row["group"] == "Corporate / Other"
+            ax.text(
+                -0.01, ypos, row["group"],
+                transform=ax.get_yaxis_transform(), ha="right", va="center",
+                fontsize=9.5, fontweight="bold" if is_corp else "normal",
+                color=NAVY if is_corp else PILL_FG,
+                bbox=dict(boxstyle="round,pad=0.35", facecolor=PILL_BG, edgecolor="none"),
+            )
+
+        ax.axhline(y=0.5, color=RULE, linewidth=1.0, linestyle="--")
+        ax.set_xlabel("Credit ($M, TY2023 basis)", fontsize=9, color=TXT_GREY)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_visible(False)
+        ax.spines["bottom"].set_color(RULE)
+        ax.tick_params(axis="y", length=0)
+        ax.tick_params(axis="x", colors=TXT_GREY, labelsize=8)
+        ax.grid(axis="x", linestyle=":", alpha=0.35, color=RULE)
+        ax.set_xlim(0, max(r["baseline"] for r in rows) * 1.45)
+        ax.legend(loc="lower right", fontsize=9, framealpha=0.9, edgecolor=RULE)
+
+        ind_lost  = sum(r["total_lost"] for r in rows if r["group"] != "Corporate / Other")
+        corp_lost = rows[-1]["total_lost"]
+        grand_b   = sum(r["baseline"]   for r in rows)
+        grand_l   = sum(r["total_lost"] for r in rows)
+        fig.text(
+            0.05, 0.10,
+            "Amounts from DOTAX TY2023 'Tax Credits Claimed' (most recent available). "
+            "TY2027 individual demand is lower due to federal §25D termination (OBBBA, PL 119-21) "
+            "— relative incidence across groups is similar. "
+            "Corporate REEC not subject to AGI limit under MID scenario. "
+            "Pro-rata factor reflects endogenous demand suppression (η=0.3, MID).",
+            ha="left", fontsize=7.5, style="italic", color=TXT_GREY,
+        )
+        fig.text(
+            0.05, 0.055,
+            f"TY2023 totals: individual "
+            f"${sum(r['baseline'] for r in rows if r['group'] != 'Corporate / Other'):.1f}M  "
+            f"|  corporate ${REEC_CORP_M:.1f}M  |  combined ${grand_b:.1f}M.  "
+            f"Aggregate lost (TY2023 basis): "
+            f"individual −${ind_lost:.1f}M  |  corporate −${corp_lost:.1f}M  "
+            f"|  total −${grand_l:.1f}M.",
+            ha="left", fontsize=7.5, color=TXT_GREY,
+        )
+        pdf.savefig(fig, bbox_inches="tight")
+        plt.close(fig)
+
+    # ---- Page 6: REEC savings trajectory ----
+
+    def reec_time_series_page(pdf, df_enh: "pd.DataFrame"):
+        scenarios = ["LOW", "MID", "HIGH"]
+        colors    = {"LOW": "#8fa8c8", "MID": TEAL, "HIGH": ORANGE}
+        yr_list   = [2027, 2028, 2029, 2030, 2031]
+        x         = np.arange(len(yr_list))
+
+        fig = plt.figure(figsize=(11, 10))
+        fig.suptitle(
+            "REEC Savings Over Time — Baseline vs. Bill State Cost",
+            fontsize=14, fontweight="bold", y=0.97, color=NAVY,
+        )
+        fig.text(
+            0.5, 0.935,
+            "§235-12.5 renewable energy credit  ·  TY2027–2031  ·  LOW / MID / HIGH scenarios",
+            ha="center", fontsize=10, style="italic", color=TXT_GREY,
+        )
+
+        # Top: grouped bars of REEC savings by scenario
+        ax_top = fig.add_axes([0.10, 0.52, 0.84, 0.36])
+        n_s     = len(scenarios)
+        width   = 0.22
+        offsets = np.linspace(-(n_s - 1) / 2 * width, (n_s - 1) / 2 * width, n_s)
+        for scen, offset in zip(scenarios, offsets):
+            sub  = df_enh[df_enh["scenario"] == scen].set_index("tax_year")
+            vals = [sub.loc[y, "reec_savings_$M"] for y in yr_list]
+            bars = ax_top.bar(x + offset, vals, width=width * 0.92,
+                              color=colors[scen], edgecolor="none", label=scen)
+            for bar, val in zip(bars, vals):
+                ax_top.text(
+                    bar.get_x() + bar.get_width() / 2, val + 1.0,
+                    f"${val:.0f}M", ha="center", va="bottom",
+                    fontsize=7.5, color=colors[scen], fontweight="bold",
+                )
+
+        ax_top.set_xticks(x)
+        ax_top.set_xticklabels([f"TY{y}" for y in yr_list], fontsize=10, color=TXT_GREY)
+        ax_top.set_ylabel("REEC savings ($M)", fontsize=9, color=TXT_GREY)
+        ax_top.set_title("Annual REEC Fiscal Savings (Baseline − Bill State Cost)",
+                         loc="left", fontsize=11, fontweight="bold", color=NAVY)
+        ax_top.spines["top"].set_visible(False)
+        ax_top.spines["right"].set_visible(False)
+        ax_top.spines["left"].set_color(RULE)
+        ax_top.spines["bottom"].set_color(RULE)
+        ax_top.tick_params(colors=TXT_GREY, labelsize=8)
+        ax_top.grid(axis="y", linestyle=":", alpha=0.35, color=RULE)
+        ax_top.set_ylim(0, 145)
+        ax_top.legend(loc="upper left", fontsize=9, framealpha=0.9, edgecolor=RULE)
+        ax_top.axvspan(2.5, 4.5, alpha=0.06, color=NAVY, zorder=0)
+        ax_top.text(3.5, 135, "§235-12.5(p)\nsunset", ha="center", va="top",
+                    fontsize=8.5, color=NAVY, style="italic")
+
+        # Cumulative callout
+        for scen, color in colors.items():
+            sub = df_enh[df_enh["scenario"] == scen]
+            cum = sub["reec_savings_$M"].sum()
+            ax_top.annotate(
+                f"{scen} 5yr: ${cum:.0f}M",
+                xy=(0, 0), xycoords="axes fraction",
+                xytext=(0.01 + list(scenarios).index(scen) * 0.18, 0.05),
+                textcoords="axes fraction",
+                fontsize=8, color=color, fontweight="bold",
+            )
+
+        # Bottom: MID cost decomposition
+        ax_bot = fig.add_axes([0.10, 0.10, 0.84, 0.34])
+        mid      = df_enh[df_enh["scenario"] == "MID"].set_index("tax_year")
+        base_c   = [mid.loc[y, "reec_base_state_cost_$M"]  for y in yr_list]
+        scen_ref = [mid.loc[y, "reec_scen_refundable_$M"]   for y in yr_list]
+        scen_nr  = [mid.loc[y, "reec_scen_nonref_usage_$M"] for y in yr_list]
+
+        ax_bot.plot(x, base_c, color=NAVY, linewidth=2.0, marker="o",
+                    markersize=5, label="Baseline (no cap)", zorder=3)
+        ax_bot.bar(x, scen_ref, width=0.45, color=TEAL,     edgecolor="none",
+                   label="Bill: refundable (in-year)", zorder=2)
+        ax_bot.bar(x, scen_nr,  width=0.45, color="#8fa8c8", edgecolor="none",
+                   bottom=scen_ref, label="Bill: nonref carryforward drawdown", zorder=2)
+
+        ax_bot.set_xticks(x)
+        ax_bot.set_xticklabels([f"TY{y}" for y in yr_list], fontsize=10, color=TXT_GREY)
+        ax_bot.set_ylabel("State cost ($M)", fontsize=9, color=TXT_GREY)
+        ax_bot.set_title("MID Scenario — State Cost Components",
+                         loc="left", fontsize=11, fontweight="bold", color=NAVY)
+        ax_bot.spines["top"].set_visible(False)
+        ax_bot.spines["right"].set_visible(False)
+        ax_bot.spines["left"].set_color(RULE)
+        ax_bot.spines["bottom"].set_color(RULE)
+        ax_bot.tick_params(colors=TXT_GREY, labelsize=8)
+        ax_bot.grid(axis="y", linestyle=":", alpha=0.35, color=RULE)
+        ax_bot.set_ylim(0, 125)
+        ax_bot.legend(loc="upper right", fontsize=9, framealpha=0.9, edgecolor=RULE)
+        ax_bot.axvspan(2.5, 4.5, alpha=0.06, color=NAVY, zorder=0)
+
+        fig.text(
+            0.05, 0.03,
+            "Baseline: Act 46 (no cap, no AGI limit, no sunset). "
+            "Bill: §235-12.5 — $40M cap TY2027–2029, $0 new certifications TY2030+ (§(p) sunset). "
+            "Savings = baseline − bill state cost. "
+            "LOW: interpretation A (TY2026 cap binds), η=0.5. "
+            "MID/HIGH: interpretation B, η=0.3/0.15.",
+            ha="left", fontsize=7.5, style="italic", color=TXT_GREY,
+        )
+        pdf.savefig(fig, bbox_inches="tight")
+        plt.close(fig)
+
+    # ---- Assemble PDF ----
+
+    # Pull TY2027 MID pro-rata for incidence page; fall back to hardcoded if CSV missing
+    pro_rata_mid = 0.7806
+    df_enh       = None
+    if ENHANCED_CSV.exists():
+        import pandas as _pd
+        df_enh = _pd.read_csv(ENHANCED_CSV)
+        mid_2027 = df_enh[(df_enh["scenario"] == "MID") & (df_enh["tax_year"] == 2027)]
+        if not mid_2027.empty:
+            pro_rata_mid = float(mid_2027["reec_pro_rata_factor"].iloc[0])
+
+    with PdfPages(PDF_OUT) as pdf:
+        table_page(pdf)
+        chart_page(pdf,
+                   "Average Tax Change per Filer by Quintile",
+                   "SB 3125 CD2 vs Act 46 — MID Scenario  ·  §235-51 bracket changes only",
+                   "avg_delta_per_filer_$", "dollar", BLUE)
+        chart_page(pdf,
+                   "Share of Filers with Any Tax Change",
+                   "SB 3125 CD2 vs Act 46 — MID Scenario  ·  §235-51 bracket changes only",
+                   "pct_filers_with_change", "pct", NAVY)
+        chart_page(pdf,
+                   "Total Tax Change by Quintile",
+                   "SB 3125 CD2 vs Act 46 — MID Scenario  ·  §235-51 bracket changes only",
+                   "delta_total_$M", "millions", BLUE)
+        reec_incidence_page(pdf, pro_rata=pro_rata_mid)
+        if df_enh is not None:
+            reec_time_series_page(pdf, df_enh)
+        else:
+            print(f"  (skipping REEC time-series page — {ENHANCED_CSV} not found)", flush=True)
+
+        m = pdf.infodict()
+        m["Title"]   = "SB 3125 CD2 Distributional Analysis"
+        m["Author"]  = "Census-Forecaster"
+        m["Subject"] = "Per-quintile bracket impact + REEC credit incidence, TY 2027–2031, MID"
+
+    print(f"Saved: {PDF_OUT}", flush=True)
