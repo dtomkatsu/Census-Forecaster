@@ -333,8 +333,13 @@ def compute_base_tax(
     from tax_modeler.projection.tax_unit_projector import _recalculate_ctc
 
     df = calculate_hawaii_tax_for_units(df, tax_year=tax_year, deduction_params=deduction_params)
-    df = _recalculate_ctc(df)
-    df = calculate_eitc_for_tax_units(df)
+    # Year-aware federal credits: use the requested tax_year when it has a
+    # statutory parameter set; otherwise fall back to TY 2023 to preserve
+    # historical behavior for older calibration vintages.
+    from tax_modeler.credits.eitc import _EITC_PARAMS_BY_YEAR
+    credit_year = tax_year if tax_year in _EITC_PARAMS_BY_YEAR else 2023
+    df = _recalculate_ctc(df, tax_year=credit_year)
+    df = calculate_eitc_for_tax_units(df, tax_year=credit_year)
     # Calibration expects 'agi' and 'hi_state_tax'; Hawaii tax produces 'hi_agi' / 'hi_tax_liability'
     if "hi_agi" in df.columns and "agi" not in df.columns:
         df["agi"] = df["hi_agi"]
