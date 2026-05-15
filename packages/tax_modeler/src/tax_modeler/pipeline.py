@@ -348,6 +348,51 @@ def compute_base_tax(
     return df
 
 
+def apply_credit_takeup(
+    df: pd.DataFrame,
+    *,
+    year: int = 2022,
+    programs: tuple[str, ...] = ("eitc", "actc"),
+) -> pd.DataFrame:
+    """Apply IRS-anchored take-up imputation to federal EITC/CTC dollars.
+
+    Eligibility ≠ claim. PUMS-derived eligible amounts overstate actual
+    IRS take-up; this step ranks eligible filers by their eligible
+    credit dollars (descending) and marks the top-N as claimants until
+    the weighted count matches the IRS Hawaii state-total target.
+    Non-claimants have their credit zeroed.
+
+    Parameters
+    ----------
+    df:
+        Projected (or calibrated) tax units. Must contain ``weight``,
+        ``eitc_amount`` (for ``eitc``), and ``ctc_total`` /
+        ``ctc_refundable`` (for ``ctc`` / ``actc``).
+    year:
+        Caseload-table year for the IRS benchmark (default 2022 — the
+        latest IRS SOI Hawaii state total).  The take-up *rate* is
+        treated as behavioral and constant across forward projection;
+        only the target count is fixed at this vintage.
+    programs:
+        Programs to apply. Default is the federal refundable EITC and
+        the refundable portion of CTC (ACTC), since these are the
+        primary anti-poverty channels. Pass ``("eitc", "ctc", "actc")``
+        for the full set when CBPP comparison covers total CTC.
+
+    Notes
+    -----
+    By default ``run_pipeline`` skips this step (opt-in) so existing
+    forecast scripts that benchmark against eligibility totals are not
+    silently changed. Pass ``apply_credit_takeup=True`` to ``run_pipeline``
+    to enable.
+    """
+    from tax_modeler.calibration.admin_caseload import AdminCaseload
+    from tax_modeler.calibration.takeup_imputation import calibrate_benefits
+
+    caseload = AdminCaseload.load()
+    return calibrate_benefits(df, caseload=caseload, year=year, programs=programs)
+
+
 def calibrate(df: pd.DataFrame) -> pd.DataFrame:
     """Stage 5: IPF rake calibration against DOTAX aggregate benchmarks."""
     from tax_modeler.calibration import apply_ipf_calibration_via_rake
@@ -420,6 +465,8 @@ def run_pipeline(
     tax_units_df: Optional[pd.DataFrame] = None,
     skip_calibration: bool = False,
     reform: Optional[object] = None,    # tax_modeler.reform.Reform | None
+    apply_credit_takeup: bool = False,
+    credit_takeup_year: int = 2022,
 ) -> PipelineResult:
     """Run the full Hawaii tax microsimulation pipeline.
 
@@ -457,6 +504,15 @@ def run_pipeline(
         comparison between baseline and reform is computed on the projected
         units and attached to the result as ``reform_result``. The baseline
         DataFrames returned in the result are unchanged.
+    apply_credit_takeup:
+        When ``True``, after projection (and before revenue estimation),
+        zero out federal EITC and ACTC dollars for non-claimants per
+        rank-based imputation calibrated to the IRS Hawaii state total
+        for ``credit_takeup_year``. Default is ``False`` (opt-in) so
+        callers receive raw eligibility amounts.
+    credit_takeup_year:
+        IRS caseload-table year used as the take-up benchmark
+        (default 2022 — the latest IRS SOI Hawaii state total).
 
     Returns
     -------
@@ -467,6 +523,9 @@ def run_pipeline(
     """
     from tax_modeler.projection.tax_unit_projector import project_tax_units_forward
     from tax_modeler.revenue.estimator import RevenueEstimator
+    # Rebind the module-level function under a different name so it does
+    # not collide with the bool parameter ``apply_credit_takeup`` below.
+    _apply_credit_takeup = globals()["apply_credit_takeup"]
 
     wall_start = time.perf_counter()
     timings: Dict[str, float] = {}
@@ -520,6 +579,21 @@ def run_pipeline(
         projected["income_base_year"].median(),
         projected["income"].median(),
     )
+
+    # ------------------------------------------------------------------ #
+    # Stage 6b (optional): IRS take-up imputation for EITC/CTC           #
+    # ------------------------------------------------------------------ #
+    if apply_credit_takeup:
+        t0 = time.perf_counter()
+        projected = _apply_credit_takeup(
+            projected, year=credit_takeup_year, programs=("eitc", "actc")
+        )
+        timings["credit_takeup"] = time.perf_counter() - t0
+        logger.info(
+            "Credit take-up imputation applied (year=%d): EITC + ACTC restricted "
+            "to IRS-anchored claimants.",
+            credit_takeup_year,
+        )
 
     # ------------------------------------------------------------------ #
     # Stage 7: revenue estimation                                          #

@@ -184,6 +184,90 @@ def test_calibrate_benefits_unknown_program_raises(taxed_units):
 
 
 # ---------------------------------------------------------------------------
+# EITC/CTC take-up (Phase 3 of EITC/CTC geo plan)
+# ---------------------------------------------------------------------------
+
+
+def test_admin_caseload_has_2022_eitc_ctc_benchmarks():
+    """Hawaii admin caseload table must include IRS SOI TY2022 EITC/CTC anchors."""
+    cl = AdminCaseload.load()
+    eitc = cl.target("eitc", 2022)
+    ctc = cl.target("ctc", 2022)
+    actc = cl.target("actc", 2022)
+
+    # IRS SOI Hawaii TY2022 published totals (ZIP=00000 state row):
+    #   EITC: ~84,010 returns, $184.7M
+    #   CTC (nonref + ACTC): ~154,580 returns, $469.5M
+    #   ACTC: ~60,600 returns, $117.8M
+    assert eitc.unit == "return"
+    assert 50_000 < eitc.count < 150_000
+    assert 100 < eitc.annual_dollars_millions < 300
+
+    assert ctc.unit == "return"
+    assert 100_000 < ctc.count < 250_000
+    assert 300 < ctc.annual_dollars_millions < 700
+
+    assert actc.unit == "return"
+    assert 30_000 < actc.count < 100_000
+    assert 50 < actc.annual_dollars_millions < 200
+
+
+def test_calibrate_benefits_supports_eitc(taxed_units):
+    """calibrate_benefits must zero out EITC amounts for non-imputed units."""
+    # taxed_units already has eitc_amount from the pipeline fixture.
+    if "eitc_amount" not in taxed_units.columns:
+        pytest.skip("taxed_units fixture missing eitc_amount column")
+
+    eligible_pre = (taxed_units["eitc_amount"] > 0).sum()
+    if eligible_pre < 2:
+        pytest.skip("not enough EITC-eligible rows in fixture")
+
+    # Scale 2022 EITC target way down so the fixture can plausibly hit it.
+    real = AdminCaseload.load().target("eitc", 2022)
+    fixture_factor = 0.0001
+    scaled = AdminCaseload(pd.DataFrame([{
+        "program": "eitc", "year": 2022, "unit": "return",
+        "count": real.count * fixture_factor,
+        "annual_dollars_millions": real.annual_dollars_millions * fixture_factor,
+    }]))
+
+    out = calibrate_benefits(taxed_units, caseload=scaled, year=2022, programs=("eitc",))
+    assert "eitc_receives_imputed" in out.columns
+    # Non-recipients have zero EITC amount after imputation
+    non_recipients = out[~out["eitc_receives_imputed"]]
+    assert (non_recipients["eitc_amount"] == 0).all()
+    # At least one unit was imputed as a recipient
+    assert out["eitc_receives_imputed"].any()
+
+
+def test_calibrate_benefits_eitc_ranks_descending_by_amount(taxed_units):
+    """Among EITC-eligible units, the largest credit amounts should be claimed first."""
+    if "eitc_amount" not in taxed_units.columns:
+        pytest.skip("taxed_units fixture missing eitc_amount column")
+
+    eligible = taxed_units[taxed_units["eitc_amount"] > 0]
+    if len(eligible) < 4:
+        pytest.skip("need at least 4 EITC-eligible rows for ranking test")
+
+    target_count = float(eligible["weight"].sum()) * 0.5  # half the eligible
+    scaled = AdminCaseload(pd.DataFrame([{
+        "program": "eitc", "year": 2022, "unit": "return",
+        "count": target_count, "annual_dollars_millions": 1.0,
+    }]))
+    out = calibrate_benefits(taxed_units, caseload=scaled, year=2022, programs=("eitc",))
+
+    # Among originally-eligible units, claimants should have higher pre-imputation
+    # eitc_amount than non-claimants. Pull pre-imputation amounts via a side
+    # column on the input (eligible came from the fixture).
+    eligible_idx = eligible.index
+    claim_status = out.loc[eligible_idx, "eitc_receives_imputed"]
+    pre_amount = eligible["eitc_amount"]
+    if claim_status.any() and (~claim_status).any():
+        # All claimants' pre-amounts >= all non-claimants' pre-amounts (tie tol)
+        assert pre_amount[claim_status].min() >= pre_amount[~claim_status].max() - 0.01
+
+
+# ---------------------------------------------------------------------------
 # Reform-path interaction (TRIM3 convention)
 # ---------------------------------------------------------------------------
 

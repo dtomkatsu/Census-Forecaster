@@ -199,7 +199,10 @@ def calibrate_benefits(
     ----------
     units:
         Tax-unit DataFrame with the relevant ``*_amount`` columns
-        already populated by the benefit modules.
+        already populated by the benefit modules. For ``eitc`` /
+        ``ctc`` / ``actc`` programs, the dollar columns expected are
+        ``eitc_amount`` / ``ctc_total`` / ``ctc_refundable``
+        (produced by the federal-credit modules).
     caseload:
         :class:`AdminCaseload` (typically
         ``AdminCaseload.load()``).
@@ -211,6 +214,14 @@ def calibrate_benefits(
         Programs to calibrate. Each must (a) appear in ``caseload`` for
         ``year``, and (b) have a corresponding ``{program}_amount``
         column on ``units`` — otherwise raises :class:`ConfigError`.
+
+        Supported programs (``benefit_col``, ``score_col``, ``ascending``):
+
+          * ``snap`` / ``ssi``: low-income first (ascending=True)
+          * ``ssi_hi_supplement``: piggybacks on SSI receipt
+          * ``eitc`` / ``ctc`` / ``actc``: highest-eligible-dollar first
+            (ascending=False) — taxpayers with the largest eligible
+            credit are most likely to actually file for it.
     """
     df = units
     program_cols = {
@@ -220,6 +231,12 @@ def calibrate_benefits(
         # amount descending so units who actually received federal SSI
         # are prioritized.
         "ssi_hi_supplement": ("ssi_hi_amount", "ssi_amount", False),
+        # Federal credits: rank by eligible-credit dollars descending —
+        # filers with the largest eligible amount have the strongest
+        # incentive to claim, matching observed IRS take-up patterns.
+        "eitc": ("eitc_amount", "eitc_amount", False),
+        "ctc":  ("ctc_total",   "ctc_total",   False),
+        "actc": ("ctc_refundable", "ctc_refundable", False),
     }
     for program in programs:
         if program not in program_cols:
