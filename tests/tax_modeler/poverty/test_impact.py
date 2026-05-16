@@ -824,3 +824,148 @@ def test_unraked_default_unchanged():
     df = _raking_frame()
     with pytest.raises(MissingDataError):
         rake_weights_to_irs_zip(df, tax_year=2024)
+
+
+# ---------------------------------------------------------------------------
+# Tier 3 — WIC + LIHEAP wiring
+# ---------------------------------------------------------------------------
+
+
+def test_wic_lowers_baseline_rate():
+    """Adding WIC food-package benefits lifts SPM resources for low-income units with kids."""
+    from tax_modeler.benefits.wic import compute_wic_for_units
+
+    units = _low_income_frame(n=80, with_kids=True, seed=21)
+    r_no_wic = compute_poverty_impact(units, tax_year=2024).by_state.iloc[0]
+    units_with_wic = compute_wic_for_units(units)
+    # WIC eligibility hinges on (income < 185% FPL) AND at least one dependent;
+    # the low-income-with-kids fixture must produce some positive wic_amount.
+    assert (units_with_wic["wic_amount"] > 0).any()
+    r_with_wic = compute_poverty_impact(units_with_wic, tax_year=2024).by_state.iloc[0]
+    assert r_with_wic["poverty_rate_baseline"] <= r_no_wic["poverty_rate_baseline"] + 1e-9
+
+
+def test_liheap_small_but_nonzero():
+    """LIHEAP is a small program — at least one eligible low-income unit must get a positive amount."""
+    from tax_modeler.benefits.liheap import compute_liheap_for_units
+
+    units = _low_income_frame(n=80, with_kids=False, seed=23)
+    out = compute_liheap_for_units(units)
+    assert "liheap_amount" in out.columns
+    assert (out["liheap_amount"] > 0).any()
+    # Each eligible unit gets the flat $250 annual benefit by default.
+    assert out["liheap_amount"].max() == pytest.approx(250.0, abs=1.0)
+
+
+# ---------------------------------------------------------------------------
+# Tier 3 — federal income tax liability (pre-credit)
+# ---------------------------------------------------------------------------
+
+
+def test_federal_tax_column_preferred_over_fallback():
+    """compute_spm_resources prefers federal_tax_liability column when present."""
+    from tax_modeler.liability.federal import compute_federal_income_tax_for_units
+    from tax_modeler.poverty.spm import compute_spm_resources
+
+    units = _make_units([{
+        "filing_status": "single",
+        "total_cash_income": 80_000.0, "income": 80_000.0,
+        "earned_income": 80_000.0, "weight": 100.0,
+    }])
+    out = compute_federal_income_tax_for_units(units, tax_year=2024)
+    assert "federal_tax_liability" in out.columns
+    _, meta = compute_spm_resources(out)
+    assert meta.federal_tax_source == "column"
+
+
+def test_federal_tax_column_lowers_high_income_baseline_rate():
+    """For high-income filers, bracket-based liability < 10% flat fallback → SPM resources rise (or stay equal)."""
+    from tax_modeler.liability.federal import compute_federal_income_tax_for_units
+
+    # Single, AGI $80k: bracket calc on (80k - 14.6k std ded) = $65,400 taxable
+    # = ~$9,256 pre-credit. The 10% flat fallback would charge $8,000 — but the
+    # bracket calc is closer to $9.3k. Use a frame where the bracket calc CLEARLY
+    # undershoots the flat fallback: AGI $30k single → taxable $15.4k → tax $1,798
+    # vs flat fallback $3,000. Resources should rise (poverty rate cannot fall).
+    units = _make_units([
+        {"filing_status": "single", "total_cash_income": 30_000.0,
+         "income": 30_000.0, "earned_income": 30_000.0, "weight": 100.0,
+         "primary_agep": 35}
+        for _ in range(40)
+    ])
+    r_flat = compute_poverty_impact(units, tax_year=2024).by_state.iloc[0]
+    units_with_fed = compute_federal_income_tax_for_units(units, tax_year=2024)
+    r_bracket = compute_poverty_impact(units_with_fed, tax_year=2024).by_state.iloc[0]
+    # Real federal liability < 10% flat → resources higher under bracket calc.
+    # Baseline poverty rate cannot rise.
+    assert r_bracket["poverty_rate_baseline"] <= r_flat["poverty_rate_baseline"] + 1e-9
+
+
+def test_pooling_magnitude_on_stylized_frame():
+    """On a 50-pair stylized 2A2C frame, pooling reduces persons_in_poverty by ≥5%.
+
+    Each pair is a household of two cohabiting filers each with one kid,
+    each individually below the renter HI SPM threshold ($25k 1A1C) but
+    jointly above the pooled 2A2C renter threshold (~$40.6k). The Tier 3
+    validation criterion is a 5-25% reduction; on this pure-pool fixture
+    the reduction is large (close to 100% of the would-be-poor pairs lift
+    out) because every row is a pooling candidate. On real Hawaii PUMS
+    the magnitude is diluted by households that do NOT match the
+    heuristic. See impact.py module NOTES.
+    """
+    from tax_modeler.units.spm_unit import build_spm_units
+
+    rows = []
+    for i in range(50):
+        rows.append({
+            "hh_id": f"hh_{i}", "filing_status": "head_of_household",
+            "num_dependents": 1, "num_qualifying_children": 1,
+            "total_cash_income": 22_000.0, "earned_income": 22_000.0,
+            "income": 22_000.0, "weight": 100.0,
+            "primary_agep": 32 + (i % 5), "tenure": "renter",
+        })
+        rows.append({
+            "hh_id": f"hh_{i}", "filing_status": "head_of_household",
+            "num_dependents": 1, "num_qualifying_children": 1,
+            "total_cash_income": 30_000.0, "earned_income": 30_000.0,
+            "income": 30_000.0, "weight": 100.0,
+            "primary_agep": 34 + (i % 5), "tenure": "renter",
+        })
+    units = _make_units(rows)
+
+    pre = float(
+        compute_poverty_impact(units, tax_year=2024)
+        .by_state.iloc[0]["persons_in_poverty_baseline"]
+    )
+    pooled = build_spm_units(units)
+    post = float(
+        compute_poverty_impact(pooled, tax_year=2024)
+        .by_state.iloc[0]["persons_in_poverty_baseline"]
+    )
+
+    # Validation must show a reduction (lower bound 5%). Upper bound
+    # is intentionally loose — the stylized fixture is pure-pool so
+    # the magnitude lands well above the 5-25% expected range for real
+    # PUMS. The key claim is: pooling reduces poverty on a frame that
+    # carries the bias the heuristic is designed to catch.
+    assert pre > 0
+    assert post < pre
+    reduction = (pre - post) / pre
+    assert reduction >= 0.05
+
+
+def test_federal_tax_low_income_zero_after_std_deduction():
+    """A single filer with AGI under the $14,600 standard deduction owes zero federal tax."""
+    from tax_modeler.liability.federal import compute_federal_income_tax_for_units
+
+    units = _make_units([
+        {"filing_status": "single", "total_cash_income": 12_000.0,
+         "income": 12_000.0, "earned_income": 12_000.0, "weight": 100.0},
+        {"filing_status": "married_filing_jointly", "total_cash_income": 25_000.0,
+         "income": 25_000.0, "earned_income": 25_000.0, "weight": 100.0},
+    ])
+    out = compute_federal_income_tax_for_units(units, tax_year=2024)
+    # Single $12k < $14.6k std ded → 0 federal tax.
+    assert out.iloc[0]["federal_tax_liability"] == 0.0
+    # MFJ $25k < $29.2k std ded → 0 federal tax.
+    assert out.iloc[1]["federal_tax_liability"] == 0.0

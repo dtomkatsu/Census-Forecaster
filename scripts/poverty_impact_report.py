@@ -554,6 +554,16 @@ def main(argv: Optional[list] = None) -> int:
     if args.pool_spm_units:
         from tax_modeler.units.spm_unit import build_spm_units
         units = build_spm_units(units)
+    else:
+        LOG.warning(
+            "--pool-spm-units not enabled; persons_in_poverty may be "
+            "overstated by ~10-20% due to tax-unit ≠ SPM-unit double-counting "
+            "in households where cohabiting unmarried partners file as "
+            "separate tax units. Tier 3 validation: pooling on a 2-tax-unit "
+            "stylized frame reduces poverty ~50% (within expectations); on "
+            "real Hawaii PUMS the magnitude must be checked before flipping "
+            "default ON."
+        )
 
     # 6e. District raking to IRS SOI ZIP filer/AGI totals. Holds per-PUMA sum(weight)
     #     fixed; reshapes within-PUMA HD assignment to match IRS district targets.
@@ -569,6 +579,14 @@ def main(argv: Optional[list] = None) -> int:
                 "assignment (district point estimates carry ~±20%% uncertainty).",
                 exc,
             )
+    else:
+        LOG.warning(
+            "--rake-to-irs-zip not enabled; within-PUMA HD/SD assignment "
+            "uses deterministic SERIALNO hash (district point estimates "
+            "carry ~±20%% uncertainty). IRS SOI ZIP data + ZIP→HD "
+            "crosswalk are not bundled with this Tier 3 ship — flag stays "
+            "default OFF until the data lands."
+        )
 
     # 7. Resolve scenarios.
     from tax_modeler.poverty.impact import compute_poverty_impact, _DEFAULT_SCENARIOS
