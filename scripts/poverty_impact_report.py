@@ -138,12 +138,16 @@ def _apply_snap(units: pd.DataFrame, *, tax_year: int) -> pd.DataFrame:
     try:
         target = AdminCaseload.load().target("snap", tax_year)
     except Exception as exc:
+        # Fall back to the most-recent available SNAP anchor (typically
+        # FY2024, post-COVID emergency-allotments). Skipping take-up
+        # entirely leaves SNAP at simulated eligibility, biasing the
+        # baseline rate downward — the fallback is preferable.
         LOG.warning(
             "SNAP admin caseload target unavailable for year=%d (%s); "
-            "skipping take-up calibration. SNAP amounts reflect simulated "
-            "eligibility only.", tax_year, exc,
+            "falling back to TY2024 USDA-FNS anchor for the take-up step.",
+            tax_year, exc,
         )
-        return out
+        target = AdminCaseload.load().target("snap", 2024)
     out = impute_takeup(
         out, target=target, benefit_col="snap_amount", score_col="income",
         ascending=True, weight_col="weight",
