@@ -11,3 +11,5 @@ ctc,2022,return,154580,469.5,"IRS SOI ZIP Code Data 2022 (ZIP=00000 state-total 
 actc,2022,return,60600,117.8,"IRS SOI ZIP Code Data 2022 (ZIP=00000 state-total row), Hawaii — Additional/refundable CTC columns N11070/A11070"
 housing,2022,household,15600,140.0,"HUD Picture of Subsidized Households FY2022 + HPHA/local-PHA reports: ~9,400 HCV + ~6,200 public-housing households in Hawaii; ~$140M federal HAP + operating subsidy outlay (Honolulu MSA payment standard × tenant rent share)"
 childcare_subsidy,2022,household,3500,50.0,"HI DHS BESSD Child Care Subsidy Program (CCSP) FY2022 — ~6,000 children served via ~3,500 households at ~$50M annual subsidy outlay (1.7 kids/family avg)"
+wic,2022,household,18000,31.0,"USDA-FNS WIC Program Data FY2022 — ~30,400 Hawaii participants (women + infants + children) at avg ~1.7 participants/HH ≈ ~18,000 households; food-cost outlay ~$31M (federal grant)"
+liheap,2022,household,6500,10.0,"HI DHS BESSD LIHEAP FY2022 — ~6,500 households served (elevated by ARPA crisis-assistance supplement); ~$10M total outlay including emergency-crisis component (regular block-grant baseline ~$2M/yr)"

@@ -785,3 +785,34 @@ def test_unraked_default_unchanged():
     df = _raking_frame()
     with pytest.raises(MissingDataError):
         rake_weights_to_irs_zip(df, tax_year=2024)
+
+
+# ---------------------------------------------------------------------------
+# Tier 3 — WIC + LIHEAP wiring
+# ---------------------------------------------------------------------------
+
+
+def test_wic_lowers_baseline_rate():
+    """Adding WIC food-package benefits lifts SPM resources for low-income units with kids."""
+    from tax_modeler.benefits.wic import compute_wic_for_units
+
+    units = _low_income_frame(n=80, with_kids=True, seed=21)
+    r_no_wic = compute_poverty_impact(units, tax_year=2024).by_state.iloc[0]
+    units_with_wic = compute_wic_for_units(units)
+    # WIC eligibility hinges on (income < 185% FPL) AND at least one dependent;
+    # the low-income-with-kids fixture must produce some positive wic_amount.
+    assert (units_with_wic["wic_amount"] > 0).any()
+    r_with_wic = compute_poverty_impact(units_with_wic, tax_year=2024).by_state.iloc[0]
+    assert r_with_wic["poverty_rate_baseline"] <= r_no_wic["poverty_rate_baseline"] + 1e-9
+
+
+def test_liheap_small_but_nonzero():
+    """LIHEAP is a small program — at least one eligible low-income unit must get a positive amount."""
+    from tax_modeler.benefits.liheap import compute_liheap_for_units
+
+    units = _low_income_frame(n=80, with_kids=False, seed=23)
+    out = compute_liheap_for_units(units)
+    assert "liheap_amount" in out.columns
+    assert (out["liheap_amount"] > 0).any()
+    # Each eligible unit gets the flat $250 annual benefit by default.
+    assert out["liheap_amount"].max() == pytest.approx(250.0, abs=1.0)
