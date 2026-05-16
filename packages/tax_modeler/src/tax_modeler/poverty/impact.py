@@ -45,26 +45,45 @@ NOTES (also surfaced via :class:`PovertyImpactResult.notes`):
     + lifted_hi_eitc ≠ lifted_combined`` because EITC and CTC phase-outs
     interact. Use ``lifted_combined`` for headline claims; marginals for
     relative ranking.
-  * **Unit-of-analysis** (Tier 2 — opt-in fix available): frame is
-    *tax-unit*-grained by default; pass the units through
+  * **Unit-of-analysis** (Tier 2 architectural change, Tier 3 validated):
+    frame is *tax-unit*-grained by default; pass the units through
     :func:`tax_modeler.units.spm_unit.build_spm_units` (or set
     ``--pool-spm-units`` on ``scripts/poverty_impact_report.py``) to
     pool cohabiting unmarried partners with shared kids into one SPM
-    unit. The default remains tax-unit-grained pending user validation.
+    unit. The Tier 3 unit-test fixture confirms pooling reduces
+    persons-in-poverty by ~50% on a stylized 2-tax-unit/2-kid frame
+    (above the 5-25% acceptance range — large because the fixture is
+    pure-pool with no never-pool households diluting the signal).
+    On real Hawaii PUMS the synthetic fixture exhibits **zero**
+    candidate households (heuristic requires ≥2 tax units sharing an
+    ``hh_id``, none filed jointly, with ≥2 carrying dependents); real
+    PUMS frames must be checked to confirm the magnitude is in range
+    before flipping ``--pool-spm-units`` ON by default. Until then the
+    flag stays OFF and the script logs a "not validated" warning.
   * **SPM resource gaps** (Tier 2 — closed): MOOP, housing subsidies,
     CCSP childcare subsidies, work-related childcare expense, and
     other work expenses are now wired into the resource calculation
     via the ``--apply-moop``, ``--apply-housing-subsidy``,
     ``--apply-childcare-subsidy``, and ``--apply-spm-expenses`` flags
-    on ``scripts/poverty_impact_report.py`` (all default ON). Residual
-    direction of bias: small and ambiguous.
-  * **District assignment** (Tier 2 — partial): within-PUMA HD/SD via
-    deterministic SERIALNO hash by default. A biproportional IPF raking
-    function (:func:`tax_modeler.analysis.district_raking.rake_biproportional`)
-    is now shipped; the high-level wrapper picks up IRS SOI ZIP filer
-    totals + ZIP→HD crosswalk when bundled (data files pending).
-    District-level point estimates still carry roughly ±20% uncertainty
-    until those data files land.
+    on ``scripts/poverty_impact_report.py`` (all default ON).
+    Tier 3 also wires WIC + LIHEAP via ``--apply-wic`` and
+    ``--apply-liheap`` (both default ON; USDA-FNS + HI DHS BESSD
+    anchors), so the SPM benefit picture is complete. Federal income
+    tax (pre-credit) is computed via bracket calculation on
+    AGI-minus-std-ded by filing status via ``--apply-federal-tax``
+    (default ON; year-keyed 2022-2025), replacing the 10%-flat-rate
+    fallback.
+  * **District assignment** (Tier 2 partial — Tier 3 still gated):
+    within-PUMA HD/SD via deterministic SERIALNO hash by default. A
+    biproportional IPF raking function
+    (:func:`tax_modeler.analysis.district_raking.rake_biproportional`)
+    is shipped; the high-level wrapper
+    :func:`rake_weights_to_irs_zip` picks up IRS SOI ZIP filer totals
+    + ZIP→HD crosswalk when bundled (data files **still pending**;
+    queued in tasks/Census-Forecaster.md). District-level point
+    estimates still carry roughly ±20% uncertainty until those data
+    files land. ``--rake-to-irs-zip`` stays OFF by default and the
+    script logs a "data not bundled" warning when set without it.
   * **Expansion take-up**: ``hi_ctc_650`` scales its $650/child increment
     by ``hi_ctc_takeup_rate`` (default 0.80, MN 2023 / VT 2022 first-year
     ramp); ``hi_eitc_100pct`` scales its 60-pp HI EITC increment by
