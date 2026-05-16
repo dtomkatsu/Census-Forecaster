@@ -100,6 +100,10 @@ def _load_units(
             raise FileNotFoundError(
                 f"No psam_p15.{{parquet,csv}} found in {pums_data_dir}"
             )
+        from tax_modeler.loaders.pums_loader import PUMSDataLoader
+        _coalesce = PUMSDataLoader(data_dir=pums_data_dir)._coalesce_puma
+        households = _coalesce(households)
+        persons = _coalesce(persons)
 
     ctor = TaxUnitConstructor(
         persons.copy(), households.copy(),
