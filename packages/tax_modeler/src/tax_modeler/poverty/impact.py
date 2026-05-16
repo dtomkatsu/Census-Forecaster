@@ -45,16 +45,26 @@ NOTES (also surfaced via :class:`PovertyImpactResult.notes`):
     + lifted_hi_eitc ≠ lifted_combined`` because EITC and CTC phase-outs
     interact. Use ``lifted_combined`` for headline claims; marginals for
     relative ranking.
-  * **Unit-of-analysis**: frame is *tax-unit*-grained, not
-    *SPM-unit*-grained. Cohabiting unmarried partners with shared kids
-    appear as two tax units but one SPM unit; thresholds for each are
-    computed independently. Bias: poverty rate slightly overstated.
-  * **SPM resource gaps**: even with SNAP wired in upstream, MOOP,
-    housing subsidies, and childcare expenses default to zero in
-    :func:`compute_spm_resources`. Direction of bias: ambiguous.
-  * **District assignment**: within-PUMA HD/SD via deterministic
-    SERIALNO hash, not raked to IRS ZIP data. District-level point
-    estimates carry roughly ±20% uncertainty.
+  * **Unit-of-analysis** (Tier 2 — opt-in fix available): frame is
+    *tax-unit*-grained by default; pass the units through
+    :func:`tax_modeler.units.spm_unit.build_spm_units` (or set
+    ``--pool-spm-units`` on ``scripts/poverty_impact_report.py``) to
+    pool cohabiting unmarried partners with shared kids into one SPM
+    unit. The default remains tax-unit-grained pending user validation.
+  * **SPM resource gaps** (Tier 2 — closed): MOOP, housing subsidies,
+    CCSP childcare subsidies, work-related childcare expense, and
+    other work expenses are now wired into the resource calculation
+    via the ``--apply-moop``, ``--apply-housing-subsidy``,
+    ``--apply-childcare-subsidy``, and ``--apply-spm-expenses`` flags
+    on ``scripts/poverty_impact_report.py`` (all default ON). Residual
+    direction of bias: small and ambiguous.
+  * **District assignment** (Tier 2 — partial): within-PUMA HD/SD via
+    deterministic SERIALNO hash by default. A biproportional IPF raking
+    function (:func:`tax_modeler.analysis.district_raking.rake_biproportional`)
+    is now shipped; the high-level wrapper picks up IRS SOI ZIP filer
+    totals + ZIP→HD crosswalk when bundled (data files pending).
+    District-level point estimates still carry roughly ±20% uncertainty
+    until those data files land.
   * **Expansion take-up**: ``hi_ctc_650`` scales its $650/child increment
     by ``hi_ctc_takeup_rate`` (default 0.80, MN 2023 / VT 2022 first-year
     ramp); ``hi_eitc_100pct`` scales its 60-pp HI EITC increment by

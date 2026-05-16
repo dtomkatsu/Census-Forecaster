@@ -151,6 +151,54 @@ def _apply_snap(units: pd.DataFrame, *, tax_year: int) -> pd.DataFrame:
     return out
 
 
+def _apply_housing_subsidy(units: pd.DataFrame, *, tax_year: int) -> pd.DataFrame:
+    """Impute Section-8/public-housing benefit, then take-up-impute against HUD anchor."""
+    from tax_modeler.benefits.housing import compute_housing_for_units
+    from tax_modeler.calibration.admin_caseload import AdminCaseload
+    from tax_modeler.calibration.takeup_imputation import impute_takeup
+
+    LOG.info("Computing housing-subsidy benefits + take-up imputation for TY %d", tax_year)
+    out = compute_housing_for_units(units)
+    try:
+        target = AdminCaseload.load().target("housing", tax_year)
+    except Exception as exc:
+        LOG.warning(
+            "Housing admin caseload target unavailable for year=%d (%s); "
+            "falling back to TY2022 HUD anchor for the take-up step.",
+            tax_year, exc,
+        )
+        target = AdminCaseload.load().target("housing", 2022)
+    out = impute_takeup(
+        out, target=target, benefit_col="housing_subsidy_amount",
+        score_col="income", ascending=True, weight_col="weight",
+    )
+    return out
+
+
+def _apply_childcare_subsidy(units: pd.DataFrame, *, tax_year: int) -> pd.DataFrame:
+    """Impute CCSP benefit, then take-up-impute against HI DHS anchor."""
+    from tax_modeler.benefits.childcare import compute_childcare_for_units
+    from tax_modeler.calibration.admin_caseload import AdminCaseload
+    from tax_modeler.calibration.takeup_imputation import impute_takeup
+
+    LOG.info("Computing CCSP childcare-subsidy benefits + take-up imputation for TY %d", tax_year)
+    out = compute_childcare_for_units(units)
+    try:
+        target = AdminCaseload.load().target("childcare_subsidy", tax_year)
+    except Exception as exc:
+        LOG.warning(
+            "Childcare-subsidy admin caseload target unavailable for year=%d (%s); "
+            "falling back to TY2022 HI DHS anchor for the take-up step.",
+            tax_year, exc,
+        )
+        target = AdminCaseload.load().target("childcare_subsidy", 2022)
+    out = impute_takeup(
+        out, target=target, benefit_col="childcare_amount",
+        score_col="income", ascending=True, weight_col="weight",
+    )
+    return out
+
+
 def _apply_arpa_ctc(units: pd.DataFrame) -> pd.DataFrame:
     from tax_modeler.credits.arpa_ctc import arpa_ctc_for_tax_units
     return arpa_ctc_for_tax_units(units)
@@ -223,6 +271,33 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                         "calculation. Use --no-apply-moop to disable.")
     p.add_argument("--no-apply-moop", dest="apply_moop", action="store_false",
                    help=argparse.SUPPRESS)
+    p.add_argument("--apply-housing-subsidy", action="store_true", default=True,
+                   help="(Default ON.) Impute Section-8/public-housing subsidy "
+                        "via HUD-anchored take-up. Use --no-apply-housing-subsidy "
+                        "to disable.")
+    p.add_argument("--no-apply-housing-subsidy", dest="apply_housing_subsidy",
+                   action="store_false", help=argparse.SUPPRESS)
+    p.add_argument("--apply-childcare-subsidy", action="store_true", default=True,
+                   help="(Default ON.) Impute Hawaii CCSP childcare subsidy via "
+                        "HI DHS-anchored take-up. Use --no-apply-childcare-subsidy "
+                        "to disable.")
+    p.add_argument("--no-apply-childcare-subsidy", dest="apply_childcare_subsidy",
+                   action="store_false", help=argparse.SUPPRESS)
+    p.add_argument("--apply-spm-expenses", action="store_true", default=True,
+                   help="(Default ON.) Impute work-related childcare expense "
+                        "and other work expenses from CPS ASEC Hawaii donors. "
+                        "Use --no-apply-spm-expenses to disable.")
+    p.add_argument("--no-apply-spm-expenses", dest="apply_spm_expenses",
+                   action="store_false", help=argparse.SUPPRESS)
+    p.add_argument("--pool-spm-units", action="store_true", default=False,
+                   help="(Default OFF.) Pool cohabiting unmarried partners + "
+                        "shared children into SPM units before threshold "
+                        "comparison. Eliminates double-counting persons across "
+                        "tax units sharing one household.")
+    p.add_argument("--rake-to-irs-zip", action="store_true", default=False,
+                   help="(Default OFF.) Rake unit weights so per-HD totals "
+                        "match IRS SOI ZIP filer counts, holding PUMA "
+                        "marginals fixed. Tightens district-level uncertainty.")
     p.add_argument("--hi-ctc-takeup-rate", type=float, default=0.80,
                    help="Take-up rate applied to the hi_ctc_650 expansion "
                         "increment. Default 0.80 (year-1 ramp consistent with "
@@ -328,6 +403,45 @@ def main(argv: Optional[list] = None) -> int:
     if args.apply_moop:
         from tax_modeler.benefits.moop import compute_moop_for_units
         units = compute_moop_for_units(units)
+
+    # 6a. Housing subsidy (Section 8 / public housing) — HUD-anchored take-up.
+    if args.apply_housing_subsidy:
+        units = _apply_housing_subsidy(units, tax_year=args.tax_year)
+
+    # 6b. Childcare subsidy (CCSP) — HI DHS-anchored take-up.
+    if args.apply_childcare_subsidy:
+        units = _apply_childcare_subsidy(units, tax_year=args.tax_year)
+
+    # 6c. SPM work-side expenses: work-related childcare + other work expenses,
+    #     imputed from CPS ASEC Hawaii donors. SPM subtracts both from resources.
+    if args.apply_spm_expenses:
+        from tax_modeler.benefits.childcare_expense import (
+            compute_childcare_expense_for_units,
+        )
+        from tax_modeler.benefits.work_expense import compute_work_expense_for_units
+        units = compute_childcare_expense_for_units(units)
+        units = compute_work_expense_for_units(units)
+
+    # 6d. SPM-unit pooling: merge cohabiting unmarried partners + shared kids
+    #     into a single SPM unit so one threshold is applied per real household.
+    if args.pool_spm_units:
+        from tax_modeler.units.spm_unit import build_spm_units
+        units = build_spm_units(units)
+
+    # 6e. District raking to IRS SOI ZIP filer/AGI totals. Holds per-PUMA sum(weight)
+    #     fixed; reshapes within-PUMA HD assignment to match IRS district targets.
+    if args.rake_to_irs_zip:
+        from tax_modeler.analysis.district_raking import rake_weights_to_irs_zip
+        from tax_modeler.errors import MissingDataError
+        try:
+            units = rake_weights_to_irs_zip(units, tax_year=args.tax_year)
+        except MissingDataError as exc:
+            LOG.error(
+                "--rake-to-irs-zip requested but supporting data is not "
+                "bundled: %s. Falling back to deterministic SERIALNO-hash "
+                "assignment (district point estimates carry ~±20%% uncertainty).",
+                exc,
+            )
 
     # 7. Resolve scenarios.
     from tax_modeler.poverty.impact import compute_poverty_impact, _DEFAULT_SCENARIOS
