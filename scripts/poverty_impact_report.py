@@ -199,6 +199,52 @@ def _apply_childcare_subsidy(units: pd.DataFrame, *, tax_year: int) -> pd.DataFr
     return out
 
 
+def _apply_wic(units: pd.DataFrame, *, tax_year: int) -> pd.DataFrame:
+    """Impute WIC food-package value, then take-up-impute against USDA-FNS anchor."""
+    from tax_modeler.benefits.wic import compute_wic_for_units
+    from tax_modeler.calibration.admin_caseload import AdminCaseload
+    from tax_modeler.calibration.takeup_imputation import impute_takeup
+
+    LOG.info("Computing WIC benefits + take-up imputation for TY %d", tax_year)
+    out = compute_wic_for_units(units)
+    try:
+        target = AdminCaseload.load().target("wic", tax_year)
+    except Exception as exc:
+        LOG.warning(
+            "WIC admin caseload target unavailable for year=%d (%s); falling "
+            "back to TY2022 USDA-FNS anchor for the take-up step.", tax_year, exc,
+        )
+        target = AdminCaseload.load().target("wic", 2022)
+    out = impute_takeup(
+        out, target=target, benefit_col="wic_amount", score_col="income",
+        ascending=True, weight_col="weight",
+    )
+    return out
+
+
+def _apply_liheap(units: pd.DataFrame, *, tax_year: int) -> pd.DataFrame:
+    """Impute LIHEAP cooling assistance, then take-up-impute against HI DHS anchor."""
+    from tax_modeler.benefits.liheap import compute_liheap_for_units
+    from tax_modeler.calibration.admin_caseload import AdminCaseload
+    from tax_modeler.calibration.takeup_imputation import impute_takeup
+
+    LOG.info("Computing LIHEAP benefits + take-up imputation for TY %d", tax_year)
+    out = compute_liheap_for_units(units)
+    try:
+        target = AdminCaseload.load().target("liheap", tax_year)
+    except Exception as exc:
+        LOG.warning(
+            "LIHEAP admin caseload target unavailable for year=%d (%s); "
+            "falling back to TY2022 HI DHS anchor.", tax_year, exc,
+        )
+        target = AdminCaseload.load().target("liheap", 2022)
+    out = impute_takeup(
+        out, target=target, benefit_col="liheap_amount", score_col="income",
+        ascending=True, weight_col="weight",
+    )
+    return out
+
+
 def _apply_arpa_ctc(units: pd.DataFrame) -> pd.DataFrame:
     from tax_modeler.credits.arpa_ctc import arpa_ctc_for_tax_units
     return arpa_ctc_for_tax_units(units)
@@ -288,6 +334,23 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                         "and other work expenses from CPS ASEC Hawaii donors. "
                         "Use --no-apply-spm-expenses to disable.")
     p.add_argument("--no-apply-spm-expenses", dest="apply_spm_expenses",
+                   action="store_false", help=argparse.SUPPRESS)
+    p.add_argument("--apply-wic", action="store_true", default=True,
+                   help="(Default ON.) Impute WIC food-package value via "
+                        "USDA-FNS-anchored take-up. Use --no-apply-wic to disable.")
+    p.add_argument("--no-apply-wic", dest="apply_wic", action="store_false",
+                   help=argparse.SUPPRESS)
+    p.add_argument("--apply-liheap", action="store_true", default=True,
+                   help="(Default ON.) Impute LIHEAP cooling-assistance value "
+                        "via HI DHS-anchored take-up. Use --no-apply-liheap to disable.")
+    p.add_argument("--no-apply-liheap", dest="apply_liheap", action="store_false",
+                   help=argparse.SUPPRESS)
+    p.add_argument("--apply-school-lunch", action="store_true", default=True,
+                   help="(Default ON.) Impute free/reduced-price NSLP school-lunch "
+                        "value (USDA Hawaii free-meal reimbursement × 180 school "
+                        "days × eligible children). Use --no-apply-school-lunch "
+                        "to disable.")
+    p.add_argument("--no-apply-school-lunch", dest="apply_school_lunch",
                    action="store_false", help=argparse.SUPPRESS)
     p.add_argument("--pool-spm-units", action="store_true", default=False,
                    help="(Default OFF.) Pool cohabiting unmarried partners + "
@@ -420,6 +483,22 @@ def main(argv: Optional[list] = None) -> int:
     # 6b. Childcare subsidy (CCSP) — HI DHS-anchored take-up.
     if args.apply_childcare_subsidy:
         units = _apply_childcare_subsidy(units, tax_year=args.tax_year)
+
+    # 6b1. WIC food-package value — USDA-FNS-anchored take-up.
+    if args.apply_wic:
+        units = _apply_wic(units, tax_year=args.tax_year)
+
+    # 6b2. LIHEAP cooling-assistance — HI DHS-anchored take-up.
+    if args.apply_liheap:
+        units = _apply_liheap(units, tax_year=args.tax_year)
+
+    # 6b3. NSLP free/reduced-price school lunch — Census SPM treats this as a
+    #      cash-equivalent resource (USDA federal reimbursement × school days
+    #      × eligible children).
+    if args.apply_school_lunch:
+        from tax_modeler.benefits.school_lunch import compute_school_lunch_for_units
+        LOG.info("Computing NSLP free/reduced school-lunch values for TY %d", args.tax_year)
+        units = compute_school_lunch_for_units(units, tax_year=args.tax_year)
 
     # 6c. SPM work-side expenses: work-related childcare + other work expenses,
     #     imputed from CPS ASEC Hawaii donors. SPM subtracts both from resources.
