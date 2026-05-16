@@ -397,6 +397,15 @@ def main(argv: Optional[list] = None) -> int:
     if args.apply_snap:
         units = _apply_snap(units, tax_year=args.tax_year)
 
+    # 5b. Federal income tax liability — replaces the flat-10% fallback in
+    #     compute_spm_resources. Bracket-based estimator gates on federal
+    #     standard deduction so low-income filers correctly owe $0 federal
+    #     tax. Without this fix, a flat 10% × money_income subtracted phantom
+    #     tax for filers below the SD, biasing the SPM rate several pp high.
+    from tax_modeler.liability.federal import compute_federal_income_tax_for_units
+    LOG.info("Computing federal income tax liability for TY %d", args.tax_year)
+    units = compute_federal_income_tax_for_units(units, tax_year=args.tax_year)
+
     # 6. MOOP imputation from CPS ASEC Hawaii donors. Required to bring the
     #    baseline SPM rate in line with Census-published Hawaii SPM (~10-12%);
     #    without it the baseline rate runs ~10pp high.

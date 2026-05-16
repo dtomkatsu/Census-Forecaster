@@ -52,7 +52,7 @@ def compute_spm_resources(
     state_tax_col: str = "hi_tax_liability",
     eitc_col: str = "eitc_amount",
     refundable_ctc_col: str = "ctc_refundable",
-    federal_tax_col: Optional[str] = None,
+    federal_tax_col: Optional[str] = "federal_tax_liability",
     payroll_tax_col: Optional[str] = None,
     snap_col: Optional[str] = "snap_amount",
     ssi_col: Optional[str] = "ssi_amount",
