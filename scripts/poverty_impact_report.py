@@ -114,19 +114,34 @@ def _load_units(pums_data_dir: Optional[Path], use_fixture: bool) -> pd.DataFram
 
 
 def _build_units_for_tax_year(units: pd.DataFrame, tax_year: int, project: bool) -> pd.DataFrame:
-    """Compute base tax + HI EITC for a given year."""
+    """Compute base tax (federal CTC/EITC) for a given year.
+
+    HI EITC is intentionally NOT computed here — it is computed after the
+    IRS-anchored credit take-up imputation, so that filers who do not take
+    up the federal EITC also have zero HI EITC (HI EITC is a fixed
+    percentage of the federal credit).
+    """
     from tax_modeler.pipeline import compute_base_tax
-    from tax_modeler.credits.hi_eitc import compute_hi_eitc_for_units
 
     if project:
         from tax_modeler.projection.tax_unit_projector import project_tax_units_forward
         out = project_tax_units_forward(units, target_year=tax_year)
     else:
         out = compute_base_tax(units, tax_year=tax_year)
-    # Pass tax_year so Act 209 (effective TY2023) doesn't retroactively
-    # apply the 40% refundable rate to TY2022 backtests.
-    out = compute_hi_eitc_for_units(out, tax_year=tax_year)
     return out
+
+
+def _apply_hi_eitc(units: pd.DataFrame, *, tax_year: int) -> pd.DataFrame:
+    """Compute HI state EITC after federal-credit take-up has been applied.
+
+    HI EITC is a fixed percentage of the federal EITC. Computing it before
+    take-up would attach the full state credit to filers who never claimed
+    the federal credit — overstating HI EITC outlays and the
+    persons-lifted-by-HI-EITC scenario count. Calling this after
+    _apply_credit_takeup ensures non-claimants receive $0 HI EITC.
+    """
+    from tax_modeler.credits.hi_eitc import compute_hi_eitc_for_units
+    return compute_hi_eitc_for_units(units, tax_year=tax_year)
 
 
 def _apply_snap(units: pd.DataFrame, *, tax_year: int) -> pd.DataFrame:
@@ -458,6 +473,11 @@ def main(argv: Optional[list] = None) -> int:
     #    only and not take-up calibration of the baseline.
     if args.apply_credit_takeup:
         units = _apply_credit_takeup(units, tax_year=args.tax_year)
+
+    # 3b. HI state EITC — computed *after* federal take-up so that
+    #     non-claimants of the federal credit also receive $0 HI EITC.
+    #     (HI EITC is a fixed percentage of the federal credit.)
+    units = _apply_hi_eitc(units, tax_year=args.tax_year)
 
     # 4. ARPA CTC counterfactual column (required for expanded_ctc_2021 scenario).
     units = _apply_arpa_ctc(units)

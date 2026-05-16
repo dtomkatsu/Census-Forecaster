@@ -24,10 +24,11 @@ def fixture_units():
     import sys
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     from poverty_impact_report import (
-        _apply_arpa_ctc, _build_units_for_tax_year, _load_units,
+        _apply_arpa_ctc, _apply_hi_eitc, _build_units_for_tax_year, _load_units,
     )
     units = _load_units(None, use_fixture=True)
     units = _build_units_for_tax_year(units, tax_year=2024, project=True)
+    units = _apply_hi_eitc(units, tax_year=2024)
     units = _apply_arpa_ctc(units)
     return units
 
