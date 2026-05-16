@@ -69,6 +69,7 @@ def compute_spm_resources(
     moop_col: Optional[str] = "moop_amount",
     childcare_expense_col: Optional[str] = "childcare_expense_amount",
     work_expense_col: Optional[str] = "work_expense_amount",
+    rxkids_col: Optional[str] = "rxkids_amount",
     # behavior knobs
     federal_tax_fallback: bool = True,
     earned_income_col: str = "earned_income",
@@ -234,6 +235,15 @@ def compute_spm_resources(
         else:
             zeroed.append(label)
 
+    # Hypothetical program: RxKids Hawaiʻi cash prescription. Charitable
+    # disbursement (non-taxable, doesn't interact with AGI / EITC / CTC
+    # phase-outs) — counted as SPM resources only.
+    rxkids = _col(rxkids_col)
+    if rxkids_col and rxkids_col in df.columns:
+        used.append(rxkids_col)
+    else:
+        zeroed.append("rxkids")
+
     # Per Census P60-280: Medicaid is excluded from SPM resources (it
     # offsets MOOP indirectly rather than counting as cash). We compute
     # it elsewhere and report it separately, but do NOT add it here.
@@ -248,6 +258,7 @@ def compute_spm_resources(
         + housing + liheap + childcare_subsidy
         + school_lunch
         + hi_eitc + hi_food_excise + hi_renters
+        + rxkids
         - state_tax
         - federal_tax
         - payroll_tax

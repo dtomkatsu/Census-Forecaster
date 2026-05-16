@@ -100,16 +100,36 @@ _DEFAULT_SCENARIOS: tuple[str, ...] = (
 
 _HI_EITC_CURRENT_RATE = 0.40  # Act 209 (2023) — 40% of federal, refundable.
 
+# Filing-status values used for the by_household_type disaggregation.
+# ``head_of_household`` is the closest tax-unit proxy for "single mother"
+# (a parent or guardian filing without a spouse with at least one
+# qualifying dependent). ``single`` filers without dependents and married
+# filers are reported alongside for context.
+_HOUSEHOLD_TYPES: tuple[str, ...] = (
+    "single",
+    "head_of_household",
+    "married_filing_jointly",
+    "married_filing_separately",
+)
+
 
 @dataclass(frozen=True)
 class PovertyImpactResult:
-    """Per-geography baseline + counterfactual poverty metrics."""
+    """Per-geography baseline + counterfactual poverty metrics.
+
+    ``by_household_type`` disaggregates the same metrics by filing
+    status (single / head_of_household / married_filing_jointly /
+    married_filing_separately). The ``head_of_household`` row is the
+    closest tax-unit proxy for single-mother households — used by the
+    RxKids analysis to estimate single-mother poverty impact.
+    """
 
     units: pd.DataFrame  # augmented with scenario resource + poor columns
     by_state: pd.DataFrame
     by_county: pd.DataFrame
     by_house_district: pd.DataFrame
     by_senate_district: pd.DataFrame
+    by_household_type: pd.DataFrame
     tax_year: int
     spm_meta: SPMResourceMeta
     scenarios: tuple[str, ...]
@@ -142,6 +162,7 @@ def _scenario_resources(
     hi_ctc_takeup_rate: float,
     hi_eitc_100pct_takeup_rate: float,
     arpa_ctc_takeup_rate: float,
+    rxkids_col: str,
 ) -> np.ndarray:
     """Counterfactual SPM resources via linear arithmetic on credit columns.
 
@@ -189,6 +210,18 @@ def _scenario_resources(
             )
         n_kids = units[qualifying_children_col].fillna(0).clip(lower=0).to_numpy(dtype=float)
         return baseline_resources + hi_ctc_per_child * n_kids * hi_ctc_takeup_rate
+    if scenario == "rxkids_hi":
+        if rxkids_col not in units.columns:
+            raise KeyError(
+                f"scenario={scenario!r} requires column {rxkids_col!r}; "
+                "call tax_modeler.programs.compute_rxkids_for_units(units) first."
+            )
+        # The rxkids_amount column is already take-up-adjusted inside
+        # compute_rxkids_for_units (the program's overall takeup_rate
+        # parameter scales both prenatal and postnatal). Adding it
+        # directly to baseline resources gives the expansion lift.
+        rxk = units[rxkids_col].fillna(0).to_numpy(dtype=float)
+        return baseline_resources + rxk
     raise ValueError(f"unknown scenario: {scenario!r}")
 
 
@@ -280,6 +313,8 @@ def compute_poverty_impact(
     hi_ctc_takeup_rate: float = 0.80,
     hi_eitc_100pct_takeup_rate: float = 0.95,
     arpa_ctc_takeup_rate: float = 0.95,
+    rxkids_col: str = "rxkids_amount",
+    household_type_col: str = "filing_status",
     weight_col: str = "weight",
     tenure_col: str = "tenure",
 ) -> PovertyImpactResult:
@@ -330,11 +365,16 @@ def compute_poverty_impact(
     df = units.copy()
 
     # 1. Baseline SPM resources (with all credits intact).
+    # NOTE: ``rxkids_col`` is wired with ``rxkids_col=None`` here so
+    # baseline resources reflect the *current* policy (RxKids does not
+    # exist in Hawaii). The ``rxkids_hi`` scenario adds the amount as
+    # a counterfactual expansion in ``_scenario_resources`` below.
     df, spm_meta = compute_spm_resources(
         df,
         eitc_col=eitc_col,
         refundable_ctc_col=ctc_col,
         hi_eitc_col=hi_eitc_col,
+        rxkids_col=None,
     )
 
     # 2. Per-unit Hawaii SPM threshold.
@@ -362,6 +402,7 @@ def compute_poverty_impact(
             hi_ctc_takeup_rate=hi_ctc_takeup_rate,
             hi_eitc_100pct_takeup_rate=hi_eitc_100pct_takeup_rate,
             arpa_ctc_takeup_rate=arpa_ctc_takeup_rate,
+            rxkids_col=rxkids_col,
         )
 
     # 5. Aggregate at each geography level.
@@ -382,6 +423,52 @@ def compute_poverty_impact(
         person_weight=person_w, filer_weight=filer_w, scenarios=scenarios,
     )
 
+    # 5a. Household-type disaggregation (single / HoH / MFJ / MFS).
+    # HoH = single-mother proxy for RxKids analysis.
+    if household_type_col not in df.columns:
+        raise KeyError(
+            f"household_type_col={household_type_col!r} not in units; "
+            "expected one of the filing_status columns."
+        )
+    by_ht = _aggregate(
+        df, group_col=household_type_col, threshold=threshold,
+        person_weight=person_w, filer_weight=filer_w, scenarios=scenarios,
+    )
+    # Restrict to the canonical filing-status set so downstream consumers
+    # can rely on the row labels even if the input frame has stray values.
+    by_ht = by_ht[by_ht[household_type_col].isin(_HOUSEHOLD_TYPES)].reset_index(drop=True)
+
+    # 5b. Augment by_state with HoH-specific poverty metrics. This is the
+    # single-mother summary advocates need to cite when discussing RxKids
+    # poverty impact.
+    hoh = by_ht[by_ht[household_type_col] == "head_of_household"]
+    state_row_extras: dict[str, float] = {}
+    if not hoh.empty:
+        hoh_row = hoh.iloc[0]
+        state_row_extras["poverty_rate_hoh_baseline"] = float(hoh_row["poverty_rate_baseline"])
+        state_row_extras["persons_in_poverty_hoh_baseline"] = float(
+            hoh_row["persons_in_poverty_baseline"]
+        )
+        state_row_extras["weighted_persons_hoh"] = float(hoh_row["weighted_persons"])
+        for scn in scenarios:
+            col = f"persons_lifted_{scn}"
+            if col in hoh_row.index:
+                state_row_extras[f"persons_lifted_{scn}_hoh"] = float(hoh_row[col])
+            rate_col = f"poverty_rate_{scn}"
+            if rate_col in hoh_row.index:
+                state_row_extras[f"poverty_rate_{scn}_hoh"] = float(hoh_row[rate_col])
+    else:
+        # No HoH filers in the frame — zero out HoH summary fields so
+        # downstream report code can rely on the columns existing.
+        state_row_extras["poverty_rate_hoh_baseline"] = 0.0
+        state_row_extras["persons_in_poverty_hoh_baseline"] = 0.0
+        state_row_extras["weighted_persons_hoh"] = 0.0
+        for scn in scenarios:
+            state_row_extras[f"persons_lifted_{scn}_hoh"] = 0.0
+            state_row_extras[f"poverty_rate_{scn}_hoh"] = 0.0
+    for k, v in state_row_extras.items():
+        by_state[k] = v
+
     notes: list[str] = list(spm_meta.notes)
     notes.append(
         "Static counterfactual: no labor supply / marriage / fertility / "
@@ -400,12 +487,23 @@ def compute_poverty_impact(
         "ARPA-CTC delta."
     )
 
+    if "rxkids_hi" in scenarios:
+        notes.append(
+            "rxkids_hi scenario adds the rxkids_amount column as a "
+            "non-taxable cash transfer to SPM resources. Defaults model "
+            "a Medicaid-eligibility-gated variant ($500/mo prenatal × 9, "
+            "$125/mo postnatal per child 0-5 × 12, 80% take-up). See "
+            "RXKIDS_METHODOLOGY.md for parameter sourcing and the "
+            "universal-variant override recipe."
+        )
+
     return PovertyImpactResult(
         units=df,
         by_state=by_state,
         by_county=by_county,
         by_house_district=by_hd,
         by_senate_district=by_sd,
+        by_household_type=by_ht,
         tax_year=tax_year,
         spm_meta=spm_meta,
         scenarios=tuple(scenarios),
