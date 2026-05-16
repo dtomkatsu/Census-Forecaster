@@ -473,3 +473,315 @@ def test_moop_imputation_basic_shape():
     # CPS ASEC donor mean MOOP for Hawaii is in the ~$1k-$3k/yr range; assert
     # imputed values fall in a plausible band, not zeros and not absurdly high.
     assert 200.0 <= out["moop_amount"].mean() <= 10_000.0
+
+
+# ---------------------------------------------------------------------------
+# Tier 2 — housing subsidy + childcare subsidy
+# ---------------------------------------------------------------------------
+
+
+def _low_income_frame(n: int = 80, *, with_kids: bool = False, seed: int = 7) -> pd.DataFrame:
+    """A frame skewed low-income enough that subsidies meaningfully shift SPM."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for _ in range(n):
+        kids = int(rng.integers(0, 3)) if with_kids else 0
+        rows.append({
+            "filing_status": "single",
+            "num_dependents": kids,
+            "num_qualifying_children": kids,
+            "total_cash_income": float(rng.integers(8_000, 25_000)),
+            "earned_income": float(rng.integers(8_000, 25_000)),
+            "income": float(rng.integers(8_000, 25_000)),
+            "weight": 100.0,
+            "primary_agep": int(rng.integers(25, 60)),
+            "eitc_amount": 0.0,
+            "ctc_refundable": 0.0,
+            "ctc_total": 0.0,
+            "hi_eitc_amount": 0.0,
+        })
+    return _make_units(rows)
+
+
+def test_housing_subsidy_lowers_baseline_rate():
+    """Adding a housing-subsidy column lifts SPM resources → poverty rate falls (or stays equal)."""
+    from tax_modeler.benefits.housing import compute_housing_for_units
+
+    units = _low_income_frame(n=80, with_kids=False, seed=11)
+    r_no_sub = compute_poverty_impact(units, tax_year=2024).by_state.iloc[0]
+    units_with_sub = compute_housing_for_units(units)
+    r_with_sub = compute_poverty_impact(units_with_sub, tax_year=2024).by_state.iloc[0]
+    # Subsidy is added to resources, so baseline rate cannot rise.
+    assert r_with_sub["poverty_rate_baseline"] <= r_no_sub["poverty_rate_baseline"] + 1e-9
+    # And on a low-income frame the subsidy is large enough to clearly lower it.
+    assert r_with_sub["poverty_rate_baseline"] < r_no_sub["poverty_rate_baseline"]
+
+
+def test_childcare_subsidy_lowers_baseline_rate():
+    """CCSP subsidy on working low-income families with kids lifts SPM resources."""
+    from tax_modeler.benefits.childcare import compute_childcare_for_units
+
+    units = _low_income_frame(n=80, with_kids=True, seed=13)
+    r_no_sub = compute_poverty_impact(units, tax_year=2024).by_state.iloc[0]
+    units_with_sub = compute_childcare_for_units(units)
+    # The CCSP module zeroes the subsidy for filers with no kids / no work
+    # income, so the working-low-income-with-kids subset must receive >0.
+    assert (units_with_sub["childcare_amount"] > 0).any()
+    r_with_sub = compute_poverty_impact(units_with_sub, tax_year=2024).by_state.iloc[0]
+    assert r_with_sub["poverty_rate_baseline"] <= r_no_sub["poverty_rate_baseline"] + 1e-9
+
+
+# ---------------------------------------------------------------------------
+# Tier 2 — childcare-expense + work-expense imputation
+# ---------------------------------------------------------------------------
+
+
+def test_childcare_expense_raises_baseline_rate():
+    """Subtracting childcare expense reduces resources → poverty rate cannot fall."""
+    from tax_modeler.benefits.childcare_expense import (
+        compute_childcare_expense_for_units,
+    )
+
+    units = _low_income_frame(n=80, with_kids=True, seed=19)
+    r_pre = compute_poverty_impact(units, tax_year=2024).by_state.iloc[0]
+    units_with_exp = compute_childcare_expense_for_units(units)
+    # At least some working families with kids must get a positive amount.
+    assert (units_with_exp["childcare_expense_amount"] > 0).any()
+    r_post = compute_poverty_impact(units_with_exp, tax_year=2024).by_state.iloc[0]
+    assert r_post["poverty_rate_baseline"] >= r_pre["poverty_rate_baseline"] - 1e-9
+
+
+def test_work_expense_proportional_to_earners():
+    """Two-earner MFJ filers should average a higher work expense than single-earner singles."""
+    from tax_modeler.benefits.work_expense import compute_work_expense_for_units
+
+    units = _make_units([
+        # Single working filers (n_earners=1).
+        *[{"filing_status": "single", "num_dependents": 0,
+           "num_qualifying_children": 0, "total_cash_income": 30_000.0,
+           "income": 30_000.0, "earned_income": 30_000.0,
+           "primary_hours_worked": 40.0, "secondary_hours_worked": 0.0,
+           "weight": 100.0} for _ in range(50)],
+        # MFJ two-earner filers.
+        *[{"filing_status": "married_filing_jointly", "num_dependents": 1,
+           "num_qualifying_children": 1, "total_cash_income": 60_000.0,
+           "income": 60_000.0, "earned_income": 60_000.0,
+           "primary_hours_worked": 40.0, "secondary_hours_worked": 40.0,
+           "weight": 100.0} for _ in range(50)],
+    ])
+    out = compute_work_expense_for_units(units)
+    assert "work_expense_amount" in out.columns
+    assert (out["work_expense_amount"] >= 0).all()
+    singles = out.iloc[:50]["work_expense_amount"].mean()
+    couples = out.iloc[50:]["work_expense_amount"].mean()
+    assert couples > singles
+
+
+def test_only_workers_have_work_expense():
+    """Filers with zero earned income must get zero work expense (SPM convention)."""
+    from tax_modeler.benefits.work_expense import compute_work_expense_for_units
+
+    units = _make_units([
+        {"filing_status": "single", "total_cash_income": 12_000.0,
+         "earned_income": 0.0, "income": 12_000.0,
+         "primary_hours_worked": 0.0, "secondary_hours_worked": 0.0,
+         "weight": 100.0},
+        {"filing_status": "single", "total_cash_income": 12_000.0,
+         "earned_income": 12_000.0, "income": 12_000.0,
+         "primary_hours_worked": 40.0, "secondary_hours_worked": 0.0,
+         "weight": 100.0},
+    ])
+    out = compute_work_expense_for_units(units)
+    assert out.iloc[0]["work_expense_amount"] == 0.0
+    assert out.iloc[1]["work_expense_amount"] > 0.0
+
+
+# ---------------------------------------------------------------------------
+# Tier 2 — SPM-unit pooling
+# ---------------------------------------------------------------------------
+
+
+def test_pooling_reduces_persons_in_poverty():
+    """Two cohabiting single filers with shared kids combine into one above-threshold unit."""
+    from tax_modeler.units.spm_unit import build_spm_units
+
+    # Both are single/HOH with kids in the same household (hh_id=99).
+    # Individually each is below the HI SPM threshold (~$25k for 1A1C
+    # renter). Pooled (2A2C, threshold ~$40.6k renter HI 2024), combined
+    # income $52k clears the threshold after fed + payroll tax.
+    units = _make_units([
+        {"hh_id": "99", "filing_status": "head_of_household",
+         "num_dependents": 1, "num_qualifying_children": 1,
+         "total_cash_income": 22_000.0, "earned_income": 22_000.0,
+         "income": 22_000.0, "weight": 100.0,
+         "primary_agep": 35, "tenure": "renter"},
+        {"hh_id": "99", "filing_status": "head_of_household",
+         "num_dependents": 1, "num_qualifying_children": 1,
+         "total_cash_income": 30_000.0, "earned_income": 30_000.0,
+         "income": 30_000.0, "weight": 100.0,
+         "primary_agep": 36, "tenure": "renter"},
+    ])
+    unpooled_persons_poor = compute_poverty_impact(
+        units, tax_year=2024
+    ).by_state.iloc[0]["persons_in_poverty_baseline"]
+    pooled_units = build_spm_units(units)
+    pooled_persons_poor = compute_poverty_impact(
+        pooled_units, tax_year=2024
+    ).by_state.iloc[0]["persons_in_poverty_baseline"]
+    assert pooled_persons_poor < unpooled_persons_poor
+
+
+def test_pooling_preserves_weighted_persons():
+    """Every person in the source frame appears exactly once in the pooled frame."""
+    from tax_modeler.units.spm_unit import build_spm_units
+    from tax_modeler.poverty.impact import _persons_per_unit
+
+    units = _make_units([
+        {"hh_id": "1", "filing_status": "head_of_household",
+         "num_dependents": 1, "num_qualifying_children": 1,
+         "total_cash_income": 22_000.0, "earned_income": 22_000.0,
+         "income": 22_000.0, "weight": 50.0},
+        {"hh_id": "1", "filing_status": "head_of_household",
+         "num_dependents": 2, "num_qualifying_children": 2,
+         "total_cash_income": 24_000.0, "earned_income": 24_000.0,
+         "income": 24_000.0, "weight": 50.0},
+        {"hh_id": "2", "filing_status": "single",
+         "num_dependents": 0, "num_qualifying_children": 0,
+         "total_cash_income": 30_000.0, "earned_income": 30_000.0,
+         "income": 30_000.0, "weight": 100.0},
+    ])
+    pre_persons = float(
+        (units["weight"].to_numpy() * _persons_per_unit(units)).sum()
+    )
+    pooled = build_spm_units(units)
+    post_persons = float(
+        (pooled["weight"].to_numpy() * _persons_per_unit(pooled)).sum()
+    )
+    assert post_persons == pytest.approx(pre_persons)
+
+
+def test_unpooled_default_unchanged():
+    """build_spm_units must be idempotent on inputs that don't match the pooling heuristic."""
+    from tax_modeler.units.spm_unit import build_spm_units
+
+    # All distinct households → no pooling. The output must equal the
+    # input up to row order on the relevant columns.
+    units = _make_units([
+        {"hh_id": f"hh_{i}", "filing_status": "single",
+         "num_dependents": 0, "num_qualifying_children": 0,
+         "total_cash_income": 25_000.0, "earned_income": 25_000.0,
+         "income": 25_000.0, "weight": 100.0}
+        for i in range(5)
+    ])
+    pooled = build_spm_units(units)
+    assert len(pooled) == len(units)
+    assert pooled["filing_status"].eq("single").all()
+    assert pooled["income"].sum() == pytest.approx(units["income"].sum())
+
+
+# ---------------------------------------------------------------------------
+# Tier 2 — district raking (biproportional IPF)
+# ---------------------------------------------------------------------------
+
+
+def _raking_frame(rng_seed: int = 17) -> pd.DataFrame:
+    """A frame spanning 2 PUMAs × 3 HDs with uneven within-PUMA mass."""
+    rng = np.random.default_rng(rng_seed)
+    rows = []
+    # PUMA 301 split across HD 10, 11. Heavy 10 pre-raking.
+    for _ in range(40):
+        rows.append({"PUMA": 301, "house_district": 10, "weight": 100.0,
+                     "income": float(rng.integers(20_000, 80_000)),
+                     "earned_income": float(rng.integers(20_000, 80_000)),
+                     "total_cash_income": float(rng.integers(20_000, 80_000))})
+    for _ in range(10):
+        rows.append({"PUMA": 301, "house_district": 11, "weight": 100.0,
+                     "income": float(rng.integers(20_000, 80_000)),
+                     "earned_income": float(rng.integers(20_000, 80_000)),
+                     "total_cash_income": float(rng.integers(20_000, 80_000))})
+    # PUMA 302 split across HD 11, 12. Heavy 12 pre-raking.
+    for _ in range(10):
+        rows.append({"PUMA": 302, "house_district": 11, "weight": 100.0,
+                     "income": float(rng.integers(20_000, 80_000)),
+                     "earned_income": float(rng.integers(20_000, 80_000)),
+                     "total_cash_income": float(rng.integers(20_000, 80_000))})
+    for _ in range(40):
+        rows.append({"PUMA": 302, "house_district": 12, "weight": 100.0,
+                     "income": float(rng.integers(20_000, 80_000)),
+                     "earned_income": float(rng.integers(20_000, 80_000)),
+                     "total_cash_income": float(rng.integers(20_000, 80_000))})
+    return pd.DataFrame(rows)
+
+
+def test_raking_preserves_state_total():
+    """Total weight is preserved (~) after biproportional raking."""
+    from tax_modeler.analysis.district_raking import rake_biproportional
+
+    df = _raking_frame()
+    pre_total = df["weight"].sum()
+    # HD targets shift mass within each PUMA but preserve per-PUMA totals.
+    hd_targets = {10: 2500.0, 11: 2500.0, 12: 2500.0}
+    w_post = rake_biproportional(
+        df["weight"].to_numpy(),
+        puma_ids=df["PUMA"].to_numpy(),
+        hd_ids=df["house_district"].to_numpy(),
+        hd_targets=hd_targets,
+    )
+    assert w_post.sum() == pytest.approx(pre_total, rel=1e-3)
+
+
+def test_raking_preserves_puma_marginals():
+    """Per-PUMA sum(weight) is held fixed by construction."""
+    from tax_modeler.analysis.district_raking import rake_biproportional
+
+    df = _raking_frame()
+    pre_puma = df.groupby("PUMA")["weight"].sum().to_dict()
+    hd_targets = {10: 3000.0, 11: 1500.0, 12: 3000.0}
+    w_post = rake_biproportional(
+        df["weight"].to_numpy(),
+        puma_ids=df["PUMA"].to_numpy(),
+        hd_ids=df["house_district"].to_numpy(),
+        hd_targets=hd_targets,
+    )
+    df["w_post"] = w_post
+    post_puma = df.groupby("PUMA")["w_post"].sum().to_dict()
+    for puma, target in pre_puma.items():
+        assert post_puma[puma] == pytest.approx(target, rel=1e-3)
+
+
+def test_raking_matches_irs_district_targets_within_2pct():
+    """Per-HD sum(weight) lands within 2% of the IRS target after raking."""
+    from tax_modeler.analysis.district_raking import rake_biproportional
+
+    df = _raking_frame()
+    # Build targets consistent with per-PUMA marginals (each PUMA has
+    # total weight = 5,000; state total = 10,000). HD 11 spans both
+    # PUMAs and aggregates filers from each.
+    hd_targets = {10: 3000.0, 11: 3000.0, 12: 4000.0}
+    w_post = rake_biproportional(
+        df["weight"].to_numpy(),
+        puma_ids=df["PUMA"].to_numpy(),
+        hd_ids=df["house_district"].to_numpy(),
+        hd_targets=hd_targets,
+        max_iter=100,
+    )
+    df["w_post"] = w_post
+    post_hd = df.groupby("house_district")["w_post"].sum().to_dict()
+    for hd, target in hd_targets.items():
+        assert abs(post_hd[hd] - target) / target < 0.02
+
+
+def test_unraked_default_unchanged():
+    """rake_weights_to_irs_zip raises MissingDataError when supporting data is absent.
+
+    The Tier-2 ship intentionally does not bundle the IRS SOI ZIP file or the
+    ZIP→HD crosswalk. The high-level wrapper must signal that explicitly
+    (rather than silently no-op) so the user is on notice that the flag is
+    inactive without the data.
+    """
+    from tax_modeler.analysis.district_raking import rake_weights_to_irs_zip
+    from tax_modeler.errors import MissingDataError
+
+    df = _raking_frame()
+    with pytest.raises(MissingDataError):
+        rake_weights_to_irs_zip(df, tax_year=2024)
