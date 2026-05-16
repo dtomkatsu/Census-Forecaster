@@ -17,6 +17,7 @@ from .ctc import (
     calculate_ctc_for_tax_units,
     ctc_parameters_for_year,
 )
+from .arpa_ctc import arpa_ctc_for_tax_units
 # Hawaii state-level refundable credits (Reform-DSL-friendly)
 from .hi_eitc import (
     HawaiiEitcParameters,
@@ -41,6 +42,7 @@ __all__ = [
     'calculate_ctc',
     'calculate_ctc_for_tax_units',
     'ctc_parameters_for_year',
+    'arpa_ctc_for_tax_units',
     # Hawaii state credits
     'HawaiiEitcParameters',
     'hawaii_eitc_parameters',
