@@ -261,17 +261,32 @@ added across the audit:
 
 ## Headline numbers — TY2024 (real Hawaii PUMS)
 
+`reports/poverty_impact_2024_review/by_state.csv` — full flag stack except
+`--pool-spm-units` (default OFF).
+
 | Metric | Tier 1 (PR #4 baseline) | After this audit |
 |---|---|---|
-| Baseline SPM rate | 22.65 % | **see reports/poverty_impact_2024_review/by_state.csv** |
-| Persons in poverty | 318,999 | (regenerated) |
-| Persons lifted by federal EITC | 29,320 | (regenerated) |
-| Persons lifted by federal CTC | 19,506 | (regenerated) |
-| Persons lifted by HI EITC | 12,246 | (regenerated) |
-| Persons lifted by all three (joint) | 50,084 | (regenerated) |
+| Baseline SPM rate | 22.65 % | **23.00 %** |
+| Persons in poverty | 318,999 | 324,002 |
+| Persons lifted by federal EITC | 29,320 | 27,397 |
+| Persons lifted by federal CTC | 19,506 | 19,553 |
+| Persons lifted by HI EITC | 12,246 | 12,378 |
+| Persons lifted by all three (joint) | 50,084 | 47,026 |
+| Persons lifted if HI EITC → 100 % federal (additional) | 13,826 | 13,517 |
+| Persons lifted if HI enacts $650/child CTC (additional) | 6,263 | 7,415 |
+| Baseline poverty gap | $2,579 M | $2,846 M |
 
-Target: baseline rate within ±2 pp of Census-published Hawaii SPM
-(~10–12 % TY2022; ~11–13 % TY2024).
+The audit fixed methodology bugs but did **not** close the gap to
+Census-published Hawaii SPM (~10–12 %). The dominant residual is the
+unit-of-analysis bias — tax units double-count people in cohabiting
+unmarried-parent households. Running with `--pool-spm-units` (default
+OFF; flag enabled in Tier 2) is the next lever for closing the gap.
+
+The methodology fixes individually net to roughly zero on the headline
+rate: the corrected (per-tenure) Honolulu geographic multiplier raised
+the threshold (and the rate) by ~1 pp, while the bracket-based federal
+tax + WIC/LIHEAP/NSLP + childcare cap added resources back of similar
+magnitude.
 
 ---
 
