@@ -29,8 +29,15 @@ _DEFAULT_DONOR_PATH = (
 
 # Bucket edges. Matched on the donor frame to produce dense cells. Recipients
 # (tax units) are bucketed identically and joined.
-_AGE_EDGES = [-1, 17, 29, 44, 59, 74, np.inf]
-_AGE_LABELS = ["child", "18-29", "30-44", "45-59", "60-74", "75+"]
+#
+# The 65 break is the SPM-relevant Medicare-eligibility threshold. Census P60-280
+# §4.3 stratifies MOOP by under-65 / 65+ (Medicare vs. non-Medicare) because the
+# Medicare premiums + Part D out-of-pocket profile is markedly different from the
+# pre-Medicare private/uninsured profile. Splitting the prior 60-74 bin at 65
+# removes the bias that lumped 4 pre-Medicare years (60-64) with 10 Medicare
+# years (65-74), inflating MOOP for the 60-64 group and deflating for 65-74.
+_AGE_EDGES = [-1, 17, 29, 44, 59, 64, 74, np.inf]
+_AGE_LABELS = ["child", "18-29", "30-44", "45-59", "60-64", "65-74", "75+"]
 _HH_EDGES = [0, 1, 2, 3, np.inf]
 _HH_LABELS = ["1", "2", "3", "4+"]
 _INCOME_DECILES = 5  # quintiles — 200 donors are too sparse for 10-cell income
