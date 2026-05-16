@@ -53,20 +53,36 @@ _TENURE_SCALE: dict[Tenure, float] = {
 
 
 def _equivalence_scale(n_adults: int, n_children: int) -> float:
-    """SPM three-parameter equivalence scale relative to (2 adults, 2 children).
+    """SPM three-parameter (Betson 1996) equivalence scale, normalized to (2A, 2C).
 
-    Approximation: ``(adults + 0.7 * children) ** 0.7``, normalized.
-    The published Census formula has minor differences for single-parent
-    households; this approximation is within ~3% across the range we care
-    about. Phase 4+ should switch to the exact Census P60-Appendix-A
-    scale when promoting to production.
+    Census SPM Technical Documentation §4.2.1:
+
+      * One- and two-adult units (no children): scale = (adults)^0.5
+      * Single parents (1 adult + N children):
+            scale = (1 + 0.8 + 0.5*(N-1))^0.7   for N >= 1
+      * All other families with children:
+            scale = (adults + 0.5*children)^0.7
+
+    The reference family (2 adults + 2 children) has raw scale
+    ``(2 + 0.5*2)^0.7 = 3^0.7 ≈ 2.158``; returned scale is normalized
+    by that reference so the 2A2C family always evaluates to 1.0.
     """
     if n_adults < 1:
         raise ConfigError("n_adults must be >= 1")
     if n_children < 0:
         raise ConfigError("n_children must be >= 0")
-    raw = (n_adults + 0.7 * n_children) ** 0.7
-    base = (2 + 0.7 * 2) ** 0.7
+
+    if n_children == 0:
+        # One- and two-adult units use the Betson "adults only" scale.
+        raw = float(n_adults) ** 0.5
+    elif n_adults == 1:
+        # Single-parent families: first child weighted 0.8, others 0.5.
+        raw = (1.0 + 0.8 + 0.5 * (n_children - 1)) ** 0.7
+    else:
+        # All other families with children.
+        raw = (n_adults + 0.5 * n_children) ** 0.7
+
+    base = (2 + 0.5 * 2) ** 0.7  # = 3 ** 0.7
     return raw / base
 
 
