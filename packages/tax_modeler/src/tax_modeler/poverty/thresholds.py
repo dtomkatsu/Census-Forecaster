@@ -28,10 +28,15 @@ Tenure = Literal["renter", "owner_with_mortgage", "owner_no_mortgage"]
 # Census P60-283 (2024 SPM) two-adult-two-child base thresholds for
 # renters in metropolitan areas, contiguous US. Other compositions are
 # computed via the standard SPM equivalence scale.
+#
+# 2025 value is a *projection* (2024 × 1.03, mirroring the 2.5-3% CPI-U
+# growth in the published series); replace with the actual Census
+# release when P60-284 ships in Oct 2026.
 _BASE_THRESHOLD_2A2C_RENTER = {
     2022: 31_312,
     2023: 33_148,
     2024: 34_393,
+    2025: 35_425,  # projected: 2024 × 1.03
 }
 
 # Honolulu MSA geographic adjustment factor (relative to contiguous-US

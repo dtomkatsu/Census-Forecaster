@@ -13,11 +13,14 @@ imputation is a later phase (the synthetic fixture cannot exercise it).
 """
 from __future__ import annotations
 
+from .impact import PovertyImpactResult, compute_poverty_impact
 from .spm import compute_spm_resources
 from .thresholds import hawaii_spm_threshold, spm_threshold_table, threshold_for_units
 
 __all__ = [
     "compute_spm_resources",
+    "compute_poverty_impact",
+    "PovertyImpactResult",
     "hawaii_spm_threshold",
     "spm_threshold_table",
     "threshold_for_units",

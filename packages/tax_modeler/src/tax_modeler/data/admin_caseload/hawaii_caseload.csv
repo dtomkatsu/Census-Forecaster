@@ -1,4 +1,5 @@
 program,year,unit,count,annual_dollars_millions,source
+snap,2022,household,95820,900.7,"USDA-FNS SNAP State Activity Report FY2022, Tables 28-29 (Hawaii avg monthly HHs + annual issuance; FY2022 figures elevated by COVID-19 emergency allotments active through March 2023)"
 snap,2023,household,85700,485.4,"HI DHS SNAP State Activity Reports, FY2023 average monthly + USDA-FNS Hawaii allotments"
 snap,2024,household,87100,506.2,"HI DHS SNAP State Activity Reports, FY2024 average monthly (provisional) + USDA-FNS Hawaii allotments"
 ssi,2023,person,22300,225.1,"SSA Annual Statistical Supplement 2023, Table 7.A4 (SSI by State)"
