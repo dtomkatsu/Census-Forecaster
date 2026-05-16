@@ -55,10 +55,14 @@ NOTES (also surfaced via :class:`PovertyImpactResult.notes`):
   * **District assignment**: within-PUMA HD/SD via deterministic
     SERIALNO hash, not raked to IRS ZIP data. District-level point
     estimates carry roughly ±20% uncertainty.
-  * **HI state CTC $650 scenario**: assumes 100% take-up. Real-world
-    enacted state CTCs (MN, VT) typically see 70-85% take-up in year 1
-    ramping to 90%+ steady state, so this *over*-estimates the lift by
-    ~15-30% in year 1.
+  * **Expansion take-up**: ``hi_ctc_650`` scales its $650/child increment
+    by ``hi_ctc_takeup_rate`` (default 0.80, MN 2023 / VT 2022 first-year
+    ramp); ``hi_eitc_100pct`` scales its 60-pp HI EITC increment by
+    ``hi_eitc_100pct_takeup_rate`` (default 0.95, since the rate
+    auto-attaches to federal claims); ``expanded_ctc_2021`` scales the
+    ARPA delta by ``arpa_ctc_takeup_rate`` (default 0.95). Removal
+    scenarios are unscaled — receipt is encoded by IRS take-up
+    calibration upstream on the baseline credit columns.
 """
 from __future__ import annotations
 
@@ -125,8 +129,16 @@ def _scenario_resources(
     arpa_ctc_col: str,
     qualifying_children_col: str,
     hi_ctc_per_child: float,
+    hi_ctc_takeup_rate: float,
+    hi_eitc_100pct_takeup_rate: float,
+    arpa_ctc_takeup_rate: float,
 ) -> np.ndarray:
-    """Counterfactual SPM resources via linear arithmetic on credit columns."""
+    """Counterfactual SPM resources via linear arithmetic on credit columns.
+
+    Expansion scenarios' *increments* are scaled by an empirically grounded
+    take-up rate. Removal scenarios are not — receipt is already encoded
+    via upstream IRS take-up calibration on the baseline credit columns.
+    """
     eitc = units[eitc_col].fillna(0).to_numpy(dtype=float)
     ctc = units[ctc_col].fillna(0).to_numpy(dtype=float)
     hi_eitc = units[hi_eitc_col].fillna(0).to_numpy(dtype=float)
@@ -145,12 +157,20 @@ def _scenario_resources(
                 "call tax_modeler.credits.arpa_ctc_for_tax_units(units) first."
             )
         arpa = units[arpa_ctc_col].fillna(0).to_numpy(dtype=float)
-        return baseline_resources - ctc + arpa
+        increment = (arpa - ctc) * arpa_ctc_takeup_rate
+        return baseline_resources + increment
     if scenario == "hi_eitc_100pct":
         # Going from 40% to 100% of federal = +60pp = +1.5× the current
         # HI EITC dollars. (current = 0.40 × federal; new = 1.00 × federal;
         # increment = 0.60 × federal = 1.5 × current.)
-        increment = hi_eitc * (1.0 - _HI_EITC_CURRENT_RATE) / _HI_EITC_CURRENT_RATE
+        # The increment is scaled by take-up; existing HI EITC claimers
+        # continue claiming automatically (HI attaches to federal) so the
+        # default 0.95 captures the new-claim friction on the marginal
+        # 60-pp band rather than re-applying take-up to existing receipt.
+        increment = (
+            hi_eitc * (1.0 - _HI_EITC_CURRENT_RATE) / _HI_EITC_CURRENT_RATE
+            * hi_eitc_100pct_takeup_rate
+        )
         return baseline_resources + increment
     if scenario == "hi_ctc_650":
         if qualifying_children_col not in units.columns:
@@ -158,7 +178,7 @@ def _scenario_resources(
                 f"scenario={scenario!r} requires column {qualifying_children_col!r}."
             )
         n_kids = units[qualifying_children_col].fillna(0).clip(lower=0).to_numpy(dtype=float)
-        return baseline_resources + hi_ctc_per_child * n_kids
+        return baseline_resources + hi_ctc_per_child * n_kids * hi_ctc_takeup_rate
     raise ValueError(f"unknown scenario: {scenario!r}")
 
 
@@ -247,6 +267,9 @@ def compute_poverty_impact(
     arpa_ctc_col: str = "arpa_ctc_refundable",
     qualifying_children_col: str = "num_qualifying_children",
     hi_ctc_per_child: float = 650.0,
+    hi_ctc_takeup_rate: float = 0.80,
+    hi_eitc_100pct_takeup_rate: float = 0.95,
+    arpa_ctc_takeup_rate: float = 0.95,
     weight_col: str = "weight",
     tenure_col: str = "tenure",
 ) -> PovertyImpactResult:
@@ -272,6 +295,18 @@ def compute_poverty_impact(
         Dollar value of the hypothetical Hawaii state CTC per
         qualifying child (default $650). Used only when ``"hi_ctc_650"``
         is in ``scenarios``.
+    hi_ctc_takeup_rate:
+        Take-up rate applied to the hi_ctc_650 expansion increment.
+        Default 0.80 — consistent with enacted state CTCs (MN 2023, VT
+        2022 first-year ramp). Setting this to 0.0 zeroes the lift.
+    hi_eitc_100pct_takeup_rate:
+        Take-up rate applied to the hi_eitc_100pct expansion increment.
+        Default 0.95 — existing HI EITC claimers continue claiming
+        automatically (HI attaches to federal), so this captures the
+        new-claim friction on the marginal 60-pp band.
+    arpa_ctc_takeup_rate:
+        Take-up rate applied to the expanded_ctc_2021 increment.
+        Default 0.95 — federal CTC steady-state participation rate.
     """
     required = {"filing_status", "num_dependents", "county",
                 "house_district", "senate_district", weight_col, eitc_col,
@@ -314,6 +349,9 @@ def compute_poverty_impact(
             arpa_ctc_col=arpa_ctc_col,
             qualifying_children_col=qualifying_children_col,
             hi_ctc_per_child=hi_ctc_per_child,
+            hi_ctc_takeup_rate=hi_ctc_takeup_rate,
+            hi_eitc_100pct_takeup_rate=hi_eitc_100pct_takeup_rate,
+            arpa_ctc_takeup_rate=arpa_ctc_takeup_rate,
         )
 
     # 5. Aggregate at each geography level.
@@ -341,9 +379,15 @@ def compute_poverty_impact(
         "removal scenarios and lower bounds for expansion scenarios."
     )
     notes.append(
-        f"hi_ctc_650 scenario assumes 100% take-up of a hypothetical "
-        f"${int(hi_ctc_per_child)}/child Hawaii state CTC. Real-world enacted "
-        "state CTCs typically see 70-85% take-up in year 1."
+        f"hi_ctc_650 scenario applies a {hi_ctc_takeup_rate:.0%} take-up rate "
+        f"to a hypothetical ${int(hi_ctc_per_child)}/child Hawaii state CTC. "
+        "Pass --hi-ctc-takeup-rate (or hi_ctc_takeup_rate=) to sweep."
+    )
+    notes.append(
+        f"hi_eitc_100pct applies {hi_eitc_100pct_takeup_rate:.0%} take-up on "
+        "the 60-pp HI EITC increment; existing 40%-band receipt is unchanged. "
+        f"expanded_ctc_2021 applies {arpa_ctc_takeup_rate:.0%} take-up on the "
+        "ARPA-CTC delta."
     )
 
     return PovertyImpactResult(
