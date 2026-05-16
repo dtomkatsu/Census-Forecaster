@@ -53,6 +53,7 @@ from .housing import (
     compute_housing_for_units,
     hawaii_housing_parameters,
 )
+from .moop import compute_moop_for_units
 
 __all__ = [
     "SnapParameters",
@@ -83,4 +84,5 @@ __all__ = [
     "HousingParameters",
     "hawaii_housing_parameters",
     "compute_housing_for_units",
+    "compute_moop_for_units",
 ]

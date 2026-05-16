@@ -156,6 +156,36 @@ def _apply_arpa_ctc(units: pd.DataFrame) -> pd.DataFrame:
     return arpa_ctc_for_tax_units(units)
 
 
+def _apply_credit_takeup(
+    units: pd.DataFrame,
+    *,
+    tax_year: int,
+    programs: tuple[str, ...] = ("eitc", "actc"),
+) -> pd.DataFrame:
+    """Rank-and-truncate EITC/ACTC eligibles to IRS SOI take-up targets.
+
+    Without this, ``eitc_amount`` and ``ctc_refundable`` reflect *eligibility*
+    (~105k EITC-eligible filers in Hawaii), not *receipt* (~84k claimed per
+    IRS SOI). Baseline poverty lifts for the no_eitc / no_ctc scenarios are
+    overstated by ~25% / ~15% respectively when this step is skipped.
+    """
+    from tax_modeler.pipeline import apply_credit_takeup
+    LOG.info(
+        "Applying IRS-anchored take-up imputation for %s at year=%d",
+        ",".join(programs), tax_year,
+    )
+    try:
+        return apply_credit_takeup(units, year=tax_year, programs=programs)
+    except Exception as exc:
+        LOG.warning(
+            "apply_credit_takeup failed for year=%d (%s); falling back to "
+            "TY2022 IRS SOI anchor. Eligibility totals will be partially "
+            "scaled but the IRS rate is treated as behavioral and constant.",
+            tax_year, exc,
+        )
+        return apply_credit_takeup(units, year=2022, programs=programs)
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -180,6 +210,32 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                         "the SPM computation. Use --no-apply-snap to disable.")
     p.add_argument("--no-apply-snap", dest="apply_snap", action="store_false",
                    help=argparse.SUPPRESS)
+    p.add_argument("--apply-credit-takeup", action="store_true", default=True,
+                   help="(Default ON.) Rank-and-truncate EITC/ACTC eligibles "
+                        "to the IRS SOI take-up target so baseline reflects "
+                        "*receipt*, not *eligibility*. Use "
+                        "--no-apply-credit-takeup to disable.")
+    p.add_argument("--no-apply-credit-takeup", dest="apply_credit_takeup",
+                   action="store_false", help=argparse.SUPPRESS)
+    p.add_argument("--apply-moop", action="store_true", default=True,
+                   help="(Default ON.) Impute MOOP (medical out-of-pocket) "
+                        "from CPS ASEC Hawaii donors before SPM resource "
+                        "calculation. Use --no-apply-moop to disable.")
+    p.add_argument("--no-apply-moop", dest="apply_moop", action="store_false",
+                   help=argparse.SUPPRESS)
+    p.add_argument("--hi-ctc-takeup-rate", type=float, default=0.80,
+                   help="Take-up rate applied to the hi_ctc_650 expansion "
+                        "increment. Default 0.80 (year-1 ramp consistent with "
+                        "MN 2023 / VT 2022 enacted state CTCs).")
+    p.add_argument("--hi-eitc-100pct-takeup-rate", type=float, default=0.95,
+                   help="Take-up rate applied to the hi_eitc_100pct "
+                        "expansion *increment* (existing HI EITC claimers "
+                        "continue claiming automatically since HI EITC "
+                        "attaches to federal). Default 0.95.")
+    p.add_argument("--arpa-ctc-takeup-rate", type=float, default=0.95,
+                   help="Take-up rate applied to the expanded_ctc_2021 "
+                        "(ARPA) increment. Default 0.95 (federal CTC steady "
+                        "state).")
     p.add_argument("--scenarios", type=str, default=None,
                    help="Comma-separated subset of "
                         "no_eitc,no_ctc,no_hi_eitc,no_credits,"
@@ -252,14 +308,28 @@ def main(argv: Optional[list] = None) -> int:
     project_required = args.tax_year != PUMS_CONSTRUCTION_YEAR
     units = _build_units_for_tax_year(base_units, args.tax_year, project=project_required)
 
-    # 3. ARPA CTC counterfactual column (required for expanded_ctc_2021 scenario).
+    # 3. IRS-anchored take-up: rank-and-truncate EITC/ACTC eligibles to
+    #    actual SOI claim counts. Must run *before* ARPA CTC counterfactual
+    #    column is computed so the ARPA column reflects parameter changes
+    #    only and not take-up calibration of the baseline.
+    if args.apply_credit_takeup:
+        units = _apply_credit_takeup(units, tax_year=args.tax_year)
+
+    # 4. ARPA CTC counterfactual column (required for expanded_ctc_2021 scenario).
     units = _apply_arpa_ctc(units)
 
-    # 4. SNAP wiring (default ON for poverty-impact reports).
+    # 5. SNAP wiring (default ON for poverty-impact reports).
     if args.apply_snap:
         units = _apply_snap(units, tax_year=args.tax_year)
 
-    # 5. Resolve scenarios.
+    # 6. MOOP imputation from CPS ASEC Hawaii donors. Required to bring the
+    #    baseline SPM rate in line with Census-published Hawaii SPM (~10-12%);
+    #    without it the baseline rate runs ~10pp high.
+    if args.apply_moop:
+        from tax_modeler.benefits.moop import compute_moop_for_units
+        units = compute_moop_for_units(units)
+
+    # 7. Resolve scenarios.
     from tax_modeler.poverty.impact import compute_poverty_impact, _DEFAULT_SCENARIOS
 
     if args.scenarios:
@@ -267,20 +337,23 @@ def main(argv: Optional[list] = None) -> int:
     else:
         scenarios = _DEFAULT_SCENARIOS
 
-    # 6. Compute impact.
+    # 8. Compute impact.
     result = compute_poverty_impact(
         units, tax_year=args.tax_year, scenarios=scenarios,
         hi_ctc_per_child=args.hi_ctc_per_child,
+        hi_ctc_takeup_rate=args.hi_ctc_takeup_rate,
+        hi_eitc_100pct_takeup_rate=args.hi_eitc_100pct_takeup_rate,
+        arpa_ctc_takeup_rate=args.arpa_ctc_takeup_rate,
     )
 
-    # 7. Write CSVs.
+    # 9. Write CSVs.
     result.by_state.to_csv(args.out / "by_state.csv", index=False)
     result.by_county.to_csv(args.out / "by_county.csv", index=False)
     result.by_house_district.to_csv(args.out / "by_house_district.csv", index=False)
     result.by_senate_district.to_csv(args.out / "by_senate_district.csv", index=False)
     LOG.info("Wrote 4 poverty-impact CSVs to %s", args.out)
 
-    # 8. Summary block.
+    # 10. Summary block.
     _print_summary(tax_year=args.tax_year, by_state=result.by_state, scenarios=result.scenarios)
 
     if result.notes:
