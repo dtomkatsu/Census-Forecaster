@@ -606,9 +606,9 @@ def test_pooling_reduces_persons_in_poverty():
     from tax_modeler.units.spm_unit import build_spm_units
 
     # Both are single/HOH with kids in the same household (hh_id=99).
-    # Individually each is below the HI SPM threshold (~$25k for 1A1C
-    # renter). Pooled (2A2C, threshold ~$40.6k renter HI 2024), combined
-    # income $52k clears the threshold after fed + payroll tax.
+    # Individually each is below the HI 1A1C SPM threshold (~$30.7k for
+    # renter, TY2024). Pooled (2A2C, threshold ~$43.8k renter HI 2024),
+    # combined income $58k clears the threshold after fed + payroll tax.
     units = _make_units([
         {"hh_id": "99", "filing_status": "head_of_household",
          "num_dependents": 1, "num_qualifying_children": 1,
@@ -617,8 +617,8 @@ def test_pooling_reduces_persons_in_poverty():
          "primary_agep": 35, "tenure": "renter"},
         {"hh_id": "99", "filing_status": "head_of_household",
          "num_dependents": 1, "num_qualifying_children": 1,
-         "total_cash_income": 30_000.0, "earned_income": 30_000.0,
-         "income": 30_000.0, "weight": 100.0,
+         "total_cash_income": 36_000.0, "earned_income": 36_000.0,
+         "income": 36_000.0, "weight": 100.0,
          "primary_agep": 36, "tenure": "renter"},
     ])
     unpooled_persons_poor = compute_poverty_impact(
