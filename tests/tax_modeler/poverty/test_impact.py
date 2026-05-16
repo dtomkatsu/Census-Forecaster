@@ -862,6 +862,62 @@ def test_federal_tax_column_lowers_high_income_baseline_rate():
     assert r_bracket["poverty_rate_baseline"] <= r_flat["poverty_rate_baseline"] + 1e-9
 
 
+def test_full_flag_stack_smoke():
+    """Exercise the full Tier 3 flag stack on synthetic data — composability check.
+
+    Runs SNAP take-up → MOOP → housing → CCSP childcare → WIC → LIHEAP →
+    childcare-expense → work-expense → federal-tax → SPM unit pooling.
+    Asserts the final impact frame has the expected shape and a poverty
+    rate in [0, 1]. Does NOT assert a specific rate value — that's an
+    integration check best done on real PUMS.
+    """
+    from tax_modeler.analysis.puma_crosswalk import assign_geography
+    from tax_modeler.benefits.housing import compute_housing_for_units
+    from tax_modeler.benefits.childcare import compute_childcare_for_units
+    from tax_modeler.benefits.childcare_expense import (
+        compute_childcare_expense_for_units,
+    )
+    from tax_modeler.benefits.work_expense import compute_work_expense_for_units
+    from tax_modeler.benefits.moop import compute_moop_for_units
+    from tax_modeler.benefits.snap import compute_snap_for_units
+    from tax_modeler.benefits.wic import compute_wic_for_units
+    from tax_modeler.benefits.liheap import compute_liheap_for_units
+    from tax_modeler.liability.federal import (
+        compute_federal_income_tax_for_units,
+    )
+    from tax_modeler.units.spm_unit import build_spm_units
+
+    units = _low_income_frame(n=60, with_kids=True, seed=29)
+    units["hh_id"] = [f"hh_{i}" for i in range(len(units))]
+    units = compute_snap_for_units(units)
+    units = compute_moop_for_units(units)
+    units = compute_housing_for_units(units)
+    units = compute_childcare_for_units(units)
+    units = compute_wic_for_units(units)
+    units = compute_liheap_for_units(units)
+    units = compute_childcare_expense_for_units(units)
+    units = compute_work_expense_for_units(units)
+    units = compute_federal_income_tax_for_units(units, tax_year=2024)
+    # Pooling: single-tax-unit-per-hh frame → build_spm_units passes through.
+    units = build_spm_units(units)
+
+    result = compute_poverty_impact(units, tax_year=2024)
+    assert "poverty_rate_baseline" in result.by_state.columns
+    rate = float(result.by_state.iloc[0]["poverty_rate_baseline"])
+    assert 0.0 <= rate <= 1.0
+
+
+def test_module_notes_mention_wic_liheap():
+    """After Tier 3, the impact module docstring should reflect closed components."""
+    import tax_modeler.poverty.impact as impact_mod
+
+    # Collapse whitespace so word-wraps don't break substring matches.
+    doc = " ".join((impact_mod.__doc__ or "").split())
+    assert "WIC" in doc
+    assert "LIHEAP" in doc
+    assert "Federal income tax" in doc or "federal income tax" in doc
+
+
 def test_pooling_magnitude_on_stylized_frame():
     """On a 50-pair stylized 2A2C frame, pooling reduces persons_in_poverty by ≥5%.
 
