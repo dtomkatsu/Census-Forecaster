@@ -346,6 +346,14 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                         "to disable.")
     p.add_argument("--no-apply-liheap", dest="apply_liheap",
                    action="store_false", help=argparse.SUPPRESS)
+    p.add_argument("--apply-federal-tax", action="store_true", default=True,
+                   help="(Default ON.) Compute pre-credit federal income tax "
+                        "liability (bracket-based, year-keyed standard deduction) "
+                        "so SPM resources subtract a graduated estimate instead "
+                        "of the 10%% flat-rate fallback. Use --no-apply-federal-tax "
+                        "to revert to the fallback rate.")
+    p.add_argument("--no-apply-federal-tax", dest="apply_federal_tax",
+                   action="store_false", help=argparse.SUPPRESS)
     p.add_argument("--pool-spm-units", action="store_true", default=False,
                    help="(Default OFF.) Pool cohabiting unmarried partners + "
                         "shared children into SPM units before threshold "
@@ -449,6 +457,17 @@ def main(argv: Optional[list] = None) -> int:
 
     # 4. ARPA CTC counterfactual column (required for expanded_ctc_2021 scenario).
     units = _apply_arpa_ctc(units)
+
+    # 4a. Federal income tax liability (pre-credit). Replaces the 10% flat-rate
+    #     fallback inside compute_spm_resources so high-AGI units pay
+    #     bracket-rate tax and low-AGI units pay zero (standard-deduction
+    #     shield). EITC/ACTC remain added back separately by SPM.
+    if args.apply_federal_tax:
+        from tax_modeler.liability.federal import (
+            compute_federal_income_tax_for_units,
+        )
+        LOG.info("Computing pre-credit federal income tax liability for TY %d", args.tax_year)
+        units = compute_federal_income_tax_for_units(units, tax_year=args.tax_year)
 
     # 5. SNAP wiring (default ON for poverty-impact reports).
     if args.apply_snap:

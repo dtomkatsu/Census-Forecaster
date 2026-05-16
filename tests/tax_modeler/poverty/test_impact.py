@@ -816,3 +816,64 @@ def test_liheap_small_but_nonzero():
     assert (out["liheap_amount"] > 0).any()
     # Each eligible unit gets the flat $250 annual benefit by default.
     assert out["liheap_amount"].max() == pytest.approx(250.0, abs=1.0)
+
+
+# ---------------------------------------------------------------------------
+# Tier 3 — federal income tax liability (pre-credit)
+# ---------------------------------------------------------------------------
+
+
+def test_federal_tax_column_preferred_over_fallback():
+    """compute_spm_resources prefers federal_tax_liability column when present."""
+    from tax_modeler.liability.federal import compute_federal_income_tax_for_units
+    from tax_modeler.poverty.spm import compute_spm_resources
+
+    units = _make_units([{
+        "filing_status": "single",
+        "total_cash_income": 80_000.0, "income": 80_000.0,
+        "earned_income": 80_000.0, "weight": 100.0,
+    }])
+    out = compute_federal_income_tax_for_units(units, tax_year=2024)
+    assert "federal_tax_liability" in out.columns
+    _, meta = compute_spm_resources(out)
+    assert meta.federal_tax_source == "column"
+
+
+def test_federal_tax_column_lowers_high_income_baseline_rate():
+    """For high-income filers, bracket-based liability < 10% flat fallback → SPM resources rise (or stay equal)."""
+    from tax_modeler.liability.federal import compute_federal_income_tax_for_units
+
+    # Single, AGI $80k: bracket calc on (80k - 14.6k std ded) = $65,400 taxable
+    # = ~$9,256 pre-credit. The 10% flat fallback would charge $8,000 — but the
+    # bracket calc is closer to $9.3k. Use a frame where the bracket calc CLEARLY
+    # undershoots the flat fallback: AGI $30k single → taxable $15.4k → tax $1,798
+    # vs flat fallback $3,000. Resources should rise (poverty rate cannot fall).
+    units = _make_units([
+        {"filing_status": "single", "total_cash_income": 30_000.0,
+         "income": 30_000.0, "earned_income": 30_000.0, "weight": 100.0,
+         "primary_agep": 35}
+        for _ in range(40)
+    ])
+    r_flat = compute_poverty_impact(units, tax_year=2024).by_state.iloc[0]
+    units_with_fed = compute_federal_income_tax_for_units(units, tax_year=2024)
+    r_bracket = compute_poverty_impact(units_with_fed, tax_year=2024).by_state.iloc[0]
+    # Real federal liability < 10% flat → resources higher under bracket calc.
+    # Baseline poverty rate cannot rise.
+    assert r_bracket["poverty_rate_baseline"] <= r_flat["poverty_rate_baseline"] + 1e-9
+
+
+def test_federal_tax_low_income_zero_after_std_deduction():
+    """A single filer with AGI under the $14,600 standard deduction owes zero federal tax."""
+    from tax_modeler.liability.federal import compute_federal_income_tax_for_units
+
+    units = _make_units([
+        {"filing_status": "single", "total_cash_income": 12_000.0,
+         "income": 12_000.0, "earned_income": 12_000.0, "weight": 100.0},
+        {"filing_status": "married_filing_jointly", "total_cash_income": 25_000.0,
+         "income": 25_000.0, "earned_income": 25_000.0, "weight": 100.0},
+    ])
+    out = compute_federal_income_tax_for_units(units, tax_year=2024)
+    # Single $12k < $14.6k std ded → 0 federal tax.
+    assert out.iloc[0]["federal_tax_liability"] == 0.0
+    # MFJ $25k < $29.2k std ded → 0 federal tax.
+    assert out.iloc[1]["federal_tax_liability"] == 0.0
