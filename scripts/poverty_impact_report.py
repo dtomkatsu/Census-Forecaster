@@ -123,7 +123,9 @@ def _build_units_for_tax_year(units: pd.DataFrame, tax_year: int, project: bool)
         out = project_tax_units_forward(units, target_year=tax_year)
     else:
         out = compute_base_tax(units, tax_year=tax_year)
-    out = compute_hi_eitc_for_units(out)
+    # Pass tax_year so Act 209 (effective TY2023) doesn't retroactively
+    # apply the 40% refundable rate to TY2022 backtests.
+    out = compute_hi_eitc_for_units(out, tax_year=tax_year)
     return out
 
 

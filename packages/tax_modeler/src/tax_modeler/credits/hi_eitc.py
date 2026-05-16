@@ -40,8 +40,21 @@ class HawaiiEitcParameters:
     amount_pct: float = 1.0
 
 
-def hawaii_eitc_parameters() -> HawaiiEitcParameters:
-    return HawaiiEitcParameters()
+def hawaii_eitc_parameters(tax_year: Optional[int] = None) -> HawaiiEitcParameters:
+    """Year-aware HI EITC parameters.
+
+    Act 107 (2017) introduced the credit at 20% of federal, non-refundable,
+    effective TY 2018. Act 209 (2023) raised the rate to 40% and made the
+    credit refundable, effective for "tax years beginning after December 31,
+    2022" — i.e. TY 2023 onward.
+
+    When ``tax_year`` is omitted, the function returns the post-Act 209
+    parameters (TY 2023+). Pre-2023 callers must pass an explicit year so
+    backtests don't overstate the credit.
+    """
+    if tax_year is None or tax_year >= 2023:
+        return HawaiiEitcParameters(rate_of_federal=0.40, refundable=True)
+    return HawaiiEitcParameters(rate_of_federal=0.20, refundable=False)
 
 
 def with_hi_eitc_overrides(
@@ -62,6 +75,7 @@ def with_hi_eitc_overrides(
 def compute_hi_eitc_for_units(
     units: pd.DataFrame,
     *,
+    tax_year: Optional[int] = None,
     params: Optional[HawaiiEitcParameters] = None,
     overrides: Optional[Mapping[str, object]] = None,
     federal_eitc_col: str = "eitc_amount",
@@ -80,7 +94,9 @@ def compute_hi_eitc_for_units(
     falls back to the full credit — slightly overstates the
     non-refundable case for taxpayers whose tax is below the credit.
     """
-    p = with_hi_eitc_overrides(params or hawaii_eitc_parameters(), overrides)
+    p = with_hi_eitc_overrides(
+        params or hawaii_eitc_parameters(tax_year), overrides
+    )
     df = units.copy()
 
     if federal_eitc_col not in df.columns:

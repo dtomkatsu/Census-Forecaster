@@ -67,6 +67,21 @@ def test_hi_eitc_unknown_override_raises(taxed_units):
         compute_hi_eitc_for_units(taxed_units, overrides={"foo": 1.0})
 
 
+def test_hi_eitc_uses_pre_act_209_rate_for_ty2022(taxed_units):
+    """TY2022 must use 20% non-refundable per Act 107 — Act 209 took effect TY2023.
+
+    A backtest that uses the post-Act-209 40% rate retroactively for TY2022
+    would overstate hi_eitc lift by ~2×, inflating persons-lifted-by-credit.
+    """
+    df_22 = compute_hi_eitc_for_units(taxed_units, tax_year=2022)
+    df_23 = compute_hi_eitc_for_units(taxed_units, tax_year=2023)
+    fed = taxed_units["eitc_amount"].fillna(0).clip(lower=0).sum()
+    # Refundable case (TY23+): 40% paid out in full.
+    assert df_23["hi_eitc_amount"].sum() == pytest.approx(fed * 0.40, rel=1e-9)
+    # Pre-Act-209: non-refundable cap means amount ≤ 20% × federal.
+    assert df_22["hi_eitc_amount"].sum() <= fed * 0.20 + 1e-6
+
+
 # ---------------------------------------------------------------------------
 # HI Food/Excise Tax Credit
 # ---------------------------------------------------------------------------
