@@ -39,34 +39,85 @@ _BASE_THRESHOLD_2A2C_RENTER = {
     2025: 35_425,  # projected: 2024 × 1.03
 }
 
-# Honolulu MSA geographic adjustment factor (relative to contiguous-US
-# metropolitan baseline). Approximate; replace with annual Census
-# adjustment tables when promoting to production.
-_HAWAII_GEO_ADJ = 1.18
+# Honolulu MSA Median Rent Index (Renwick 2011 + 2015 ACS update; Census
+# applies this only to the *housing portion* of the SPM threshold, not the
+# whole threshold). 1.62 reflects Honolulu MSA 2BR median rent vs. national
+# metropolitan-area 2BR median rent.
+_HAWAII_MRI = 1.62
 
-# Tenure scaling relative to renter (per SPM methodology).
-_TENURE_SCALE: dict[Tenure, float] = {
+# Housing-share of the SPM threshold by tenure (Burns & Fox 2021 SEHSD WP21-17,
+# Table 1; values used by Census from TY2019 onward). The non-housing share
+# (food, clothing, utilities, etc.) is constant across geographies — only
+# the housing portion is geographically adjusted.
+_HOUSING_SHARE_BY_TENURE: dict[Tenure, float] = {
+    "renter": 0.442,
+    "owner_with_mortgage": 0.440,
+    "owner_no_mortgage": 0.333,
+}
+
+# Tenure scaling — the threshold base is published for renters; owners with
+# no mortgage get a lower base because their housing portion excludes
+# mortgage P&I. Renwick 2017 reports ~84% of renter housing portion.
+_TENURE_BASE_SCALE: dict[Tenure, float] = {
     "renter": 1.00,
     "owner_with_mortgage": 1.00,
     "owner_no_mortgage": 0.84,
 }
 
 
-def _equivalence_scale(n_adults: int, n_children: int) -> float:
-    """SPM three-parameter equivalence scale relative to (2 adults, 2 children).
+def _hawaii_geo_multiplier(tenure: Tenure) -> float:
+    """Effective Honolulu MSA threshold multiplier for a given tenure.
 
-    Approximation: ``(adults + 0.7 * children) ** 0.7``, normalized.
-    The published Census formula has minor differences for single-parent
-    households; this approximation is within ~3% across the range we care
-    about. Phase 4+ should switch to the exact Census P60-Appendix-A
-    scale when promoting to production.
+    Census applies the Median Rent Index only to the housing portion of
+    the SPM threshold. The effective multiplier on the full threshold is::
+
+        effective_multiplier = (1 - housing_share) + housing_share * MRI
+
+    For Honolulu (MRI ≈ 1.62):
+      * renter:              1 + 0.442 * 0.62 ≈ 1.274
+      * owner_with_mortgage: 1 + 0.440 * 0.62 ≈ 1.273
+      * owner_no_mortgage:   1 + 0.333 * 0.62 ≈ 1.207
+
+    The previous implementation used a flat 1.18 multiplier across tenures,
+    which underestimated thresholds for Hawaii renters (true effective
+    ratio ~1.27) and overestimated for owners-no-mortgage when combined
+    with the separate _TENURE_BASE_SCALE of 0.84 (yielding 0.99 net).
+    """
+    share = _HOUSING_SHARE_BY_TENURE.get(tenure, _HOUSING_SHARE_BY_TENURE["renter"])
+    return (1.0 - share) + share * _HAWAII_MRI
+
+
+def _equivalence_scale(n_adults: int, n_children: int) -> float:
+    """SPM three-parameter (Betson 1996) equivalence scale, normalized to (2A, 2C).
+
+    Census SPM Technical Documentation §4.2.1:
+
+      * One- and two-adult units (no children): scale = (adults)^0.5
+      * Single parents (1 adult + N children):
+            scale = (1 + 0.8 + 0.5*(N-1))^0.7   for N >= 1
+      * All other families with children:
+            scale = (adults + 0.5*children)^0.7
+
+    The reference family (2 adults + 2 children) has raw scale
+    ``(2 + 0.5*2)^0.7 = 3^0.7 ≈ 2.158``; returned scale is normalized
+    by that reference so the 2A2C family always evaluates to 1.0.
     """
     if n_adults < 1:
         raise ConfigError("n_adults must be >= 1")
     if n_children < 0:
         raise ConfigError("n_children must be >= 0")
-    raw = (n_adults + 0.7 * n_children) ** 0.7
-    base = (2 + 0.7 * 2) ** 0.7
+
+    if n_children == 0:
+        # One- and two-adult units use the Betson "adults only" scale.
+        raw = float(n_adults) ** 0.5
+    elif n_adults == 1:
+        # Single-parent families: first child weighted 0.8, others 0.5.
+        raw = (1.0 + 0.8 + 0.5 * (n_children - 1)) ** 0.7
+    else:
+        # All other families with children.
+        raw = (n_adults + 0.5 * n_children) ** 0.7
+
+    base = (2 + 0.5 * 2) ** 0.7  # = 3 ** 0.7
     return raw / base
 
 
@@ -97,7 +148,7 @@ def threshold_for_units(
     out = np.zeros(len(units))
     for i in range(len(units)):
         ten = tenures[i]
-        if ten not in _TENURE_SCALE:
+        if ten not in _TENURE_BASE_SCALE:
             ten = "renter"
         out[i] = hawaii_spm_threshold(
             year,
@@ -136,16 +187,19 @@ def hawaii_spm_threshold(
             f"No Hawaii SPM threshold available for year={year}",
             available=sorted(_BASE_THRESHOLD_2A2C_RENTER),
         )
-    if tenure not in _TENURE_SCALE:
+    if tenure not in _TENURE_BASE_SCALE:
         raise ConfigError(
             f"Unknown tenure={tenure!r}",
-            available=sorted(_TENURE_SCALE),
+            available=sorted(_TENURE_BASE_SCALE),
         )
     base = _BASE_THRESHOLD_2A2C_RENTER[year]
+    # Census applies the geographic multiplier per-tenure (housing-share
+    # weighted) — not the flat constant the previous implementation used.
+    geo_adj = _hawaii_geo_multiplier(tenure)
     return float(
         base
-        * _HAWAII_GEO_ADJ
-        * _TENURE_SCALE[tenure]
+        * geo_adj
+        * _TENURE_BASE_SCALE[tenure]
         * _equivalence_scale(n_adults, n_children)
     )
 

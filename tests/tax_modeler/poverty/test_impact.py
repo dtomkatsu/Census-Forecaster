@@ -577,6 +577,45 @@ def test_work_expense_proportional_to_earners():
     assert couples > singles
 
 
+def test_childcare_expense_cap_mfj_single_earner():
+    """MFJ with non-working spouse → cap = 0 → childcare_expense_amount = 0.
+
+    Census SPM disallows childcare deduction when one parent could have
+    provided care. Without the cap, the donor-imputed amount would
+    over-subtract resources for single-earner MFJ families.
+    """
+    from tax_modeler.benefits.childcare_expense import (
+        compute_childcare_expense_for_units,
+    )
+
+    units = _make_units([
+        {"filing_status": "married_filing_jointly", "num_dependents": 2,
+         "num_qualifying_children": 2, "total_cash_income": 40_000.0,
+         "earned_income": 40_000.0, "income": 40_000.0,
+         "primary_hours_worked": 40.0, "secondary_hours_worked": 0.0,
+         "weight": 100.0},
+    ])
+    out = compute_childcare_expense_for_units(units)
+    assert out.iloc[0]["childcare_expense_amount"] == 0.0
+
+
+def test_childcare_expense_cap_single_parent_limited_by_earnings():
+    """Single parent's childcare deduction ≤ their own earnings."""
+    from tax_modeler.benefits.childcare_expense import (
+        compute_childcare_expense_for_units,
+    )
+
+    units = _make_units([
+        {"filing_status": "head_of_household", "num_dependents": 1,
+         "num_qualifying_children": 1, "total_cash_income": 1_000.0,
+         "earned_income": 1_000.0, "income": 1_000.0,
+         "primary_hours_worked": 10.0, "secondary_hours_worked": 0.0,
+         "weight": 100.0},
+    ])
+    out = compute_childcare_expense_for_units(units)
+    assert out.iloc[0]["childcare_expense_amount"] <= 1_000.0 + 1e-9
+
+
 def test_only_workers_have_work_expense():
     """Filers with zero earned income must get zero work expense (SPM convention)."""
     from tax_modeler.benefits.work_expense import compute_work_expense_for_units
@@ -606,9 +645,9 @@ def test_pooling_reduces_persons_in_poverty():
     from tax_modeler.units.spm_unit import build_spm_units
 
     # Both are single/HOH with kids in the same household (hh_id=99).
-    # Individually each is below the HI SPM threshold (~$25k for 1A1C
-    # renter). Pooled (2A2C, threshold ~$40.6k renter HI 2024), combined
-    # income $52k clears the threshold after fed + payroll tax.
+    # Individually each is below the HI 1A1C SPM threshold (~$30.7k for
+    # renter, TY2024). Pooled (2A2C, threshold ~$43.8k renter HI 2024),
+    # combined income $58k clears the threshold after fed + payroll tax.
     units = _make_units([
         {"hh_id": "99", "filing_status": "head_of_household",
          "num_dependents": 1, "num_qualifying_children": 1,
@@ -617,8 +656,8 @@ def test_pooling_reduces_persons_in_poverty():
          "primary_agep": 35, "tenure": "renter"},
         {"hh_id": "99", "filing_status": "head_of_household",
          "num_dependents": 1, "num_qualifying_children": 1,
-         "total_cash_income": 30_000.0, "earned_income": 30_000.0,
-         "income": 30_000.0, "weight": 100.0,
+         "total_cash_income": 36_000.0, "earned_income": 36_000.0,
+         "income": 36_000.0, "weight": 100.0,
          "primary_agep": 36, "tenure": "renter"},
     ])
     unpooled_persons_poor = compute_poverty_impact(

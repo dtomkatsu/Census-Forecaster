@@ -114,17 +114,34 @@ def _load_units(pums_data_dir: Optional[Path], use_fixture: bool) -> pd.DataFram
 
 
 def _build_units_for_tax_year(units: pd.DataFrame, tax_year: int, project: bool) -> pd.DataFrame:
-    """Compute base tax + HI EITC for a given year."""
+    """Compute base tax (federal CTC/EITC) for a given year.
+
+    HI EITC is intentionally NOT computed here — it is computed after the
+    IRS-anchored credit take-up imputation, so that filers who do not take
+    up the federal EITC also have zero HI EITC (HI EITC is a fixed
+    percentage of the federal credit).
+    """
     from tax_modeler.pipeline import compute_base_tax
-    from tax_modeler.credits.hi_eitc import compute_hi_eitc_for_units
 
     if project:
         from tax_modeler.projection.tax_unit_projector import project_tax_units_forward
         out = project_tax_units_forward(units, target_year=tax_year)
     else:
         out = compute_base_tax(units, tax_year=tax_year)
-    out = compute_hi_eitc_for_units(out)
     return out
+
+
+def _apply_hi_eitc(units: pd.DataFrame, *, tax_year: int) -> pd.DataFrame:
+    """Compute HI state EITC after federal-credit take-up has been applied.
+
+    HI EITC is a fixed percentage of the federal EITC. Computing it before
+    take-up would attach the full state credit to filers who never claimed
+    the federal credit — overstating HI EITC outlays and the
+    persons-lifted-by-HI-EITC scenario count. Calling this after
+    _apply_credit_takeup ensures non-claimants receive $0 HI EITC.
+    """
+    from tax_modeler.credits.hi_eitc import compute_hi_eitc_for_units
+    return compute_hi_eitc_for_units(units, tax_year=tax_year)
 
 
 def _apply_snap(units: pd.DataFrame, *, tax_year: int) -> pd.DataFrame:
@@ -138,12 +155,16 @@ def _apply_snap(units: pd.DataFrame, *, tax_year: int) -> pd.DataFrame:
     try:
         target = AdminCaseload.load().target("snap", tax_year)
     except Exception as exc:
+        # Fall back to the most-recent available SNAP anchor (typically
+        # FY2024, post-COVID emergency-allotments). Skipping take-up
+        # entirely leaves SNAP at simulated eligibility, biasing the
+        # baseline rate downward — the fallback is preferable.
         LOG.warning(
             "SNAP admin caseload target unavailable for year=%d (%s); "
-            "skipping take-up calibration. SNAP amounts reflect simulated "
-            "eligibility only.", tax_year, exc,
+            "falling back to TY2024 USDA-FNS anchor for the take-up step.",
+            tax_year, exc,
         )
-        return out
+        target = AdminCaseload.load().target("snap", 2024)
     out = impute_takeup(
         out, target=target, benefit_col="snap_amount", score_col="income",
         ascending=True, weight_col="weight",
@@ -195,6 +216,52 @@ def _apply_childcare_subsidy(units: pd.DataFrame, *, tax_year: int) -> pd.DataFr
     out = impute_takeup(
         out, target=target, benefit_col="childcare_amount",
         score_col="income", ascending=True, weight_col="weight",
+    )
+    return out
+
+
+def _apply_wic(units: pd.DataFrame, *, tax_year: int) -> pd.DataFrame:
+    """Impute WIC food-package value, then take-up-impute against USDA-FNS anchor."""
+    from tax_modeler.benefits.wic import compute_wic_for_units
+    from tax_modeler.calibration.admin_caseload import AdminCaseload
+    from tax_modeler.calibration.takeup_imputation import impute_takeup
+
+    LOG.info("Computing WIC benefits + take-up imputation for TY %d", tax_year)
+    out = compute_wic_for_units(units)
+    try:
+        target = AdminCaseload.load().target("wic", tax_year)
+    except Exception as exc:
+        LOG.warning(
+            "WIC admin caseload target unavailable for year=%d (%s); falling "
+            "back to TY2022 USDA-FNS anchor for the take-up step.", tax_year, exc,
+        )
+        target = AdminCaseload.load().target("wic", 2022)
+    out = impute_takeup(
+        out, target=target, benefit_col="wic_amount", score_col="income",
+        ascending=True, weight_col="weight",
+    )
+    return out
+
+
+def _apply_liheap(units: pd.DataFrame, *, tax_year: int) -> pd.DataFrame:
+    """Impute LIHEAP cooling assistance, then take-up-impute against HI DHS anchor."""
+    from tax_modeler.benefits.liheap import compute_liheap_for_units
+    from tax_modeler.calibration.admin_caseload import AdminCaseload
+    from tax_modeler.calibration.takeup_imputation import impute_takeup
+
+    LOG.info("Computing LIHEAP benefits + take-up imputation for TY %d", tax_year)
+    out = compute_liheap_for_units(units)
+    try:
+        target = AdminCaseload.load().target("liheap", tax_year)
+    except Exception as exc:
+        LOG.warning(
+            "LIHEAP admin caseload target unavailable for year=%d (%s); "
+            "falling back to TY2022 HI DHS anchor.", tax_year, exc,
+        )
+        target = AdminCaseload.load().target("liheap", 2022)
+    out = impute_takeup(
+        out, target=target, benefit_col="liheap_amount", score_col="income",
+        ascending=True, weight_col="weight",
     )
     return out
 
@@ -288,6 +355,23 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                         "and other work expenses from CPS ASEC Hawaii donors. "
                         "Use --no-apply-spm-expenses to disable.")
     p.add_argument("--no-apply-spm-expenses", dest="apply_spm_expenses",
+                   action="store_false", help=argparse.SUPPRESS)
+    p.add_argument("--apply-wic", action="store_true", default=True,
+                   help="(Default ON.) Impute WIC food-package value via "
+                        "USDA-FNS-anchored take-up. Use --no-apply-wic to disable.")
+    p.add_argument("--no-apply-wic", dest="apply_wic", action="store_false",
+                   help=argparse.SUPPRESS)
+    p.add_argument("--apply-liheap", action="store_true", default=True,
+                   help="(Default ON.) Impute LIHEAP cooling-assistance value "
+                        "via HI DHS-anchored take-up. Use --no-apply-liheap to disable.")
+    p.add_argument("--no-apply-liheap", dest="apply_liheap", action="store_false",
+                   help=argparse.SUPPRESS)
+    p.add_argument("--apply-school-lunch", action="store_true", default=True,
+                   help="(Default ON.) Impute free/reduced-price NSLP school-lunch "
+                        "value (USDA Hawaii free-meal reimbursement × 180 school "
+                        "days × eligible children). Use --no-apply-school-lunch "
+                        "to disable.")
+    p.add_argument("--no-apply-school-lunch", dest="apply_school_lunch",
                    action="store_false", help=argparse.SUPPRESS)
     p.add_argument("--pool-spm-units", action="store_true", default=False,
                    help="(Default OFF.) Pool cohabiting unmarried partners + "
@@ -390,12 +474,26 @@ def main(argv: Optional[list] = None) -> int:
     if args.apply_credit_takeup:
         units = _apply_credit_takeup(units, tax_year=args.tax_year)
 
+    # 3b. HI state EITC — computed *after* federal take-up so that
+    #     non-claimants of the federal credit also receive $0 HI EITC.
+    #     (HI EITC is a fixed percentage of the federal credit.)
+    units = _apply_hi_eitc(units, tax_year=args.tax_year)
+
     # 4. ARPA CTC counterfactual column (required for expanded_ctc_2021 scenario).
     units = _apply_arpa_ctc(units)
 
     # 5. SNAP wiring (default ON for poverty-impact reports).
     if args.apply_snap:
         units = _apply_snap(units, tax_year=args.tax_year)
+
+    # 5b. Federal income tax liability — replaces the flat-10% fallback in
+    #     compute_spm_resources. Bracket-based estimator gates on federal
+    #     standard deduction so low-income filers correctly owe $0 federal
+    #     tax. Without this fix, a flat 10% × money_income subtracted phantom
+    #     tax for filers below the SD, biasing the SPM rate several pp high.
+    from tax_modeler.liability.federal import compute_federal_income_tax_for_units
+    LOG.info("Computing federal income tax liability for TY %d", args.tax_year)
+    units = compute_federal_income_tax_for_units(units, tax_year=args.tax_year)
 
     # 6. MOOP imputation from CPS ASEC Hawaii donors. Required to bring the
     #    baseline SPM rate in line with Census-published Hawaii SPM (~10-12%);
@@ -411,6 +509,22 @@ def main(argv: Optional[list] = None) -> int:
     # 6b. Childcare subsidy (CCSP) — HI DHS-anchored take-up.
     if args.apply_childcare_subsidy:
         units = _apply_childcare_subsidy(units, tax_year=args.tax_year)
+
+    # 6b1. WIC food-package value — USDA-FNS-anchored take-up.
+    if args.apply_wic:
+        units = _apply_wic(units, tax_year=args.tax_year)
+
+    # 6b2. LIHEAP cooling-assistance — HI DHS-anchored take-up.
+    if args.apply_liheap:
+        units = _apply_liheap(units, tax_year=args.tax_year)
+
+    # 6b3. NSLP free/reduced-price school lunch — Census SPM treats this as a
+    #      cash-equivalent resource (USDA federal reimbursement × school days
+    #      × eligible children).
+    if args.apply_school_lunch:
+        from tax_modeler.benefits.school_lunch import compute_school_lunch_for_units
+        LOG.info("Computing NSLP free/reduced school-lunch values for TY %d", args.tax_year)
+        units = compute_school_lunch_for_units(units, tax_year=args.tax_year)
 
     # 6c. SPM work-side expenses: work-related childcare + other work expenses,
     #     imputed from CPS ASEC Hawaii donors. SPM subtracts both from resources.

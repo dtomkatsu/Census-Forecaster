@@ -52,7 +52,7 @@ def compute_spm_resources(
     state_tax_col: str = "hi_tax_liability",
     eitc_col: str = "eitc_amount",
     refundable_ctc_col: str = "ctc_refundable",
-    federal_tax_col: Optional[str] = None,
+    federal_tax_col: Optional[str] = "federal_tax_liability",
     payroll_tax_col: Optional[str] = None,
     snap_col: Optional[str] = "snap_amount",
     ssi_col: Optional[str] = "ssi_amount",
@@ -62,6 +62,7 @@ def compute_spm_resources(
     housing_subsidy_col: Optional[str] = "housing_subsidy_amount",
     liheap_col: Optional[str] = "liheap_amount",
     childcare_subsidy_col: Optional[str] = "childcare_amount",
+    school_lunch_col: Optional[str] = "school_lunch_amount",
     hi_eitc_col: Optional[str] = "hi_eitc_amount",
     hi_food_excise_col: Optional[str] = "hi_food_excise_amount",
     hi_renters_col: Optional[str] = "hi_renters_amount",
@@ -199,6 +200,11 @@ def compute_spm_resources(
         used.append(childcare_subsidy_col)
     else:
         zeroed.append("childcare_subsidy")
+    school_lunch = _col(school_lunch_col)
+    if school_lunch_col and school_lunch_col in df.columns:
+        used.append(school_lunch_col)
+    else:
+        zeroed.append("school_lunch")
     hi_eitc = _col(hi_eitc_col)
     if hi_eitc_col and hi_eitc_col in df.columns:
         used.append(hi_eitc_col)
@@ -240,6 +246,7 @@ def compute_spm_resources(
         + snap + ssi + ssi_hi
         + aca_ptc + wic
         + housing + liheap + childcare_subsidy
+        + school_lunch
         + hi_eitc + hi_food_excise + hi_renters
         - state_tax
         - federal_tax
