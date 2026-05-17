@@ -373,6 +373,11 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                         "to disable.")
     p.add_argument("--no-apply-school-lunch", dest="apply_school_lunch",
                    action="store_false", help=argparse.SUPPRESS)
+    p.add_argument("--apply-rxkids", action="store_true", default=False,
+                   help="(Default OFF; this is a hypothetical program.) "
+                        "Compute the modeled Hawaii RxKids cash prescription "
+                        "amount per filing unit. Requires the 'rxkids_hi' "
+                        "scenario to surface poverty-lift estimates.")
     p.add_argument("--pool-spm-units", action="store_true", default=False,
                    help="(Default OFF.) Pool cohabiting unmarried partners + "
                         "shared children into SPM units before threshold "
@@ -426,6 +431,7 @@ def _print_summary(*, tax_year: int, by_state: pd.DataFrame, scenarios: tuple[st
         "expanded_ctc_2021": "Additional lift if ARPA-style CTC restored",
         "hi_eitc_100pct":    "Additional lift if HI EITC → 100% of federal",
         "hi_ctc_650":        "Additional lift if HI enacts $650/child CTC",
+        "rxkids_hi":         "Additional lift if HI enacts RxKids cash program",
     }
     for scn in scenarios:
         col = f"persons_lifted_{scn}"
@@ -536,6 +542,13 @@ def main(argv: Optional[list] = None) -> int:
         units = compute_childcare_expense_for_units(units)
         units = compute_work_expense_for_units(units)
 
+    # 6c2. RxKids Hawaiʻi (hypothetical program). Adds rxkids_amount column
+    #      used by the rxkids_hi expansion scenario in compute_poverty_impact.
+    if args.apply_rxkids:
+        from tax_modeler.programs import compute_rxkids_for_units
+        LOG.info("Computing RxKids Hawaiʻi benefit amounts for TY %d", args.tax_year)
+        units = compute_rxkids_for_units(units, tax_year=args.tax_year)
+
     # 6d. SPM-unit pooling: merge cohabiting unmarried partners + shared kids
     #     into a single SPM unit so one threshold is applied per real household.
     if args.pool_spm_units:
@@ -579,7 +592,8 @@ def main(argv: Optional[list] = None) -> int:
     result.by_county.to_csv(args.out / "by_county.csv", index=False)
     result.by_house_district.to_csv(args.out / "by_house_district.csv", index=False)
     result.by_senate_district.to_csv(args.out / "by_senate_district.csv", index=False)
-    LOG.info("Wrote 4 poverty-impact CSVs to %s", args.out)
+    result.by_household_type.to_csv(args.out / "by_household_type.csv", index=False)
+    LOG.info("Wrote 5 poverty-impact CSVs to %s", args.out)
 
     # 10. Summary block.
     _print_summary(tax_year=args.tax_year, by_state=result.by_state, scenarios=result.scenarios)
