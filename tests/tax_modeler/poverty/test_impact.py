@@ -961,8 +961,9 @@ def test_pooling_magnitude_on_stylized_frame():
     """On a 50-pair stylized 2A2C frame, pooling reduces persons_in_poverty by ≥5%.
 
     Each pair is a household of two cohabiting filers each with one kid,
-    each individually below the renter HI SPM threshold ($25k 1A1C) but
-    jointly above the pooled 2A2C renter threshold (~$40.6k). The Tier 3
+    each individually below the renter HI SPM threshold (~$30.6k 1A1C
+    after PR #8's per-tenure Honolulu MRI + Betson equiv scale) but
+    jointly above the pooled 2A2C renter threshold (~$43.8k). The Tier 3
     validation criterion is a 5-25% reduction; on this pure-pool fixture
     the reduction is large (close to 100% of the would-be-poor pairs lift
     out) because every row is a pooling candidate. On real Hawaii PUMS
@@ -976,15 +977,15 @@ def test_pooling_magnitude_on_stylized_frame():
         rows.append({
             "hh_id": f"hh_{i}", "filing_status": "head_of_household",
             "num_dependents": 1, "num_qualifying_children": 1,
-            "total_cash_income": 22_000.0, "earned_income": 22_000.0,
-            "income": 22_000.0, "weight": 100.0,
+            "total_cash_income": 25_000.0, "earned_income": 25_000.0,
+            "income": 25_000.0, "weight": 100.0,
             "primary_agep": 32 + (i % 5), "tenure": "renter",
         })
         rows.append({
             "hh_id": f"hh_{i}", "filing_status": "head_of_household",
             "num_dependents": 1, "num_qualifying_children": 1,
-            "total_cash_income": 30_000.0, "earned_income": 30_000.0,
-            "income": 30_000.0, "weight": 100.0,
+            "total_cash_income": 50_000.0, "earned_income": 50_000.0,
+            "income": 50_000.0, "weight": 100.0,
             "primary_agep": 34 + (i % 5), "tenure": "renter",
         })
     units = _make_units(rows)
