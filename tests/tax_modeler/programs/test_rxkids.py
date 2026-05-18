@@ -55,16 +55,17 @@ def _make_units(rows: list[dict]) -> pd.DataFrame:
 
 
 def test_rxkids_zero_for_high_income():
-    """A unit with income > 138% FPL → rxkids_amount == 0."""
-    # HI 2024 FPL(3) = $28,590. 138% × $28,590 ≈ $39,454. $100k clears it.
+    """A unit with income > income_fpl_cap × FPL → rxkids_amount == 0."""
+    # Universal default cap = 10.0 × FPL. HI 2024 FPL(3) = $28,590.
+    # 10 × $28,590 = $285,900. Use $400k to safely clear universal cap.
     units = _make_units([
         {
             "filing_status": "head_of_household",
             "num_dependents": 2,
             "num_qualifying_children": 2,
-            "income": 100_000.0,
-            "total_cash_income": 100_000.0,
-            "earned_income": 100_000.0,
+            "income": 400_000.0,
+            "total_cash_income": 400_000.0,
+            "earned_income": 400_000.0,
         },
     ])
     out = compute_rxkids_for_units(units, tax_year=2024)
@@ -136,21 +137,21 @@ def test_rxkids_takeup_rate_monotone():
 
 def test_rxkids_hoh_poverty_rate_lower_with_program():
     """HoH baseline poverty rate decreases when --apply-rxkids ON."""
-    # Build a cohort of HoH filers a hair below the 2024 HI MFJ/HoH threshold
-    # so a modest rxkids amount can lift them above it.
-    # HI 2024 SPM thresholds use the equiv scale: a single adult + 2 kids
-    # carries a renter threshold around $25k-$30k. Set incomes ~$24k.
+    # Build a cohort of HoH filers near the 2024 HI renter SPM threshold.
+    # 1A+2C Honolulu renter threshold ≈ $36.4k. Incomes ~$28k-$33k so SPM
+    # resources + credits sit just below threshold.
     rng = np.random.default_rng(0)
     rows = []
     for _ in range(30):
         n_kids = int(rng.integers(2, 4))  # 2-3 kids
+        income = float(rng.uniform(28_000, 33_000))
         rows.append({
             "filing_status": "head_of_household",
             "num_dependents": n_kids,
             "num_qualifying_children": n_kids,
-            "income": float(rng.uniform(20_000, 24_000)),
-            "total_cash_income": float(rng.uniform(20_000, 24_000)),
-            "earned_income": float(rng.uniform(20_000, 24_000)),
+            "income": income,
+            "total_cash_income": income,
+            "earned_income": income,
             "weight": 100.0,
             "eitc_amount": float(rng.uniform(2_000, 5_000)),
             "ctc_refundable": n_kids * 1_500.0,
@@ -182,29 +183,32 @@ def test_rxkids_hoh_poverty_rate_lower_with_program():
 
 
 def test_rxkids_lift_positive_for_synthetic_eligible_cohort():
-    """At least some persons lifted for any synthetic frame with
-    Medicaid-eligible HoH families with kids.
+    """At least some persons lifted for HoH families near the poverty threshold.
+
+    TY2024 SPM threshold for 1A+2C Honolulu renter ≈ $36.4k. Units are set
+    near the threshold so an $8k-$12k rxkids payment bridges the gap.
     """
     rng = np.random.default_rng(1)
     rows = []
     for _ in range(30):
-        n_kids = int(rng.integers(1, 4))
+        n_kids = int(rng.integers(1, 3))  # 1-2 kids
+        income = float(rng.uniform(25_000, 32_000))
         rows.append({
             "filing_status": "head_of_household",
             "num_dependents": n_kids,
             "num_qualifying_children": n_kids,
-            "income": float(rng.uniform(8_000, 18_000)),
-            "total_cash_income": float(rng.uniform(8_000, 18_000)),
-            "earned_income": float(rng.uniform(8_000, 18_000)),
+            "income": income,
+            "total_cash_income": income,
+            "earned_income": income,
             "weight": 100.0,
-            "eitc_amount": float(rng.uniform(1_500, 4_000)),
+            "eitc_amount": float(rng.uniform(1_500, 3_000)),
             "ctc_refundable": n_kids * 1_500.0,
             "ctc_total": n_kids * 2_000.0,
-            "hi_eitc_amount": float(rng.uniform(500, 1_500)),
+            "hi_eitc_amount": float(rng.uniform(500, 1_200)),
         })
     units = _make_units(rows)
-    # Use a generous postnatal monthly so the program clears at least one
-    # filer above threshold on this small synthetic frame.
+    # postnatal $1k/mo × 6 mo × all-children age-share = $6k–$12k per unit,
+    # enough to bridge the remaining gap for units near the threshold.
     units = compute_rxkids_for_units(
         units, tax_year=2024,
         params=RxKidsHIParams(
@@ -261,8 +265,13 @@ def test_rxkids_takeup_out_of_range_raises():
 def test_rxkids_defaults_match_hawaii_factory():
     """hawaii_rxkids_parameters() returns the canonical default set."""
     p = hawaii_rxkids_parameters()
-    assert p.income_fpl_cap == pytest.approx(1.38)
+    # Universal unconditional variant: $1,500 one-time prenatal,
+    # $500/mo × 6 months postnatal, no income test.
+    assert p.prenatal_monthly == pytest.approx(1500.0)
+    assert p.prenatal_months == 1
+    assert p.postnatal_monthly_per_child == pytest.approx(500.0)
+    assert p.postnatal_months == 6
+    assert p.postnatal_age_cutoff == 1
+    assert p.income_fpl_cap == pytest.approx(10.0)
     assert p.takeup_rate == pytest.approx(0.80)
     assert p.is_taxable is False
-    assert p.prenatal_months == 9
-    assert p.postnatal_age_cutoff == 5

@@ -89,10 +89,12 @@ Caveats
   credit), the resource-accounting treatment would need to change.
 
 Reform DSL hooks (``Reform.benefit_overrides["rxkids"]``)
-    * ``prenatal_monthly``                $-per-month override
+    * ``prenatal_monthly``                $-per-payment override (one-time)
+    * ``prenatal_months``                 number of prenatal payments (1 = one-time)
     * ``postnatal_monthly_per_child``     $-per-month-per-child override
-    * ``income_fpl_cap``                  FPL multiplier override
-    * ``takeup_rate``                     take-up multiplier override
+    * ``postnatal_months``                number of postnatal monthly payments
+    * ``income_fpl_cap``                  FPL multiplier override (10.0 = universal)
+    * ``takeup_rate``                     take-up rate override
 
 See ``RXKIDS_METHODOLOGY.md`` at the repo root for full sourcing of
 parameter values and the Hawaii calibration.
@@ -110,58 +112,65 @@ from tax_modeler.errors import ConfigError
 from ..benefits._fpl import hawaii_fpl
 
 
-# Hawaii Medicaid-financed births per Hawaii Medicaid-eligible adult woman.
-# 6,200 Medicaid births (40% × 15,535 CDC NVSR 73-02 total) ÷ ~50,000 Medicaid
-# adult women filing units (HI QUEST + ACS demographics) ≈ 0.124.
-# Adjust upward as the modeled eligibility universe contracts.
-_DEFAULT_PREGNANCY_PROBABILITY = 0.12
+# All-Hawaii birth rate among single/HoH filers with no dependents.
+# 15,535 total births (CDC NVSR 73-02) ÷ ~155,000 single+HoH filers with
+# no current dependents (ACS PUMS Hawaii) × 50% women-share ≈ 0.10.
+# Used for the universal (unconditional) variant where all expectant
+# mothers are eligible regardless of income.
+_DEFAULT_PREGNANCY_PROBABILITY = 0.10
 
-# Share of dependents that are children 0-5 in Hawaii Medicaid-eligible
-# households. Derived from ACS PUMS 2018-2022 Hawaii — among all dependents
-# 0-17 in households below 200% FPL, ~20% are 0-5 (6 single-year ages out
-# of 18 weighted by Hawaii age structure). Use 0.20 as the modeling default.
-_DEFAULT_CHILD_UNDER_AGE_SHARE = 0.20
+# Share of dependents who are infants under 6 months old.
+# In a cross-sectional ACS year, children under 6 months ≈ half the
+# annual birth cohort / total dependents 0-17.
+# Hawaii births 15,535 → half-year cohort ≈ 7,768.
+# ACS PUMS Hawaii dependents 0-17 ≈ 233,000 (from 5-yr sample).
+# Share ≈ 7,768 / 233,000 ≈ 0.033.
+_DEFAULT_CHILD_UNDER_AGE_SHARE = 0.033
 
 # Single / head-of-household women aged 18-44 are the prenatal-eligible
 # universe. Conservatively assume ~50% of these filers are women (PUMS
-# tax-unit frame doesn't carry primary-filer sex). For the Medicaid
-# pregnancy probability calibration the 0.50 women-share is already baked
-# in, so do not double-discount.
+# tax-unit frame doesn't carry primary-filer sex). The 0.50 women-share
+# is already baked into _DEFAULT_PREGNANCY_PROBABILITY above.
 
 
 @dataclass(frozen=True)
 class RxKidsHIParams:
     """Parameters for the Hawaii RxKids equivalent.
 
-    Defaults model a Medicaid-targeted variant (138% FPL cap, $500/mo
-    prenatal × 9 months, $125/mo postnatal per child 0-5 × 12 months).
-    See module docstring for the universal Flint-equivalent override
-    recipe.
+    Defaults model the unconditional universal variant:
+      * Prenatal: one-time $1,500 payment per pregnancy.
+      * Postnatal: $500/month for 6 months beginning at birth ($3,000 total
+        per child), regardless of income.
+
+    To model a Medicaid-targeted variant, set ``income_fpl_cap=1.38``.
     """
 
-    prenatal_monthly: float = 500.0
+    prenatal_monthly: float = 1500.0
     """Dollar payment per prenatal month, per pregnant filer."""
 
-    postnatal_monthly_per_child: float = 125.0
+    postnatal_monthly_per_child: float = 500.0
     """Dollar payment per month, per child under ``postnatal_age_cutoff``."""
 
-    prenatal_months: int = 9
-    """Number of months of prenatal payments per pregnancy."""
+    prenatal_months: int = 1
+    """Number of months of prenatal payments per pregnancy (1 = one-time)."""
 
-    postnatal_age_cutoff: int = 5
-    """Children under this age (inclusive) receive postnatal payments.
+    postnatal_months: int = 6
+    """Number of months of postnatal payments per eligible child."""
 
-    Flint default = 1 (perinatal-only). Hawaii spec defaults to 5 to
-    span the full ARPA-CTC equivalent age range when paired with
-    HI CTC scenarios.
+    postnatal_age_cutoff: int = 1
+    """Children under this age (years) receive postnatal payments.
+
+    Default 1 = infants in their first year of life, approximating the
+    0–6-month window. PUMS does not carry sub-year ages, so age=0 is
+    the closest proxy.
     """
 
-    income_fpl_cap: float = 1.38
+    income_fpl_cap: float = 10.0
     """Income / FPL ratio at or below which a unit qualifies.
 
-    Default 1.38 = Hawaii Medicaid (QUEST) adult expansion threshold.
-    Set to a high number (e.g. 10.0) to model the universal Flint
-    design.
+    Default 10.0 = effectively universal (unconditional).
+    Set to 1.38 to model the Hawaii Medicaid (QUEST) adult expansion
+    threshold.
     """
 
     takeup_rate: float = 0.80
@@ -319,7 +328,7 @@ def compute_rxkids_for_units(
     postnatal_amount = np.where(
         postnatal_eligible,
         n_kids_under_cutoff
-        * p.postnatal_monthly_per_child * 12
+        * p.postnatal_monthly_per_child * p.postnatal_months
         * p.takeup_rate,
         0.0,
     )
