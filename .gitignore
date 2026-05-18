@@ -8,6 +8,7 @@ __pycache__/
 htmlcov/
 build/
 dist/
+!dashboard/dist/
 .tox/
 
 # Virtual envs
