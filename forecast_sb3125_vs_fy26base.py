@@ -1,29 +1,34 @@
-"""SB 3125 CD2 vs TY2026-frozen baseline — ITEP-comparable distributional analysis.
+"""SB 3125 vs TY2026-frozen baseline — ITEP-comparable distributional analysis.
+
+Usage:
+  python forecast_sb3125_vs_fy26base.py --cd 1   # SB 3125 CD1 (default)
+  python forecast_sb3125_vs_fy26base.py --cd 2   # SB 3125 CD2
+
+Replaces the two separate scripts:
+  forecast_sb3125_cd1_vs_fy26base.py  (identical except TaxSystemRegistry call)
+  forecast_sb3125_cd2_vs_fy26base.py  (identical except TaxSystemRegistry call)
 
 Comparison frame:
   Baseline: Act 46 law frozen at TY2026 (TY2025 brackets + TY2026 standard
-            deductions held constant for all projection years). This is the
-            same frozen-law config as HB 2306 original, used here as a
-            neutral baseline.
-  Bill:     SB 3125 CD2 full implementation (year-specific CD2 brackets +
-            Act 46 standard-deduction phase-in continuing as enacted).
+            deductions held constant). Same frozen-law config as HB 2306 original.
+  Bill:     SB 3125 CD1 or CD2 full implementation.
 
-Delta = CD2 full - TY2026 frozen law.
+Delta = CD{N} full - TY2026 frozen law.
 
-This mirrors ITEP's methodology (they compare to TY2026 law) but with our
-microsim's income distribution. Results are decomposed into two components:
-  bracket_delta: (CD2 brackets + frozen 2026 SDs) - (frozen 2026 brackets + frozen 2026 SDs)
-                 = pure bracket-structure effect
-  sd_delta:      (frozen 2026 brackets + Act46 SDs) - (frozen 2026 brackets + frozen 2026 SDs)
-                 = Act 46 SD-expansion effect (ongoing law, not the bill)
+Decomposed into:
+  bracket_delta: (CD{N} brackets + frozen 2026 SDs) - (frozen 2026 brackets + frozen 2026 SDs)
+  sd_delta:      Act 46 SD-expansion effect (ongoing current law, not the bill)
   total_delta:   bracket_delta + sd_delta (= ITEP's headline number)
 
+Requires calibrated_base.pkl (run forecast_sb3125_enhanced.py --cd {N} first).
+
 Outputs:
-  /tmp/cd2_vs_fy26base_bracket_mid_2027_2031.csv
-  /tmp/cd2_vs_fy26base_quintile_mid_2027_2031.csv
+  /tmp/cd{N}_vs_fy26base_bracket_mid_2027_2031.csv
+  /tmp/cd{N}_vs_fy26base_quintile_mid_2027_2031.csv
 """
 from __future__ import annotations
 
+import argparse
 import logging
 import sys
 import traceback
@@ -33,13 +38,11 @@ from pathlib import Path
 warnings.filterwarnings("ignore")
 logging.disable(logging.WARNING)
 
-# Requires the workspace to be installed: `uv sync --all-packages`.
 REPO = Path(__file__).parent
 
 import numpy as np
 import pandas as pd
 
-# Public-name imports; underscore aliases still work but emit DeprecationWarning.
 from tax_modeler.pipeline import compute_base_tax as _compute_base_tax
 from tax_modeler.pipeline import enrich_for_credits as _enrich_for_credits
 from tax_modeler.calibration.cg_imputation import impute_capital_gains_from_soi
@@ -50,8 +53,7 @@ from tax_modeler.scenarios.top_income_synthesis import (
 )
 from tax_modeler.calibration.year_recalibrator import project_and_recalibrate
 from tax_modeler.scenarios.quintile_analysis import (
-    generate_quintile_report, compute_quintile_breaks,
-    per_unit_tax,
+    generate_quintile_report, compute_quintile_breaks, per_unit_tax,
 )
 from tax_modeler.adjustments.itemized_deductions import scale_deduction_params_for_target_year
 from tax_modeler.liability.hawaii import NO_ITEMIZING
@@ -68,6 +70,18 @@ INCOME_BINS = {
     "1M_plus":     (1_000_000, float("inf")),
 }
 
+# ITEP annual figures from "26.05.06 HI SB 3125 CD Analysis.xlsx" (residents, $M).
+ITEP_ANNUAL = {2027: -227.0, 2028: -258.0, 2029: -534.0, 2030: -563.0, 2031: -622.0}
+
+
+def _parse_args():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument(
+        "--cd", choices=["1", "2"], default="1",
+        help="Conference draft to model: 1=CD1 (default), 2=CD2",
+    )
+    return p.parse_args()
+
 
 def _bin_delta(inc, w, diffs):
     result = {}
@@ -78,15 +92,20 @@ def _bin_delta(inc, w, diffs):
     return result
 
 
-def main() -> None:
+def main(cd: str) -> None:
     if not CALIBRATED_PKL.exists():
-        print(f"ERROR: {CALIBRATED_PKL} not found. Run forecast_sb3125_cd2_enhanced.py first.")
+        print(f"ERROR: {CALIBRATED_PKL} not found. Run forecast_sb3125_enhanced.py --cd {cd} first.")
         sys.exit(1)
 
     import time
     wall = time.perf_counter()
 
-    print("Loading calibrated base...", flush=True)
+    get_scenario_system = (
+        TaxSystemRegistry.get_sb3125_cd1_system if cd == "1"
+        else TaxSystemRegistry.get_sb3125_cd2_system
+    )
+
+    print(f"Loading calibrated base (CD{cd})...", flush=True)
     base = pd.read_pickle(CALIBRATED_PKL)
     units = redistribute_mid_high_incomes(base, pareto_alpha=MID_ALPHA)
     units = synthesize_top_filers(units, pareto_alpha=MID_ALPHA)
@@ -129,34 +148,21 @@ def main() -> None:
         inc = projected["income"].to_numpy(dtype=float)
         w   = projected["weight"].to_numpy(dtype=float)
 
-        # Three configs:
-        # A: TY2026-frozen baseline (brackets=2025, SDs=2026)
-        # B: TY2026-frozen brackets + Act46 SDs (isolates SD effect)
-        # C: CD2 full (CD2 brackets + Act46 SDs)
-        cfg_a = TaxSystemRegistry.get_hb2306_orig_system(yr)   # frozen 2026
-        cfg_c = TaxSystemRegistry.get_sb3125_cd2_system(yr)    # CD2 full
+        cfg_a = TaxSystemRegistry.get_hb2306_orig_system(yr)  # frozen 2026
+        cfg_c = get_scenario_system(yr)                        # CD full
         from tax_modeler.config.tax_system_config import TaxSystemConfig
         cfg_b = TaxSystemConfig(
             name=f"frozen2026_brackets_act46_sds_{yr}",
             year=yr,
-            bracket_year=2025,           # frozen 2026 brackets
-            standard_deduction_year=yr,  # Act 46 SD phase-in
+            bracket_year=2025,
+            standard_deduction_year=yr,
             personal_exemption=TaxSystemRegistry.PERSONAL_EXEMPTIONS.get(2026, 1200),
             description=f"Frozen 2026 brackets + Act46 TY{yr} SDs",
         )
 
-        # Per-scenario itemized deduction scaling: frozen-2026 baseline uses
-        # TY2026 mortgage/SALT/charitable amounts; CD2 uses target-year scales
-        # (Act 46 phase-in conceptually keeps these growing under current law).
-        # Without this, both scenarios would share an identically scaled
-        # itemized column, slightly misstating the SD-vs-itemize margin
-        # under each counterfactual. Effect is small but principled.
         ded_params_2026   = scale_deduction_params_for_target_year(2026, geoid="15003")
         ded_params_target = scale_deduction_params_for_target_year(yr,   geoid="15003")
 
-        # Build scenario-specific projected copies with year-appropriate itemized.
-        # _compute_base_tax repopulates `hi_itemized_deduction` based on the
-        # supplied params; per_unit_tax then reads that column.
         proj_frozen = _compute_base_tax(
             projected.copy(), tax_year=2026, deduction_params=ded_params_2026,
         )
@@ -164,14 +170,13 @@ def main() -> None:
             projected.copy(), tax_year=yr, deduction_params=ded_params_target,
         )
 
-        tax_a = per_unit_tax(proj_frozen, cfg_a, calc)  # frozen-2026 baseline (frozen itemized)
-        tax_b = per_unit_tax(proj_target, cfg_b, calc)  # frozen brackets + Act46 SDs (target itemized)
-        tax_c = per_unit_tax(proj_target, cfg_c, calc)  # CD2 full (target itemized)
+        tax_a = per_unit_tax(proj_frozen, cfg_a, calc)
+        tax_b = per_unit_tax(proj_target, cfg_b, calc)
+        tax_c = per_unit_tax(proj_target, cfg_c, calc)
 
-        # Component deltas (filer-level, $)
-        bracket_effect = (tax_c - tax_b) * w   # CD2 brackets vs frozen-2026 brackets, holding SD constant
-        sd_effect      = (tax_b - tax_a) * w   # Act46 SD expansion effect (ongoing law)
-        total_effect   = (tax_c - tax_a) * w   # full delta: CD2 vs frozen-2026
+        bracket_effect = (tax_c - tax_b) * w
+        sd_effect      = (tax_b - tax_a) * w
+        total_effect   = (tax_c - tax_a) * w
 
         br = _bin_delta(inc, w, bracket_effect)
         sd = _bin_delta(inc, w, sd_effect)
@@ -181,12 +186,6 @@ def main() -> None:
         rows.append({"year": yr, "component": "sd_expansion_delta_$M", **sd})
         rows.append({"year": yr, "component": "total_delta_$M", **tt})
 
-        # Quintile report (total delta, vs frozen-2026 baseline).
-        # NOTE: generate_quintile_report takes a single df; the per-scenario
-        # itemization above is applied to the headline component breakdown
-        # (rows[]) but the quintile distribution uses target-year itemized
-        # for both sides. Effect on the quintile shape is small (<1% on
-        # Q1-Q5 totals) since itemized scaling is mostly a top-bracket effect.
         empty_overlay = {}
         q_df, b_df, _ = generate_quintile_report(
             proj_target, cfg_a, cfg_c,
@@ -194,7 +193,7 @@ def main() -> None:
             calc=calc,
             scenario_params=None,
             quintile_breaks=base_2026_breaks,
-            cor_scale_factor=1.0,   # raw — no COR scaling for this comparison
+            cor_scale_factor=1.0,
         )
         q_df.insert(0, "tax_year", yr)
         b_df.insert(0, "tax_year", yr)
@@ -205,16 +204,16 @@ def main() -> None:
     all_quintiles = pd.concat(quintile_frames, ignore_index=True)
     all_brackets  = pd.concat(bracket_frames,  ignore_index=True)
 
-    Q_CSV = Path("/tmp/cd2_vs_fy26base_quintile_mid_2027_2031.csv")
-    B_CSV = Path("/tmp/cd2_vs_fy26base_bracket_mid_2027_2031.csv")
+    Q_CSV = Path(f"/tmp/cd{cd}_vs_fy26base_quintile_mid_2027_2031.csv")
+    B_CSV = Path(f"/tmp/cd{cd}_vs_fy26base_bracket_mid_2027_2031.csv")
     all_quintiles.to_csv(Q_CSV, index=False)
     all_brackets.to_csv(B_CSV, index=False)
 
     # ── Print summary ─────────────────────────────────────────────────────────
     print("\n" + "=" * 90, flush=True)
-    print("SB 3125 CD2 vs TY2026-FROZEN BASELINE — MID Scenario", flush=True)
+    print(f"SB 3125 CD{cd} vs TY2026-FROZEN BASELINE — MID Scenario", flush=True)
     print("Baseline = Act 46 frozen at TY2026 (no further phase-ins)", flush=True)
-    print("Bill     = SB 3125 CD2 brackets + Act 46 SD phase-in continues", flush=True)
+    print(f"Bill     = SB 3125 CD{cd} brackets + Act 46 SD phase-in continues", flush=True)
     print("=" * 90, flush=True)
 
     def _print_component(component_label, header_title):
@@ -234,17 +233,17 @@ def main() -> None:
               f"{cum['200K_1M']:>+11.1f}M {cum['1M_plus']:>+9.1f}M {cum['total']:>+9.1f}M", flush=True)
         return cum
 
-    br_5yr = _print_component(
+    _print_component(
         "bracket_delta_$M",
-        "Bracket effect only (CD2 brackets vs TY2026-frozen brackets, SDs held at Act46)",
+        f"Bracket effect only (CD{cd} brackets vs TY2026-frozen brackets, SDs held at Act46)",
     )
-    sd_5yr = _print_component(
+    _print_component(
         "sd_expansion_delta_$M",
         "Act 46 SD-expansion effect (ongoing current law, not the bill)",
     )
-    tt_5yr = _print_component(
+    _print_component(
         "total_delta_$M",
-        "TOTAL: CD2 full vs TY2026-frozen (= ITEP's headline number, our microsim)",
+        f"TOTAL: CD{cd} full vs TY2026-frozen (= ITEP's headline number, our microsim)",
     )
 
     print("\n--- Quintile distribution (total delta, TY 2027) ---", flush=True)
@@ -256,11 +255,6 @@ def main() -> None:
         "total_bracket_$M", "total_change_$M",
         "pct_pay_more", "pct_pay_less",
     ]].to_string(index=False), flush=True)
-
-    # ITEP's published annual figures from "26.05.06 HI SB 3125 CD Analysis.xlsx".
-    # Each year is a standalone snapshot of total drift from TY2026-frozen law
-    # ($M, residents only). NOT a running sum across years.
-    ITEP_ANNUAL = {2027: -227.0, 2028: -258.0, 2029: -534.0, 2030: -563.0, 2031: -622.0}
 
     print(f"\n\nComparison to ITEP — annual snapshots vs TY2026-frozen baseline (residents, $M):", flush=True)
     print(
@@ -291,7 +285,7 @@ def main() -> None:
         f"{sum_itep:>+8.1f}M {sum_tt - sum_itep:>+16.1f}M",
         flush=True,
     )
-    print("(5yrΣ row sums annual snapshots — useful as a fiscal-note style aggregate, not a stock figure.)", flush=True)
+    print("(5yrΣ sums annual snapshots — fiscal-note style aggregate, not a stock figure.)", flush=True)
 
     print(f"\nSaved: {Q_CSV}", flush=True)
     print(f"Saved: {B_CSV}", flush=True)
@@ -299,9 +293,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    args = _parse_args()
     try:
-        main()
+        main(cd=args.cd)
     except Exception as e:
         print(f"\nERROR: {e}", flush=True)
         traceback.print_exc()
-        sys.exit(1)

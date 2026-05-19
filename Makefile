@@ -27,7 +27,7 @@ enhanced $(ENHANCED_CSV):
 
 ## Step 2 — ITEP-comparable distributional analysis — needs venv
 distributional $(QUINTILE_CSV): $(ENHANCED_CSV)
-	$(PYTHON) forecast_sb3125_cd2_vs_fy26base.py
+	$(PYTHON) forecast_sb3125_vs_fy26base.py --cd 2
 
 ## Regenerate HTML report from existing CSVs (no venv required)
 report:

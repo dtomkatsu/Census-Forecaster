@@ -1,23 +1,24 @@
-"""SB 3125 CD1 fiscal-impact forecast for TY 2027 through 2031.
+"""SB 3125 fiscal-impact forecast for TY 2027 through 2031.
 
 Compares projected revenue under:
   - Baseline:  Act 46 as currently enacted (Hawaii's 2024 tax-cut phase-in)
-  - Scenario:  SB 3125 CD1 (2026 conference draft) which overrides §235-51
+  - Scenario:  SB 3125 CD1 or CD2 (2026 conference draft) which overrides §235-51
 
-Computes two impact channels:
-  - Bracket microsimulation: per-unit recalculation under each bracket
-    schedule using calibrated PUMS-derived tax units.
-  - Credit-cap overlay: static-scoring of §235-12.5 ($40M cap, $0 from
-    2031) and §235-110.7 (sunset 12/31/2027) using DOTAX TY2023 actuals.
+Usage:
+  python forecast_sb3125.py --cd 1   # SB 3125 CD1 (default)
+  python forecast_sb3125.py --cd 2   # SB 3125 CD2
 
-The constructed/calibrated units are cached at /tmp/tax_units_cache.parquet
-so reruns skip the ~3 minute TaxUnitConstructor stage.
+Replaces the two separate scripts:
+  forecast_sb3125_cd1.py  (identical except TaxSystemRegistry call + output path)
+  forecast_sb3125_cd2.py  (identical except TaxSystemRegistry call + output path)
 
-Output:
-  /tmp/sb3125_cd1_fiscal_impact_2027_2031.csv
+Output (written to /tmp/):
+  sb3125_cd{N}_fiscal_impact_2027_2031.csv
+  sb3125_cd{N}_decile_TY2027.csv
 """
 from __future__ import annotations
 
+import argparse
 import logging
 import os
 import sys
@@ -29,21 +30,35 @@ DATA_DIR = Path(
     or Path.home() / "ctc-and-eitc" / "data" / "raw" / "pums"
 )
 CACHE_FILE = Path("/tmp/tax_units_cache.parquet")
-OUT_CSV = Path("/tmp/sb3125_cd1_fiscal_impact_2027_2031.csv")
 TARGET_YEARS = [2027, 2028, 2029, 2030, 2031]
 
 # Requires the workspace to be installed: `uv sync --all-packages`.
 REPO = Path(__file__).parent
+
+
+def _parse_args():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument(
+        "--cd", choices=["1", "2"], default="1",
+        help="Conference draft to model: 1=CD1 (default), 2=CD2",
+    )
+    return p.parse_args()
+
 
 if __name__ == "__main__":
     import warnings
     warnings.filterwarnings("ignore")
     logging.disable(logging.WARNING)
 
+    args = _parse_args()
+    CD = args.cd  # "1" or "2"
+    OUT_CSV = Path(f"/tmp/sb3125_cd{CD}_fiscal_impact_2027_2031.csv")
+
     try:
         import time
         import pandas as pd
 
+        print(f"SB 3125 CD{CD} fiscal-impact forecast", flush=True)
         print("Importing modules...", flush=True)
         from tax_modeler.pipeline import _enrich_for_credits, _compute_base_tax, _calibrate
         from tax_modeler.loaders.pums_loader import PUMSDataLoader
@@ -93,10 +108,7 @@ if __name__ == "__main__":
         calibrated = _calibrate(units)
         print(f"  Done in {time.perf_counter()-t0:.1f}s", flush=True)
 
-        # ---- Top-income synthesis (Priority 1a fix) ------------------------
-        # Inject Pareto-derived $1M+ filers; rake's 1.5x weight cap can't
-        # close the 5x gap on its own. See packages/tax_modeler/src/
-        # tax_modeler/scenarios/top_income_synthesis.py for details.
+        # ---- Top-income synthesis ------------------------------------------
         from tax_modeler.scenarios.top_income_synthesis import (
             synthesize_top_filers, validate_top_synthesis,
         )
@@ -108,7 +120,6 @@ if __name__ == "__main__":
               f"${before['tax_1m_plus_$M']:,.1f}M tax "
               f"({100*before['tax_target_ratio']:.1f}% of $663M)", flush=True)
         calibrated = synthesize_top_filers(calibrated)
-        # Recompute base tax for the new synthetic rows
         calibrated = _compute_base_tax(calibrated)
         after = validate_top_synthesis(calibrated)
         print(f"  After:  {after['filers_1m_plus']:,.0f} filers "
@@ -122,17 +133,17 @@ if __name__ == "__main__":
         print(f"  Done in {time.perf_counter()-t0:.1f}s", flush=True)
 
         # ---- Per-year fiscal impact ----------------------------------------
-        # Hawaii Council on Revenues FY2027 General Fund Individual Income
-        # Tax projection (Sep 4 2025 forecast): ~$3.05B (FY25 actual $3.288B,
-        # falling 15% in FY26 to $2.79B with Act 46, recovering 9% to $3.05B
-        # in FY27 per COR damped trend). Microsim TY27 baseline should be
-        # below this -- microsim doesn't include withholding from non-residents,
-        # PTE pass-throughs ($124M+), audit/penalty assessments, etc.
         COR_FY27_IIT_PROJ_M = 3050.0
+
+        # Select the right TaxSystemRegistry factory for this CD
+        get_scenario_system = (
+            TaxSystemRegistry.get_sb3125_cd1_system if CD == "1"
+            else TaxSystemRegistry.get_sb3125_cd2_system
+        )
 
         calc = TaxCalculator()
         rows = []
-        decile_snapshot = None  # captured at TY 2027 for distributional report
+        decile_snapshot = None
         for year in TARGET_YEARS:
             t0 = time.perf_counter()
             print(f"\nProjecting + scoring TY {year}...", flush=True)
@@ -141,7 +152,7 @@ if __name__ == "__main__":
             )
 
             baseline_cfg = TaxSystemRegistry.get_act46_system(year)
-            scenario_cfg = TaxSystemRegistry.get_sb3125_cd1_system(year)
+            scenario_cfg = get_scenario_system(year)
             cmp = compare_systems(projected, baseline_cfg, scenario_cfg, calculator=calc)
 
             base_row = cmp[cmp["system"] == baseline_cfg.name].iloc[0]
@@ -152,16 +163,16 @@ if __name__ == "__main__":
 
             row = {
                 "tax_year": year,
-                "act46_revenue_$M":         round(base_row["revenue_millions"], 2),
-                "sb3125_cd1_revenue_$M":    round(scen_row["revenue_millions"], 2),
-                "bracket_delta_$M":         round(diff_row["revenue_millions"], 2),
-                "reec_baseline_$M":         credit["reec_baseline_$M"],
-                "reec_eligible_$M":         credit["reec_eligible_$M"],
-                "reec_savings_$M":          credit["reec_savings_$M"],
-                "cgec_savings_$M":          credit["cgec_savings_$M"],
-                "tcra_savings_$M":          credit["tcra_savings_$M"],
-                "total_credit_savings_$M":  credit["total_credit_savings_$M"],
-                "total_impact_$M":          round(
+                "act46_revenue_$M":                    round(base_row["revenue_millions"], 2),
+                f"sb3125_cd{CD}_revenue_$M":           round(scen_row["revenue_millions"], 2),
+                "bracket_delta_$M":                    round(diff_row["revenue_millions"], 2),
+                "reec_baseline_$M":                    credit["reec_baseline_$M"],
+                "reec_eligible_$M":                    credit["reec_eligible_$M"],
+                "reec_savings_$M":                     credit["reec_savings_$M"],
+                "cgec_savings_$M":                     credit["cgec_savings_$M"],
+                "tcra_savings_$M":                     credit["tcra_savings_$M"],
+                "total_credit_savings_$M":             credit["total_credit_savings_$M"],
+                "total_impact_$M":                     round(
                     diff_row["revenue_millions"] + credit["total_credit_savings_$M"], 2
                 ),
             }
@@ -171,26 +182,20 @@ if __name__ == "__main__":
                   f"total={row['total_impact_$M']:+.1f}M  "
                   f"({time.perf_counter()-t0:.1f}s)", flush=True)
 
-            # Capture per-unit deciles at TY 2027 for distributional report
             if year == 2027:
-                # Per-unit baseline & scenario tax for the same projected df,
-                # so we can compute who pays more / less by income decile.
                 proj = projected.copy()
                 base_results = []
                 scen_results = []
                 for inc, fs, ndep in zip(proj["income"], proj["filing_status"],
                                          proj.get("num_dependents", [0]*len(proj))):
-                    b = calc.calculate_tax(inc, baseline_cfg, fs,
-                                           num_exemptions=int(ndep)+1)
-                    s = calc.calculate_tax(inc, scenario_cfg, fs,
-                                           num_exemptions=int(ndep)+1)
+                    b = calc.calculate_tax(inc, baseline_cfg, fs, num_exemptions=int(ndep)+1)
+                    s = calc.calculate_tax(inc, scenario_cfg, fs, num_exemptions=int(ndep)+1)
                     base_results.append(b["tax_liability"])
                     scen_results.append(s["tax_liability"])
                 proj["base_tax"] = base_results
                 proj["scen_tax"] = scen_results
                 proj["delta_per_unit"] = proj["scen_tax"] - proj["base_tax"]
 
-                # Weighted decile assignment by income
                 proj_sorted = proj.sort_values("income").reset_index(drop=True)
                 cumw = proj_sorted["weight"].cumsum()
                 total_w = float(cumw.iloc[-1])
@@ -200,27 +205,26 @@ if __name__ == "__main__":
                     labels=[f"D{i}" for i in range(1, 11)],
                     include_lowest=True,
                 )
-                # Aggregate to deciles
                 grp = proj_sorted.groupby("decile", observed=True)
                 decile_snapshot = pd.DataFrame({
-                    "n_filers":         grp["weight"].sum(),
-                    "income_min_$":     grp["income"].min(),
-                    "income_max_$":     grp["income"].max(),
-                    "avg_income_$":     (grp.apply(lambda d: (d["income"] * d["weight"]).sum() / d["weight"].sum())),
-                    "base_tax_total_$M": grp.apply(lambda d: (d["base_tax"] * d["weight"]).sum()) / 1e6,
-                    "scen_tax_total_$M": grp.apply(lambda d: (d["scen_tax"] * d["weight"]).sum()) / 1e6,
-                    "delta_total_$M":    grp.apply(lambda d: (d["delta_per_unit"] * d["weight"]).sum()) / 1e6,
+                    "n_filers":              grp["weight"].sum(),
+                    "income_min_$":          grp["income"].min(),
+                    "income_max_$":          grp["income"].max(),
+                    "avg_income_$":          grp.apply(lambda d: (d["income"] * d["weight"]).sum() / d["weight"].sum()),
+                    "base_tax_total_$M":     grp.apply(lambda d: (d["base_tax"] * d["weight"]).sum()) / 1e6,
+                    "scen_tax_total_$M":     grp.apply(lambda d: (d["scen_tax"] * d["weight"]).sum()) / 1e6,
+                    "delta_total_$M":        grp.apply(lambda d: (d["delta_per_unit"] * d["weight"]).sum()) / 1e6,
                     "avg_delta_per_filer_$": grp.apply(
                         lambda d: (d["delta_per_unit"] * d["weight"]).sum() / d["weight"].sum()
                     ),
                 }).reset_index()
 
-        # ---- Output table ---------------------------------------------------
+        # ---- Output -----------------------------------------------------------
         df = pd.DataFrame(rows)
         df.to_csv(OUT_CSV, index=False)
 
         print("\n" + "=" * 110, flush=True)
-        print(f"SB 3125 CD1 FISCAL IMPACT ($ millions, vs. Act 46 baseline)", flush=True)
+        print(f"SB 3125 CD{CD} FISCAL IMPACT ($ millions, vs. Act 46 baseline)", flush=True)
         print(f"  REEC demand scenario: obbba_mid (SEIA-anchored, Hawaii-tempered)", flush=True)
         print(f"  Top-income synthesis: Pareto alpha=1.5, target 1,824 filers / $663M tax", flush=True)
         print("=" * 110, flush=True)
@@ -228,7 +232,6 @@ if __name__ == "__main__":
         print("\nNote: positive total_impact_$M = revenue gained for the State", flush=True)
         print(f"5-year cumulative: ${df['total_impact_$M'].sum():,.0f}M", flush=True)
 
-        # ---- Baseline validation vs Hawaii Council on Revenues -------------
         ty27_baseline = df.loc[df["tax_year"] == 2027, "act46_revenue_$M"].iloc[0]
         gap = COR_FY27_IIT_PROJ_M - ty27_baseline
         print("\n" + "-" * 110, flush=True)
@@ -236,23 +239,19 @@ if __name__ == "__main__":
         print(f"  COR FY27 individual income tax projection:  ${COR_FY27_IIT_PROJ_M:,.0f}M", flush=True)
         print(f"  Microsim TY27 act46 baseline:               ${ty27_baseline:,.0f}M", flush=True)
         print(f"  Gap:                                        ${gap:,.0f}M ({100*gap/COR_FY27_IIT_PROJ_M:.0f}% of COR)", flush=True)
-        print("  Gap is expected and not a calibration bug -- microsim does not", flush=True)
-        print("  include: PTE pass-through revenue (~$124M), non-resident", flush=True)
-        print("  withholding, audit/penalty assessments, late filings.", flush=True)
-        print("  Use the bracket DELTA for fiscal-impact magnitude;", flush=True)
-        print("  DELTA is robust to absolute-level mismatch.", flush=True)
+        print("  Gap is expected — microsim excludes PTE pass-throughs, non-resident", flush=True)
+        print("  withholding, audit/penalty assessments, and late filings.", flush=True)
+        print("  Use the bracket DELTA for fiscal-impact magnitude.", flush=True)
 
-        # ---- Distributional report (TY 2027) -------------------------------
         if decile_snapshot is not None:
             print("\n" + "-" * 110, flush=True)
             print("DISTRIBUTIONAL IMPACT BY INCOME DECILE (TY 2027, $ millions and per-filer $)", flush=True)
             print("-" * 110, flush=True)
             with pd.option_context("display.float_format", "{:,.2f}".format):
                 print(decile_snapshot.to_string(index=False), flush=True)
-            print("\n  Negative avg_delta_per_filer_$ = average filer in that decile pays LESS", flush=True)
-            print("  Positive = pays MORE. Same logic applies to delta_total_$M.", flush=True)
-            decile_snapshot.to_csv("/tmp/sb3125_cd1_decile_TY2027.csv", index=False)
-            print("  Saved: /tmp/sb3125_cd1_decile_TY2027.csv", flush=True)
+            decile_csv = Path(f"/tmp/sb3125_cd{CD}_decile_TY2027.csv")
+            decile_snapshot.to_csv(decile_csv, index=False)
+            print(f"  Saved: {decile_csv}", flush=True)
 
         print(f"\nSaved: {OUT_CSV}", flush=True)
         print(f"Total elapsed: {time.perf_counter() - wall_start:.1f}s", flush=True)
