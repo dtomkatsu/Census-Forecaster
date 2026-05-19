@@ -1,24 +1,39 @@
-"""SB 3125 CD2 distributional analysis by income quintile, TY 2027–2031.
+"""SB 3125 distributional analysis by income quintile, TY 2027–2031.
 
-For each tax year, computes the per-filer bracket-change impact (SB 3125 CD2
+Usage:
+  python forecast_sb3125_static_quintile.py --cd 1   # SB 3125 CD1 (default)
+  python forecast_sb3125_static_quintile.py --cd 2   # SB 3125 CD2
+
+Replaces:
+  forecast_sb3125_cd1_quintile.py
+  forecast_sb3125_cd2_quintile.py
+
+"Static" reflects the scoring methodology: per-unit tax is computed at projected
+income before ETI/migration adjustments, consistent with standard distributional
+analysis (CBO / Tax Policy Center methodology). Distinguishes this script from
+the dynamic forecast_sb3125_quintile.py which uses the full project_and_recalibrate
+pipeline.
+
+For each tax year, computes the per-filer bracket-change impact (SB 3125 CD{N}
 vs Act 46 baseline) and aggregates into five equal-population income quintiles.
 
-Scope: bracket change only (§235-51).  REEC/CGEC/TCRA credit components are
+Scope: bracket change only (§235-51). REEC/CGEC/TCRA credit components are
 aggregate static-scoring overlays not attributable to individual filers and are
-excluded from the quintile breakdown but shown in a separate REEC section of
-the PDF.
+excluded from the quintile breakdown (CD2: shown in a separate REEC section of
+the PDF).
 
 Scenario: MID (Pareto α=1.5, itemized_adj=True) — calibrated best-estimate.
-Static incidence scoring: per-unit tax is computed at projected income before
-ETI/migration adjustments, consistent with standard distributional analysis
-(CBO / Tax Policy Center methodology).
 
-Output:
+Output (--cd 1):
+  /tmp/sb3125_cd1_quintile_2027_2031.csv
+
+Output (--cd 2):
   /tmp/sb3125_cd2_quintile_2027_2031.csv
   /tmp/sb3125_cd2_quintile_distributional_report.pdf
 """
 from __future__ import annotations
 
+import argparse
 import logging
 import os
 import sys
@@ -30,7 +45,6 @@ DATA_DIR = Path(
     or Path.home() / "ctc-and-eitc" / "data" / "raw" / "pums"
 )
 CACHE_FILE = Path("/tmp/tax_units_cache.parquet")
-OUT_CSV   = Path("/tmp/sb3125_cd2_quintile_2027_2031.csv")
 TARGET_YEARS = [2027, 2028, 2029, 2030, 2031]
 
 # MID scenario parameters (calibrated best-estimate)
@@ -50,6 +64,15 @@ QUINTILE_LABELS = [
 ]
 
 
+def _parse_args():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument(
+        "--cd", choices=["1", "2"], default="1",
+        help="Conference draft to model: 1=CD1 (default), 2=CD2",
+    )
+    return p.parse_args()
+
+
 def _fmt_dollar(x: float) -> str:
     if abs(x) >= 1_000_000:
         return f"${x/1_000_000:,.2f}M"
@@ -58,7 +81,7 @@ def _fmt_dollar(x: float) -> str:
     return f"${x:.0f}"
 
 
-def compute_quintile_breakdown(projected, baseline_cfg, scenario_cfg, calc):
+def compute_quintile_breakdown(projected, baseline_cfg, scenario_cfg, calc, *, cd="1"):
     """Return a DataFrame with one row per income quintile for the given year."""
     import pandas as pd
 
@@ -114,15 +137,15 @@ def compute_quintile_breakdown(projected, baseline_cfg, scenario_cfg, calc):
         )
 
     result = pd.DataFrame({
-        "income_min_$":           grp["income"].min(),
-        "income_max_$":           grp["income"].max(),
-        "avg_income_$":           wavg("income"),
-        "n_filers":               grp["weight"].sum(),
-        "base_tax_total_$M":      wsum("base_tax") / 1e6,
-        "sb3125_cd2_tax_total_$M": wsum("scen_tax") / 1e6,
-        "delta_total_$M":         wsum("delta") / 1e6,
-        "avg_delta_per_filer_$":  wavg("delta"),
-        "pct_filers_with_change": grp.apply(
+        "income_min_$":                       grp["income"].min(),
+        "income_max_$":                       grp["income"].max(),
+        "avg_income_$":                       wavg("income"),
+        "n_filers":                           grp["weight"].sum(),
+        "base_tax_total_$M":                  wsum("base_tax") / 1e6,
+        f"sb3125_cd{cd}_tax_total_$M":        wsum("scen_tax") / 1e6,
+        "delta_total_$M":                     wsum("delta") / 1e6,
+        "avg_delta_per_filer_$":              wavg("delta"),
+        "pct_filers_with_change":             grp.apply(
             lambda d: d.loc[d["delta"] != 0, "weight"].sum() / d["weight"].sum() * 100
         ),
     }).reset_index()
@@ -130,11 +153,13 @@ def compute_quintile_breakdown(projected, baseline_cfg, scenario_cfg, calc):
     return result
 
 
-def print_quintile_table(year: int, qt):
+def print_quintile_table(year: int, qt, *, cd: str = "1"):
     """Pretty-print a quintile table for one tax year."""
+    cd_label = f"CD{cd}"
     print(f"\n{'─'*95}", flush=True)
     print(
-        f"TY {year} — SB 3125 CD2 vs Act 46  |  Bracket change by income quintile (MID scenario)",
+        f"TY {year} — SB 3125 {cd_label} vs Act 46  |  "
+        f"Bracket change by income quintile (MID scenario)",
         flush=True,
     )
     print(
@@ -169,124 +194,8 @@ def print_quintile_table(year: int, qt):
           f"{'':>10}  {total_delta:>+10.1f}", flush=True)
 
 
-if __name__ == "__main__":
-    import warnings
-    warnings.filterwarnings("ignore")
-    logging.disable(logging.WARNING)
-
-    try:
-        import time
-        import pandas as pd
-
-        print("Importing modules...", flush=True)
-        from tax_modeler.pipeline import _enrich_for_credits, _compute_base_tax, _calibrate
-        from tax_modeler.projection.tax_unit_projector import project_tax_units_forward
-        from tax_modeler.config.tax_system_config import (
-            TaxCalculator, TaxSystemRegistry,
-        )
-        from tax_modeler.scenarios.top_income_synthesis import (
-            synthesize_top_filers, validate_top_synthesis,
-            rescale_synthetic_tail_to_tax_target,
-        )
-        from tax_modeler.scenarios.behavioral_response import (
-            apply_top_income_growth_premium,
-            apply_itemized_deduction_adjustment,
-        )
-
-        wall_start = time.perf_counter()
-
-        # ---- One-time setup -------------------------------------------------
-        if not CACHE_FILE.exists():
-            print(f"ERROR: cache not found at {CACHE_FILE}", flush=True)
-            print("Run forecast_sb3125_cd2.py first to build the cache.", flush=True)
-            sys.exit(1)
-
-        print(f"Loading cached units from {CACHE_FILE}...", flush=True)
-        units = pd.read_parquet(CACHE_FILE)
-        print(f"  {len(units):,} units loaded", flush=True)
-
-        print("Enriching + base tax + calibrating...", flush=True)
-        t0 = time.perf_counter()
-        units = _enrich_for_credits(units)
-        units = _compute_base_tax(units)
-        units = _calibrate(units)
-        print(f"  Done in {time.perf_counter()-t0:.1f}s", flush=True)
-
-        print(f"Synthesizing top-income filers (Pareto α={PARETO_ALPHA})...", flush=True)
-        t0 = time.perf_counter()
-        units = synthesize_top_filers(units, pareto_alpha=PARETO_ALPHA)
-        units = _compute_base_tax(units)
-        units, tail_k = rescale_synthetic_tail_to_tax_target(units)
-        units = _compute_base_tax(units)
-        v = validate_top_synthesis(units)
-        print(f"  {v['filers_1m_plus']:,.0f} filers @ $1M+ "
-              f"({100*v['filer_target_ratio']:.1f}%), "
-              f"${v['tax_1m_plus_$M']:,.1f}M tax "
-              f"({100*v['tax_target_ratio']:.1f}% of $663M target), "
-              f"tail_k={tail_k:.4f} "
-              f"in {time.perf_counter()-t0:.1f}s", flush=True)
-
-        # ---- Per-year quintile analysis -------------------------------------
-        calc = TaxCalculator()
-        all_rows = []
-
-        for year in TARGET_YEARS:
-            t0 = time.perf_counter()
-            print(f"\nTY {year}: projecting...", flush=True)
-
-            projected = project_tax_units_forward(
-                units, target_year=year, method="ensemble"
-            )
-            # MID adjustments: no growth premium, itemized deduction adjustment
-            projected = apply_top_income_growth_premium(
-                projected, target_year=year, annual_premium=TOP_PREMIUM
-            )
-            if ITEMIZED_ADJ:
-                projected = apply_itemized_deduction_adjustment(projected)
-
-            baseline_cfg = TaxSystemRegistry.get_act46_system(year)
-            scenario_cfg = TaxSystemRegistry.get_sb3125_cd2_system(year)
-
-            print(f"  Computing per-unit tax ({len(projected):,} units × 2 systems)...",
-                  flush=True)
-            qt = compute_quintile_breakdown(projected, baseline_cfg, scenario_cfg, calc)
-            qt.insert(0, "tax_year", year)
-
-            print_quintile_table(year, qt)
-            all_rows.append(qt)
-            print(f"  TY {year} done in {time.perf_counter()-t0:.1f}s", flush=True)
-
-        # ---- Save combined CSV ----------------------------------------------
-        df_out = pd.concat(all_rows, ignore_index=True)
-        df_out.to_csv(OUT_CSV, index=False)
-
-        # ---- Summary pivot: Q5 delta across years ---------------------------
-        print(f"\n{'='*95}", flush=True)
-        print("Q5 (Top 20%) bracket delta by year — the filers driving most of the revenue gain",
-              flush=True)
-        print(f"{'='*95}", flush=True)
-        q5 = df_out[df_out["quintile"] == "Q5 (Top 20%)"].set_index("tax_year")
-        for yr in TARGET_YEARS:
-            r = q5.loc[yr]
-            print(f"  TY {yr}: income ${r['income_min_$']:,.0f}–${r['income_max_$']:,.0f}  "
-                  f"avg ${r['avg_income_$']:,.0f}  "
-                  f"delta {r['delta_total_$M']:+.1f}M  "
-                  f"avg/filer ${r['avg_delta_per_filer_$']:+,.0f}",
-                  flush=True)
-
-        print(f"\nSaved: {OUT_CSV}", flush=True)
-
-        print("\nRendering PDF...", flush=True)
-        _make_pdf(df_out)
-
-        print(f"Total elapsed: {time.perf_counter()-wall_start:.1f}s", flush=True)
-
-    except Exception as e:
-        print(f"\nERROR: {e}", flush=True)
-        traceback.print_exc()
-
-
-def _make_pdf(df: "pd.DataFrame") -> None:
+def _make_pdf(df: "pd.DataFrame", *, cd: str = "2") -> None:
+    """Generate distributional PDF report. Only called for --cd 2."""
     import matplotlib
     matplotlib.rcParams["text.parse_math"] = False
     matplotlib.rcParams["font.family"] = ["DejaVu Sans"]
@@ -295,8 +204,9 @@ def _make_pdf(df: "pd.DataFrame") -> None:
     import pandas as pd
     from matplotlib.backends.backend_pdf import PdfPages
 
-    PDF_OUT      = Path("/tmp/sb3125_cd2_quintile_distributional_report.pdf")
-    ENHANCED_CSV = Path("/tmp/sb3125_cd2_enhanced_2027_2031.csv")
+    cd_label     = f"CD{cd}"
+    PDF_OUT      = Path(f"/tmp/sb3125_cd{cd}_quintile_distributional_report.pdf")
+    ENHANCED_CSV = Path(f"/tmp/sb3125_cd{cd}_enhanced_2027_2031.csv")
 
     HH_BREAKS = [28_336, 60_915, 100_510, 168_638]
     Q_LABELS  = ["Q1 (Bottom 20%)", "Q2", "Q3", "Q4", "Q5 (Top 20%)"]
@@ -334,13 +244,13 @@ def _make_pdf(df: "pd.DataFrame") -> None:
     def table_page(pdf):
         fig = plt.figure(figsize=(11, 11))
         fig.suptitle(
-            "SB 3125 CD2 vs Act 46 — Distributional Impact (MID Scenario)",
+            f"SB 3125 {cd_label} vs Act 46 — Distributional Impact (MID Scenario)",
             fontsize=15, fontweight="bold", y=0.97, color=NAVY,
         )
         fig.text(
             0.5, 0.935,
-            "Per-filer bracket-change impact by income quintile, TY 2027–2031  "
-            "·  §235-51 only  ·  REEC/CGEC/TCRA shown separately on pages 5–6",
+            f"Per-filer bracket-change impact by income quintile, TY 2027–2031  "
+            f"·  §235-51 only  ·  REEC/CGEC/TCRA shown separately on pages 5–6",
             ha="center", fontsize=10, style="italic", color=TXT_GREY,
         )
         specs = [
@@ -390,7 +300,7 @@ def _make_pdf(df: "pd.DataFrame") -> None:
                         c.set_facecolor("#fff5f5")
         fig.text(
             0.05, 0.025,
-            "Positive = filer pays more under SB 3125 CD2 vs Act 46 (bracket change only). "
+            f"Positive = filer pays more under SB 3125 {cd_label} vs Act 46 (bracket change only). "
             "Bottom quintiles see tax cuts from lower mid-bracket rates; top quintile sees "
             "increases from the new 13% bracket. Credit-cap savings (REEC) shown on pages 5–6.",
             ha="left", fontsize=7.5, style="italic", color=TXT_GREY,
@@ -590,7 +500,7 @@ def _make_pdf(df: "pd.DataFrame") -> None:
         )
         fig.text(
             0.5, 0.935,
-            "§235-12.5 renewable energy credit  ·  TY2027–2031  ·  LOW / MID / HIGH scenarios",
+            f"§235-12.5 renewable energy credit  ·  TY2027–2031  ·  LOW / MID / HIGH scenarios",
             ha="center", fontsize=10, style="italic", color=TXT_GREY,
         )
 
@@ -672,7 +582,7 @@ def _make_pdf(df: "pd.DataFrame") -> None:
         fig.text(
             0.05, 0.03,
             "Baseline: Act 46 (no cap, no AGI limit, no sunset). "
-            "Bill: §235-12.5 — $40M cap TY2027–2029, $0 new certifications TY2030+ (§(p) sunset). "
+            f"Bill: §235-12.5 — $40M cap TY2027–2029, $0 new certifications TY2030+ (§(p) sunset). "
             "Savings = baseline − bill state cost. "
             "LOW: interpretation A (TY2026 cap binds), η=0.5. "
             "MID/HIGH: interpretation B, η=0.3/0.15.",
@@ -690,22 +600,22 @@ def _make_pdf(df: "pd.DataFrame") -> None:
         import pandas as _pd
         df_enh = _pd.read_csv(ENHANCED_CSV)
         mid_2027 = df_enh[(df_enh["scenario"] == "MID") & (df_enh["tax_year"] == 2027)]
-        if not mid_2027.empty:
+        if not mid_2027.empty and "reec_pro_rata_factor" in mid_2027.columns:
             pro_rata_mid = float(mid_2027["reec_pro_rata_factor"].iloc[0])
 
     with PdfPages(PDF_OUT) as pdf:
         table_page(pdf)
         chart_page(pdf,
                    "Average Tax Change per Filer by Quintile",
-                   "SB 3125 CD2 vs Act 46 — MID Scenario  ·  §235-51 bracket changes only",
+                   f"SB 3125 {cd_label} vs Act 46 — MID Scenario  ·  §235-51 bracket changes only",
                    "avg_delta_per_filer_$", "dollar", BLUE)
         chart_page(pdf,
                    "Share of Filers with Any Tax Change",
-                   "SB 3125 CD2 vs Act 46 — MID Scenario  ·  §235-51 bracket changes only",
+                   f"SB 3125 {cd_label} vs Act 46 — MID Scenario  ·  §235-51 bracket changes only",
                    "pct_filers_with_change", "pct", NAVY)
         chart_page(pdf,
                    "Total Tax Change by Quintile",
-                   "SB 3125 CD2 vs Act 46 — MID Scenario  ·  §235-51 bracket changes only",
+                   f"SB 3125 {cd_label} vs Act 46 — MID Scenario  ·  §235-51 bracket changes only",
                    "delta_total_$M", "millions", BLUE)
         reec_incidence_page(pdf, pro_rata=pro_rata_mid)
         if df_enh is not None:
@@ -714,8 +624,139 @@ def _make_pdf(df: "pd.DataFrame") -> None:
             print(f"  (skipping REEC time-series page — {ENHANCED_CSV} not found)", flush=True)
 
         m = pdf.infodict()
-        m["Title"]   = "SB 3125 CD2 Distributional Analysis"
+        m["Title"]   = f"SB 3125 {cd_label} Distributional Analysis"
         m["Author"]  = "Census-Forecaster"
-        m["Subject"] = "Per-quintile bracket impact + REEC credit incidence, TY 2027–2031, MID"
+        m["Subject"] = f"Per-quintile bracket impact + REEC credit incidence, TY 2027–2031, MID"
 
     print(f"Saved: {PDF_OUT}", flush=True)
+
+
+if __name__ == "__main__":
+    import warnings
+    warnings.filterwarnings("ignore")
+    logging.disable(logging.WARNING)
+
+    args = _parse_args()
+    CD       = args.cd
+    OUT_CSV  = Path(f"/tmp/sb3125_cd{CD}_quintile_2027_2031.csv")
+    cd_label = f"CD{CD}"
+
+    try:
+        import time
+        import pandas as pd
+
+        print(f"SB 3125 {cd_label} static quintile analysis", flush=True)
+        print("Importing modules...", flush=True)
+        from tax_modeler.pipeline import _enrich_for_credits, _compute_base_tax, _calibrate
+        from tax_modeler.projection.tax_unit_projector import project_tax_units_forward
+        from tax_modeler.config.tax_system_config import (
+            TaxCalculator, TaxSystemRegistry,
+        )
+        from tax_modeler.scenarios.top_income_synthesis import (
+            synthesize_top_filers, validate_top_synthesis,
+            rescale_synthetic_tail_to_tax_target,
+        )
+        from tax_modeler.scenarios.behavioral_response import (
+            apply_top_income_growth_premium,
+            apply_itemized_deduction_adjustment,
+        )
+
+        get_scenario_system = (
+            TaxSystemRegistry.get_sb3125_cd1_system if CD == "1"
+            else TaxSystemRegistry.get_sb3125_cd2_system
+        )
+
+        wall_start = time.perf_counter()
+
+        # ---- One-time setup -------------------------------------------------
+        if not CACHE_FILE.exists():
+            print(f"ERROR: cache not found at {CACHE_FILE}", flush=True)
+            print(f"Run forecast_sb3125.py --cd {CD} first to build the cache.", flush=True)
+            sys.exit(1)
+
+        print(f"Loading cached units from {CACHE_FILE}...", flush=True)
+        units = pd.read_parquet(CACHE_FILE)
+        print(f"  {len(units):,} units loaded", flush=True)
+
+        print("Enriching + base tax + calibrating...", flush=True)
+        t0 = time.perf_counter()
+        units = _enrich_for_credits(units)
+        units = _compute_base_tax(units)
+        units = _calibrate(units)
+        print(f"  Done in {time.perf_counter()-t0:.1f}s", flush=True)
+
+        print(f"Synthesizing top-income filers (Pareto α={PARETO_ALPHA})...", flush=True)
+        t0 = time.perf_counter()
+        units = synthesize_top_filers(units, pareto_alpha=PARETO_ALPHA)
+        units = _compute_base_tax(units)
+        units, tail_k = rescale_synthetic_tail_to_tax_target(units)
+        units = _compute_base_tax(units)
+        v = validate_top_synthesis(units)
+        print(f"  {v['filers_1m_plus']:,.0f} filers @ $1M+ "
+              f"({100*v['filer_target_ratio']:.1f}%), "
+              f"${v['tax_1m_plus_$M']:,.1f}M tax "
+              f"({100*v['tax_target_ratio']:.1f}% of $663M target), "
+              f"tail_k={tail_k:.4f} "
+              f"in {time.perf_counter()-t0:.1f}s", flush=True)
+
+        # ---- Per-year quintile analysis -------------------------------------
+        calc = TaxCalculator()
+        all_rows = []
+
+        for year in TARGET_YEARS:
+            t0 = time.perf_counter()
+            print(f"\nTY {year}: projecting...", flush=True)
+
+            projected = project_tax_units_forward(
+                units, target_year=year, method="ensemble"
+            )
+            # MID adjustments: no growth premium, itemized deduction adjustment
+            projected = apply_top_income_growth_premium(
+                projected, target_year=year, annual_premium=TOP_PREMIUM
+            )
+            if ITEMIZED_ADJ:
+                projected = apply_itemized_deduction_adjustment(projected)
+
+            baseline_cfg = TaxSystemRegistry.get_act46_system(year)
+            scenario_cfg = get_scenario_system(year)
+
+            print(f"  Computing per-unit tax ({len(projected):,} units × 2 systems)...",
+                  flush=True)
+            qt = compute_quintile_breakdown(projected, baseline_cfg, scenario_cfg, calc, cd=CD)
+            qt.insert(0, "tax_year", year)
+
+            print_quintile_table(year, qt, cd=CD)
+            all_rows.append(qt)
+            print(f"  TY {year} done in {time.perf_counter()-t0:.1f}s", flush=True)
+
+        # ---- Save combined CSV ----------------------------------------------
+        df_out = pd.concat(all_rows, ignore_index=True)
+        df_out.to_csv(OUT_CSV, index=False)
+
+        # ---- Summary pivot: Q5 delta across years ---------------------------
+        print(f"\n{'='*95}", flush=True)
+        print("Q5 (Top 20%) bracket delta by year — the filers driving most of the revenue gain",
+              flush=True)
+        print(f"{'='*95}", flush=True)
+        q5 = df_out[df_out["quintile"] == "Q5 (Top 20%)"].set_index("tax_year")
+        for yr in TARGET_YEARS:
+            r = q5.loc[yr]
+            print(f"  TY {yr}: income ${r['income_min_$']:,.0f}–${r['income_max_$']:,.0f}  "
+                  f"avg ${r['avg_income_$']:,.0f}  "
+                  f"delta {r['delta_total_$M']:+.1f}M  "
+                  f"avg/filer ${r['avg_delta_per_filer_$']:+,.0f}",
+                  flush=True)
+
+        print(f"\nSaved: {OUT_CSV}", flush=True)
+
+        # ---- PDF generation (CD2 only) -------------------------------------
+        if CD == "2":
+            print("\nRendering PDF...", flush=True)
+            _make_pdf(df_out, cd=CD)
+
+        print(f"Total elapsed: {time.perf_counter()-wall_start:.1f}s", flush=True)
+
+    except Exception as e:
+        print(f"\nERROR: {e}", flush=True)
+        traceback.print_exc()
+        sys.exit(1)

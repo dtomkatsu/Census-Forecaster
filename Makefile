@@ -23,7 +23,7 @@ sb3125_cd2: $(ENHANCED_CSV) $(QUINTILE_CSV)
 
 ## Step 1 — Enhanced fiscal impact (REEC/CGEC/TCRA) — needs venv
 enhanced $(ENHANCED_CSV):
-	$(PYTHON) forecast_sb3125_cd2_enhanced.py
+	$(PYTHON) forecast_sb3125_enhanced.py --cd 2
 
 ## Step 2 — ITEP-comparable distributional analysis — needs venv
 distributional $(QUINTILE_CSV): $(ENHANCED_CSV)

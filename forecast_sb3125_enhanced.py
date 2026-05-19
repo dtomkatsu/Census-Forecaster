@@ -1,10 +1,18 @@
-"""SB 3125 CD2 fiscal forecast with behavioral response and growth corrections.
+"""SB 3125 fiscal forecast with behavioral response and growth corrections.
 
-Improvements over forecast_sb3125_cd2.py:
+Usage:
+  python forecast_sb3125_enhanced.py --cd 1   # SB 3125 CD1 (default)
+  python forecast_sb3125_enhanced.py --cd 2   # SB 3125 CD2
+
+Replaces:
+  forecast_sb3125_cd1_enhanced.py
+  forecast_sb3125_cd2_enhanced.py
+
+Improvements over forecast_sb3125.py:
 
   1. **ETI behavioral response** — per-filer taxable-income elasticity.
      Each filer's marginal rate is computed under both the Act 46 baseline
-     and SB 3125 CD2 schedules; ETI shrinkage is applied based on the
+     and SB 3125 CD{N} schedules; ETI shrinkage is applied based on the
      actual rate change (not a hard-coded 11% → 13%). This correctly
      captures behavior for $350K–$1M MFJ filers (and equivalents) who
      also face rate increases under the bill, not just $1M+ filers.
@@ -45,6 +53,15 @@ Improvements over forecast_sb3125_cd2.py:
   9. **Baseline-scaling diagnostic** — Reports both raw and COR-scaled
      bracket delta (microsim baseline ≈ $2.3B; COR FY27 = $3.05B).
 
+CD2-only additions (gated by --cd 2):
+  - Round-2 REEC knobs per scenario: pro_rata_elasticity, interpretation,
+    dynamic_refundable_share
+  - compute_dynamic_agi_eligibility_share: per-year AGI eligibility recomputed
+    from projected filer distribution (§235-12.5(a) thresholds are unindexed,
+    so nominal income growth erodes them over the forecast horizon)
+  - Vintage carryforward simulation (model_carryforward_pool=True)
+  - 11 extra diagnostic columns in output CSV
+
 Four integrated scenarios (three behavioral + one recession macro):
     LOW       — eti=0.60, migration=0.15, pte=0.90, alpha=1.7, reec=obbba_severe
     MID       — eti=0.40, migration=0.10, pte=0.70, alpha=1.5, reec=obbba_mid  [no recession]
@@ -59,10 +76,12 @@ REEC carryforward (§235-12.5(e) 5-year window):
   estimates: LOW=$4M, MID=$6M, HIGH=$9M, RECESSION=$6M.
 
 Output:
-  /tmp/sb3125_cd2_enhanced_2027_2031.csv
+  /tmp/sb3125_cd1_enhanced_2027_2031.csv  (--cd 1)
+  /tmp/sb3125_cd2_enhanced_2027_2031.csv  (--cd 2)
 """
 from __future__ import annotations
 
+import argparse
 import logging
 import os
 import sys
@@ -74,7 +93,6 @@ DATA_DIR = Path(
     or Path.home() / "ctc-and-eitc" / "data" / "raw" / "pums"
 )
 CACHE_FILE = Path("/tmp/tax_units_cache.parquet")
-OUT_CSV = Path("/tmp/sb3125_cd2_enhanced_2027_2031.csv")
 TARGET_YEARS = [2027, 2028, 2029, 2030, 2031]
 
 # Three calibrated scenarios. Calibration is anchored to (a) the official
@@ -84,6 +102,9 @@ TARGET_YEARS = [2027, 2028, 2029, 2030, 2031]
 # utilization considerations + Hawaii solar saturation.
 # Scenarios (effective deductions are computed automatically as
 # max(filing-status SD, hi_itemized_deduction) inside compare_systems).
+#
+# Round-2 knobs (pro_rata_elasticity, interpretation, dynamic_refundable_share)
+# are used only by the CD2 code path; CD1 ignores them.
 SCENARIOS = [
     {
         "label":  "LOW",
@@ -96,7 +117,7 @@ SCENARIOS = [
         "cgec_growth":     0.010,     # 1%/yr: pre-COVID long-run floor
         "macro_shock":     None,
         "reec_cf_m":       4.0,       # TY2031 REEC carryforward utilization ($M)
-        # Round-2 knobs
+        # CD2 round-2 knobs
         "pro_rata_elasticity":      0.5,    # strong demand response
         "interpretation":           "A",    # conservative: TY2026 cap binds
         "dynamic_refundable_share": True,
@@ -107,11 +128,12 @@ SCENARIOS = [
         "reec":   "obbba_mid",
         "behav":  "mid",              # ETI=0.40, migr=0.10, pte=0.70
         "corp_agi_limit": False,
-        "top_premium":     0.010,     # +1.0%/yr: IRS SOI 1.8pp – 0.8pp Hawaii haircut (post-2020 outmigration)
-        "reec_eff_share":  0.65,      # IRS §25D median full-year offset (46.5% used full + partial credit)
-        "cgec_growth":     0.015,     # 1.5%/yr: pre-COVID average (was 3% COVID rebound)
+        "top_premium":     0.010,     # +1.0%/yr: IRS SOI 1.8pp – 0.8pp Hawaii haircut
+        "reec_eff_share":  0.65,      # IRS §25D median full-year offset
+        "cgec_growth":     0.015,     # 1.5%/yr: pre-COVID average
         "macro_shock":     None,
         "reec_cf_m":       6.0,
+        # CD2 round-2 knobs
         "pro_rata_elasticity":      0.3,    # mid demand response
         "interpretation":           "B",
         "dynamic_refundable_share": True,
@@ -123,10 +145,11 @@ SCENARIOS = [
         "behav":  "low",              # weak behavioral (high revenue gain)
         "corp_agi_limit": False,
         "top_premium":     0.023,     # +2.3%/yr: MID + 1.0pp (national-rate convergence)
-        "reec_eff_share":  0.80,      # IRS §25D 75th-pct full-use share (high tax liability + favorable conditions)
+        "reec_eff_share":  0.80,      # IRS §25D 75th-pct full-use share
         "cgec_growth":     0.025,     # 2.5%/yr: moderate growth assumption
         "macro_shock":     None,
         "reec_cf_m":       9.0,
+        # CD2 round-2 knobs
         "pro_rata_elasticity":      0.15,   # weak demand response
         "interpretation":           "B",
         "dynamic_refundable_share": True,
@@ -143,6 +166,7 @@ SCENARIOS = [
         "cgec_growth":     0.015,     # same as MID
         "macro_shock":     "moderate",
         "reec_cf_m":       6.0,
+        # CD2 round-2 knobs
         "pro_rata_elasticity":      0.3,
         "interpretation":           "B",
         "dynamic_refundable_share": True,
@@ -153,7 +177,16 @@ SCENARIOS = [
 REPO = Path(__file__).parent
 
 
-def _scenario_worker(scenario_dict, target_years, calibrated_path):
+def _parse_args():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument(
+        "--cd", choices=["1", "2"], default="1",
+        help="Conference draft to model: 1=CD1 (default), 2=CD2",
+    )
+    return p.parse_args()
+
+
+def _scenario_worker(scenario_dict, target_years, calibrated_path, cd="1"):
     """Top-level worker (must be picklable) for ProcessPoolExecutor.
 
     Each worker is a fresh Python process — package imports rely on
@@ -162,10 +195,10 @@ def _scenario_worker(scenario_dict, target_years, calibrated_path):
     """
     import pandas as pd
     base = pd.read_pickle(calibrated_path)
-    return run_one_scenario(base, scenario=scenario_dict, target_years=target_years)
+    return run_one_scenario(base, scenario=scenario_dict, target_years=target_years, cd=cd)
 
 
-def run_one_scenario(base_calibrated, *, scenario, target_years):
+def run_one_scenario(base_calibrated, *, scenario, target_years, cd="1"):
     """Run a single scenario across all target years and return per-year rows.
 
     Imports its dependencies internally so this function is self-contained
@@ -197,6 +230,11 @@ def run_one_scenario(base_calibrated, *, scenario, target_years):
     from tax_modeler.scenarios.macro_scenarios import apply_macro_recession_shock
     from tax_modeler.scenarios.quintile_analysis import cor_scale_factor_for_year
 
+    get_scenario_system = (
+        TaxSystemRegistry.get_sb3125_cd1_system if cd == "1"
+        else TaxSystemRegistry.get_sb3125_cd2_system
+    )
+
     label  = scenario["label"]
     alpha  = scenario["alpha"]
     reec   = scenario["reec"]
@@ -207,17 +245,19 @@ def run_one_scenario(base_calibrated, *, scenario, target_years):
     cgec_g   = scenario["cgec_growth"]
     macro_shock = scenario.get("macro_shock")   # None = baseline macro; "moderate" = recession
     reec_cf_m = scenario.get("reec_cf_m", 0.0)          # TY2031 carryforward utilization
-    pro_rata_elasticity      = float(scenario.get("pro_rata_elasticity", 0.0))
-    interpretation           = scenario.get("interpretation", "B")
-    dynamic_refundable_share = bool(scenario.get("dynamic_refundable_share", False))
+
     print(f"\n{'='*78}\nSCENARIO {label}: alpha={alpha} reec={reec} behav={behav} "
           f"corp_agi={corp_agi} top_premium={top_premium:+.3f}\n"
           f"  reec_eff_share={reec_eff} cgec_growth={cgec_g:.3f} "
           f"reec_cf_m={reec_cf_m:.1f}M "
-          f"macro_shock={macro_shock or 'none'}\n"
-          f"  pro_rata_eta={pro_rata_elasticity:.2f} interp={interpretation} "
-          f"dyn_refundable={dynamic_refundable_share}\n"
-          f"{'='*78}", flush=True)
+          f"macro_shock={macro_shock or 'none'}", end="", flush=True)
+    if cd == "2":
+        pro_rata_elasticity      = float(scenario.get("pro_rata_elasticity", 0.0))
+        interpretation           = scenario.get("interpretation", "B")
+        dynamic_refundable_share = bool(scenario.get("dynamic_refundable_share", False))
+        print(f"\n  pro_rata_eta={pro_rata_elasticity:.2f} interp={interpretation} "
+              f"dyn_refundable={dynamic_refundable_share}", end="", flush=True)
+    print(f"\n{'='*78}", flush=True)
 
     # Synthesize fresh from the calibrated (no-synthesis) base
     units = synthesize_top_filers(base_calibrated, pareto_alpha=alpha)
@@ -260,7 +300,7 @@ def run_one_scenario(base_calibrated, *, scenario, target_years):
 
         # 3) Pre-behavioral baseline + scenario revenue (static)
         baseline_cfg = TaxSystemRegistry.get_act46_system(year)
-        scenario_cfg = TaxSystemRegistry.get_sb3125_cd2_system(year)
+        scenario_cfg = get_scenario_system(year)
         cmp_static = compare_systems(
             projected, baseline_cfg, scenario_cfg,
             calculator=calc,
@@ -283,32 +323,34 @@ def run_one_scenario(base_calibrated, *, scenario, target_years):
         pte_shift = behav_diag["pte_revenue_loss_$M"]
         bracket_delta_after_response = diff_behav - pte_shift
 
-        # 5b) Per-year individual AGI eligibility share, recomputed from the
-        # projected tax-unit distribution. §235-12.5(a) thresholds ($175K/$350K)
-        # are unindexed, so nominal income growth erodes them — fewer filers
-        # eligible each forecast year.
-        agi_elig_share = compute_dynamic_agi_eligibility_share(projected)
-
-        # 6) Credit-cap overlay (vintage carryforward simulation).
-        # ``model_carryforward_pool=True`` runs the §235-12.5(j) vintage
-        # simulation that tracks pre-2027 stock drawdown (the bill does not
-        # void existing carryforwards — §235-12.5(h) cap is on certifications
-        # only, and (j) preserves "until exhausted" usage).
-        # Round-2 additions: dynamic AGI eligibility per year, endogenous
-        # pro-rata demand suppression, refundable share adjustment for the
-        # AGI-screened pool, TY2026 retroactive-cap interpretation switch.
-        credit = compute_credit_overlay(
-            year, reec_demand_scenario=reec,
-            corp_subject_to_agi_limit=corp_agi,
-            reec_effective_claim_share=reec_eff,
-            cgec_annual_growth=cgec_g,
-            reec_carryforward_utilization_m=reec_cf_m,
-            model_carryforward_pool=True,
-            agi_eligibility_by_year={year: agi_elig_share},
-            pro_rata_elasticity=pro_rata_elasticity,
-            interpretation=interpretation,
-            dynamic_refundable_share=dynamic_refundable_share,
-        )
+        # 6) Credit-cap overlay
+        if cd == "2":
+            # CD2: vintage carryforward simulation + round-2 demand/eligibility knobs.
+            # Per-year AGI eligibility recomputed from projected distribution:
+            # §235-12.5(a) thresholds ($175K/$350K) are unindexed, so nominal
+            # income growth erodes them — fewer filers eligible each forecast year.
+            agi_elig_share = compute_dynamic_agi_eligibility_share(projected)
+            credit = compute_credit_overlay(
+                year, reec_demand_scenario=reec,
+                corp_subject_to_agi_limit=corp_agi,
+                reec_effective_claim_share=reec_eff,
+                cgec_annual_growth=cgec_g,
+                reec_carryforward_utilization_m=reec_cf_m,
+                model_carryforward_pool=True,
+                agi_eligibility_by_year={year: agi_elig_share},
+                pro_rata_elasticity=pro_rata_elasticity,
+                interpretation=interpretation,
+                dynamic_refundable_share=dynamic_refundable_share,
+            )
+        else:
+            # CD1: standard credit overlay (no vintage simulation).
+            credit = compute_credit_overlay(
+                year, reec_demand_scenario=reec,
+                corp_subject_to_agi_limit=corp_agi,
+                reec_effective_claim_share=reec_eff,
+                cgec_annual_growth=cgec_g,
+                reec_carryforward_utilization_m=reec_cf_m,
+            )
         credit_total = credit["total_credit_savings_$M"]
 
         total = bracket_delta_after_response + credit_total
@@ -317,7 +359,7 @@ def run_one_scenario(base_calibrated, *, scenario, target_years):
         cor_scale_factor = cor_scale_factor_for_year(year, baseline_static)
         bracket_delta_cor_scaled = bracket_delta_after_response * cor_scale_factor
 
-        rows.append({
+        row = {
             "scenario":                       label,
             "tax_year":                       year,
             "act46_baseline_$M":              round(baseline_static, 2),
@@ -332,21 +374,25 @@ def run_one_scenario(base_calibrated, *, scenario, target_years):
             "credit_total_$M":                credit_total,
             "total_impact_$M":                round(total, 2),
             "filers_1m_post_response":        round(behav_diag["filers_1m_post_response"], 0),
-            # Vintage-simulation diagnostics (NEW): pre-2027 carryforward dynamics
-            "reec_base_state_cost_$M":        credit.get("reec_baseline_state_cost_$M"),
-            "reec_scen_state_cost_$M":        credit.get("reec_scenario_state_cost_$M"),
-            "reec_scen_new_certs_$M":         credit.get("reec_scenario_new_certs_$M"),
-            "reec_scen_refundable_$M":        credit.get("reec_scenario_refundable_$M"),
-            "reec_scen_nonref_usage_$M":      credit.get("reec_scenario_nonref_usage_$M"),
-            "reec_scen_end_stock_$M":         credit.get("reec_scenario_end_stock_$M"),
-            "reec_base_end_stock_$M":         credit.get("reec_baseline_end_stock_$M"),
-            # Round-2 diagnostics
-            "reec_eligibility_share":         credit.get("reec_eligibility_share"),
-            "reec_pro_rata_factor":           credit.get("reec_pro_rata_factor"),
-            "reec_suppression_factor":        credit.get("reec_suppression_factor"),
-            "reec_ind_refundable_share":      credit.get("reec_ind_refundable_share"),
-            "reec_interpretation":            credit.get("reec_interpretation"),
-        })
+        }
+        if cd == "2":
+            row.update({
+                # Vintage-simulation diagnostics: pre-2027 carryforward dynamics
+                "reec_base_state_cost_$M":        credit.get("reec_baseline_state_cost_$M"),
+                "reec_scen_state_cost_$M":        credit.get("reec_scenario_state_cost_$M"),
+                "reec_scen_new_certs_$M":         credit.get("reec_scenario_new_certs_$M"),
+                "reec_scen_refundable_$M":        credit.get("reec_scenario_refundable_$M"),
+                "reec_scen_nonref_usage_$M":      credit.get("reec_scenario_nonref_usage_$M"),
+                "reec_scen_end_stock_$M":         credit.get("reec_scenario_end_stock_$M"),
+                "reec_base_end_stock_$M":         credit.get("reec_baseline_end_stock_$M"),
+                # Round-2 diagnostics
+                "reec_eligibility_share":         credit.get("reec_eligibility_share"),
+                "reec_pro_rata_factor":           credit.get("reec_pro_rata_factor"),
+                "reec_suppression_factor":        credit.get("reec_suppression_factor"),
+                "reec_ind_refundable_share":      credit.get("reec_ind_refundable_share"),
+                "reec_interpretation":            credit.get("reec_interpretation"),
+            })
+        rows.append(row)
         print(f"  TY {year}: static={diff_static:+.1f}M  "
               f"ETI={diff_behav-diff_static:+.1f}M  "
               f"PTE={-pte_shift:+.1f}M  "
@@ -361,20 +407,32 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore")
     logging.disable(logging.WARNING)
 
+    args = _parse_args()
+    CD = args.cd
+    OUT_CSV = Path(f"/tmp/sb3125_cd{CD}_enhanced_2027_2031.csv")
+    cd_label = f"CD{CD}"
+
     try:
         import time
         import pandas as pd
 
+        print(f"SB 3125 {cd_label} enhanced fiscal forecast", flush=True)
         print("Importing modules...", flush=True)
         # The scenario workers import their own dependencies; the main process
         # only needs the one-time calibration setup (enrich, base tax, rake).
         from tax_modeler.pipeline import _enrich_for_credits, _compute_base_tax, _calibrate
+        from tax_modeler.config.tax_system_config import TaxSystemRegistry
+
+        get_scenario_system = (
+            TaxSystemRegistry.get_sb3125_cd1_system if CD == "1"
+            else TaxSystemRegistry.get_sb3125_cd2_system
+        )
 
         wall_start = time.perf_counter()
 
         if not CACHE_FILE.exists():
             print(f"ERROR: tax-unit cache not found at {CACHE_FILE}", flush=True)
-            print("Run forecast_sb3125_cd2.py first to populate the cache.", flush=True)
+            print(f"Run forecast_sb3125.py --cd {CD} first to populate the cache.", flush=True)
             sys.exit(1)
 
         print(f"Loading cached units from {CACHE_FILE}...", flush=True)
@@ -437,10 +495,10 @@ if __name__ == "__main__":
 
         all_rows = []
         n_workers = min(len(SCENARIOS), 4)
-        print(f"\nLaunching {n_workers} parallel scenario workers...", flush=True)
+        print(f"\nLaunching {n_workers} parallel scenario workers ({cd_label})...", flush=True)
         with ProcessPoolExecutor(max_workers=n_workers) as pool:
             futures = {
-                pool.submit(_scenario_worker, sc, TARGET_YEARS, str(calibrated_pkl)): sc["label"]
+                pool.submit(_scenario_worker, sc, TARGET_YEARS, str(calibrated_pkl), CD): sc["label"]
                 for sc in SCENARIOS
             }
             for fut in as_completed(futures):
@@ -470,7 +528,10 @@ if __name__ == "__main__":
         from tax_modeler.scenarios.behavioral_response import (
             apply_top_income_growth_premium,
         )
-        from tax_modeler.scenarios.sb3125_cd1_credits import compute_credit_overlay
+        from tax_modeler.scenarios.sb3125_cd1_credits import (
+            compute_credit_overlay,
+            compute_dynamic_agi_eligibility_share,
+        )
         from tax_modeler.scenarios.quintile_analysis import (
             generate_quintile_report, compute_quintile_breaks,
             cor_scale_factor_for_year, per_unit_tax,
@@ -504,15 +565,32 @@ if __name__ == "__main__":
             )
 
             base_cfg = TaxSystemRegistry.get_act46_system(yr)
-            scen_cfg = TaxSystemRegistry.get_sb3125_cd2_system(yr)
-            credit_ov = compute_credit_overlay(
-                yr,
-                reec_demand_scenario=mid_sc["reec"],
-                corp_subject_to_agi_limit=mid_sc["corp_agi_limit"],
-                reec_effective_claim_share=mid_sc["reec_eff_share"],
-                cgec_annual_growth=mid_sc["cgec_growth"],
-                reec_carryforward_utilization_m=mid_sc.get("reec_cf_m", 0.0),
-            )
+            scen_cfg = get_scenario_system(yr)
+
+            if CD == "2":
+                agi_elig = compute_dynamic_agi_eligibility_share(projected_q)
+                credit_ov = compute_credit_overlay(
+                    yr,
+                    reec_demand_scenario=mid_sc["reec"],
+                    corp_subject_to_agi_limit=mid_sc["corp_agi_limit"],
+                    reec_effective_claim_share=mid_sc["reec_eff_share"],
+                    cgec_annual_growth=mid_sc["cgec_growth"],
+                    reec_carryforward_utilization_m=mid_sc.get("reec_cf_m", 0.0),
+                    model_carryforward_pool=True,
+                    agi_eligibility_by_year={yr: agi_elig},
+                    pro_rata_elasticity=mid_sc.get("pro_rata_elasticity", 0.0),
+                    interpretation=mid_sc.get("interpretation", "B"),
+                    dynamic_refundable_share=mid_sc.get("dynamic_refundable_share", False),
+                )
+            else:
+                credit_ov = compute_credit_overlay(
+                    yr,
+                    reec_demand_scenario=mid_sc["reec"],
+                    corp_subject_to_agi_limit=mid_sc["corp_agi_limit"],
+                    reec_effective_claim_share=mid_sc["reec_eff_share"],
+                    cgec_annual_growth=mid_sc["cgec_growth"],
+                    reec_carryforward_utilization_m=mid_sc.get("reec_cf_m", 0.0),
+                )
 
             # Compute year-specific COR scale factor from this scenario's
             # Act 46 microsim baseline (per-filer aggregated revenue, $M).
@@ -538,8 +616,8 @@ if __name__ == "__main__":
         all_quintiles = pd.concat(quintile_frames, ignore_index=True)
         all_brackets  = pd.concat(bracket_frames,  ignore_index=True)
 
-        Q_CSV = Path("/tmp/sb3125_quintile_mid_2027_2031.csv")
-        B_CSV = Path("/tmp/sb3125_bracket_mid_2027_2031.csv")
+        Q_CSV = Path(f"/tmp/sb3125_cd{CD}_quintile_mid_2027_2031.csv")
+        B_CSV = Path(f"/tmp/sb3125_cd{CD}_bracket_mid_2027_2031.csv")
         all_quintiles.to_csv(Q_CSV, index=False)
         all_brackets.to_csv(B_CSV, index=False)
         print(f"Saved: {Q_CSV}", flush=True)
@@ -548,8 +626,8 @@ if __name__ == "__main__":
         # Print TY 2027 quintile summary
         q27 = all_quintiles[all_quintiles["tax_year"] == 2027].copy()
         print("\n" + "=" * 100, flush=True)
-        print("DISTRIBUTIONAL ANALYSIS — MID Scenario, TY 2027 (bracket change + REEC credit loss per household)",
-              flush=True)
+        print(f"DISTRIBUTIONAL ANALYSIS — MID Scenario, TY 2027 "
+              f"(bracket change + REEC credit loss per household)", flush=True)
         print("=" * 100, flush=True)
         pd.set_option("display.float_format", "{:,.1f}".format)
         pd.set_option("display.max_colwidth", 20)
@@ -563,8 +641,8 @@ if __name__ == "__main__":
 
         # ---- Summary tables -------------------------------------------------
         print("\n" + "=" * 100, flush=True)
-        print("SB 3125 CD2 ENHANCED FISCAL IMPACT  ($M, vs Act 46 baseline, with behavioral response)",
-              flush=True)
+        print(f"SB 3125 {cd_label} ENHANCED FISCAL IMPACT  "
+              f"($M, vs Act 46 baseline, with behavioral response)", flush=True)
         print("=" * 100, flush=True)
 
         # Column order for summary tables
@@ -598,13 +676,14 @@ if __name__ == "__main__":
         # Behavioral decomposition for MID at TY 2027
         mid27 = df[(df["scenario"] == "MID") & (df["tax_year"] == 2027)].iloc[0]
         print("\n" + "-" * 100, flush=True)
-        print("BEHAVIORAL DECOMPOSITION (MID scenario, TY 2027):", flush=True)
+        print(f"BEHAVIORAL DECOMPOSITION (MID scenario, TY 2027):", flush=True)
         print("-" * 100, flush=True)
         print(f"  Static bracket delta:                   ${mid27['bracket_delta_static_$M']:>+8.2f}M", flush=True)
         print(f"  ETI/migration response (income shrink): ${mid27['eti_response_$M']:>+8.2f}M", flush=True)
         print(f"  PTE election shift to entity tax:       ${mid27['pte_shift_$M']:>+8.2f}M", flush=True)
         print(f"  Post-behavioral bracket delta:          ${mid27['bracket_delta_post_$M']:>+8.2f}M", flush=True)
-        cor_diag = mid27['bracket_delta_cor_scaled_$M'] / mid27['bracket_delta_post_$M'] if mid27['bracket_delta_post_$M'] else 1.0
+        cor_diag = (mid27['bracket_delta_cor_scaled_$M'] / mid27['bracket_delta_post_$M']
+                    if mid27['bracket_delta_post_$M'] else 1.0)
         print(f"  COR-scaled (×{cor_diag:.3f}):                "
               f"${mid27['bracket_delta_cor_scaled_$M']:>+8.2f}M", flush=True)
 
