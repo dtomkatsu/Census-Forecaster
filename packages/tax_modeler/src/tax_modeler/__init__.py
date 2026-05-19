@@ -143,6 +143,7 @@ from .pipeline import (
     compute_base_tax,
     enrich_for_benefits,
     enrich_for_credits,
+    enrich_with_spm_unit_id,
     run_pipeline,
 )
 
@@ -259,6 +260,7 @@ PUBLIC_API = (
     # as deprecated shims in tax_modeler.pipeline).
     "enrich_for_credits",
     "enrich_for_benefits",
+    "enrich_with_spm_unit_id",
     "compute_base_tax",
     "calibrate",
     # Tax math primitives

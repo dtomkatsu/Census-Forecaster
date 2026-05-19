@@ -661,3 +661,90 @@ caveats apply:
 * **Cleveland Fed rent blending:** Adams, B., Hertz, B., Verbrugge, R.
   (2022). "New-Tenant Repeat Rent Inflation." *Cleveland Fed
   Working Paper 22-38r.*
+
+---
+
+## SPM unit of analysis (Tier 4, May 2026)
+
+The poverty pipeline reports the Supplemental Poverty Measure at the
+**SPM-unit** level per Census P60-280, not at the tax-unit level.
+Tax-unit-grained calculations remain available for revenue-side
+forecasts and for backward-compatibility checks (the
+`--by-tax-unit` flag on `scripts/poverty_impact_report.py`).
+
+### SPM unit construction
+
+SPM units are built bottom-up from PUMS persons using the RELSHIPP
+relationship-to-householder code:
+
+* **Primary SPM unit per household** (`{SERIALNO}_primary`): the
+  householder + all relatives (RELSHIPP 20–30) + unmarried partner
+  (33) + foster children (34) + *any unrelated child under 15*
+  (RELSHIPP 31, 32, or 35 with AGEP < 15, per the standard P60-280
+  exception).
+* **Unrelated adult SPM units** (`{SERIALNO}_unrel_{SPORDER}`):
+  roomers/boarders/other non-relatives aged 15+ (RELSHIPP 31, 32, 35
+  with AGEP ≥ 15) — one one-person SPM unit each.
+* **Group quarters** (RELSHIPP 36, 37): excluded from SPM accounting
+  entirely (per P60-280; SPM is defined for the household population).
+
+Implementation: `tax_modeler.units.spm_unit_assembly.build_spm_unit_assignment`.
+
+### Tax-unit → SPM-unit aggregation
+
+After all tax/credit/benefit dollars have been computed at tax-unit
+granularity (the methodologically correct level for tax-return-based
+quantities), the pipeline rolls them up to SPM-unit granularity
+before threshold comparison:
+
+* **Sum across tax units in the same SPM unit**: every SPM-resource
+  component — `total_cash_income`, `eitc_amount`, `ctc_refundable`,
+  `hi_eitc_amount`, all benefit imputations (SNAP, housing subsidy,
+  WIC, LIHEAP, CCSP, school lunch), all tax liabilities (federal,
+  state, payroll), MOOP, childcare expense, work expense, RxKids
+  (if enabled).
+* **Representative columns** (constant within a household): SERIALNO,
+  PUMA, county, house district, senate district, tenure — taken
+  from the highest-income constituent tax unit (deterministic
+  tiebreak: lowest filer_id).
+* **Composition counts** (`n_adults`, `n_children`, `n_persons`)
+  computed from PUMS person ages restricted to members of the SPM
+  unit, used both for the threshold lookup and for the
+  persons-in-poverty numerator.
+* **Weight**: raw household `WGTP` from PUMS, one value per SPM
+  unit. The tax-unit hybrid weight (calibrated to DOTAX filer
+  totals via per-filing-status multipliers) is dropped because it
+  is a tax-filer concept, not a person concept; SPM-unit weighted
+  persons hits the ACS person count (~1.3M for Hawaii) directly.
+
+Implementation: `tax_modeler.poverty.spm_aggregation.aggregate_to_spm_units`.
+
+### Threshold lookup
+
+`tax_modeler.poverty.thresholds.threshold_for_units` auto-detects
+SPM-unit input via the presence of `n_adults` and `n_children`
+columns and uses them directly when present, applying the Betson
+(1996) three-parameter equivalence scale to the published Hawaii
+2A2C reference threshold. When the composition columns are absent
+(tax-unit fallback path used by `forecast_*.py` revenue scripts),
+the function derives `n_adults = 1 + (filing_status == MFJ)` and
+`n_children = num_dependents` for backward compatibility.
+
+### Result (TY2024, real Hawaii PUMS)
+
+The Tier 4 SPM-unit pipeline produces a baseline rate of **12.43 %**
+on real PUMS, matching the upper bound of Census-published Hawaii
+SPM (~10–12 %). The Tier 3 tax-unit baseline of 24.62 % was
+inflated by the well-known unit-of-analysis bias: multi-tax-unit
+households were each scored against single-person thresholds with
+only their individual income, missing the resource-pooling that
+happens in real households.
+
+### References
+
+* Short, K. (2012). *The Research Supplemental Poverty Measure:
+  2010.* Census P60-241.
+* Renwick, T., & Fox, L. (2016). *The Supplemental Poverty Measure:
+  2015.* Census P60-258.
+* US Census Bureau (annual). *The Supplemental Poverty Measure:
+  P60-280 series.*

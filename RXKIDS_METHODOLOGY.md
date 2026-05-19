@@ -194,9 +194,11 @@ cash-transfer program.
   not captured in the HoH row.
 - Cohabiting unmarried mothers may file as `single` rather than HoH
   depending on dependent-claiming arrangements.
-- For the most accurate single-mother attribution, the analysis should
-  be paired with `--pool-spm-units` (Tier 2 PR #5) to merge
-  cohabiting partners into shared SPM units.
+- As of Tier 4 (F-14), the poverty pipeline defaults to SPM-unit
+  granularity per Census P60-280, so cohabiting partners and shared
+  households are already pooled correctly. Single-mother attribution
+  is the `single`/`head_of_household` subset of the SPM filing-status
+  proxy (single adult with children).
 
 ## 6. Comparison to Flint outcomes
 

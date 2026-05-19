@@ -126,20 +126,38 @@ def threshold_for_units(
     *,
     year: int = 2024,
     tenure_col: str = "tenure",
+    n_adults_col: str = "n_adults",
+    n_children_col: str = "n_children",
 ):
     """Vectorized per-row SPM threshold lookup using composition + tenure.
 
-    Reads the unit DataFrame's ``num_dependents``, ``filing_status``, and
-    (when present) ``tenure`` column to produce one threshold per row.
+    Two composition-input modes, auto-detected:
+
+      * **SPM-unit mode** (preferred): if ``n_adults_col`` AND
+        ``n_children_col`` are both present on the input frame, they are
+        used directly. This is the correct mode for SPM-unit-grained
+        analysis where the composition is computed from PUMS persons,
+        not derived from filing_status.
+      * **Tax-unit fallback**: if either composition column is absent,
+        the legacy filing_status-based approximation is used:
+        ``n_adults = 1 + (filing_status == "married_filing_jointly")``,
+        ``n_children = num_dependents``. This preserves backward
+        compatibility for callers that pass the tax-unit frame directly
+        (e.g. revenue forecast scripts).
+
     Falls back to ``"renter"`` when ``tenure`` is missing — the most
     conservative assumption (renter thresholds are highest).
     """
     import numpy as np
     import pandas as pd
 
-    is_joint = (units["filing_status"] == "married_filing_jointly").to_numpy()
-    n_adults = 1 + is_joint.astype(int)
-    n_children = units["num_dependents"].fillna(0).astype(int).to_numpy()
+    if n_adults_col in units.columns and n_children_col in units.columns:
+        n_adults = units[n_adults_col].fillna(0).astype(int).clip(lower=1).to_numpy()
+        n_children = units[n_children_col].fillna(0).astype(int).clip(lower=0).to_numpy()
+    else:
+        is_joint = (units["filing_status"] == "married_filing_jointly").to_numpy()
+        n_adults = 1 + is_joint.astype(int)
+        n_children = units["num_dependents"].fillna(0).astype(int).to_numpy()
     if tenure_col in units.columns:
         tenures = units[tenure_col].fillna("renter").astype(str).to_numpy()
     else:

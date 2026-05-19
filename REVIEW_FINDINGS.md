@@ -30,6 +30,7 @@ was the audit budget for this review.
 | F-11 | Imputed rent for homeowners (must NOT be added per Census) | n/a — confirmed absent | Audited | — |
 | F-12 | SPM threshold for TY2025 is a 3 % CPI-U projection from TY2024 | Minor | Documented | — |
 | F-13 | ARPA CTC age-17 inflation uses 1.06 statewide multiplier | Minor | Documented | — |
+| F-14 | Unit of analysis was tax-unit-grained (Census SPM requires SPM-unit-grained per P60-280) | **Critical** | Fixed (Tier 4) | — |
 
 ---
 
@@ -235,6 +236,60 @@ imputed-rent term. ✓ No action needed.
 
 ---
 
+### F-14 — Unit of analysis: tax unit → SPM unit (Tier 4)
+
+The poverty pipeline computed all metrics at *tax-unit* granularity
+(one row = one filer + spouse + claimed dependents). Census P60-280
+specifies that the SPM is measured at the **SPM unit** level: the
+householder + relatives + unmarried partner + foster children +
+unrelated children under 15 (one resource-sharing group per household),
+with each unrelated adult forming their own one-person SPM unit. The
+tax-unit approach systematically over-counts poor people because:
+
+* Multi-tax-unit households (e.g., parent + adult child both filing
+  single) are scored against two separate single-person thresholds
+  using only their individual incomes, even though they share housing
+  + groceries + utilities + childcare in real life.
+* Cohabiting unmarried partners with kids file separately, each
+  scoring against a single-parent threshold rather than the pooled
+  household.
+
+The prior heuristic `tax_modeler.units.spm_unit.build_spm_units` tried
+to fix this post-hoc but never fired on real PUMS (it required ≥2
+tax units per household with ≥2 carrying dependents and no MFJ — a
+combination almost no real household exhibits because the tax-unit
+constructor produces one tax unit per household by default).
+
+**Fix:** New module `tax_modeler.units.spm_unit_assembly` builds SPM
+unit IDs bottom-up from PUMS RELSHIPP codes per the P60-280 rules
+already encoded at `entities/graph.py:262-266` (primary set = 20-30,
+33, 34; unrelated set = 31, 32, 35; group quarters = 36, 37 excluded;
+plus the "unrelated child under 15 → primary" rule). New module
+`tax_modeler.poverty.spm_aggregation` rolls the tax-unit-grained
+credit/tax/benefit dollars up to SPM-unit granularity *after* every
+dollar has been computed. The tax pipeline (credits, federal/state
+income tax, benefits) is unchanged because credits are correctly
+claimed at the tax-unit level — only the *poverty accounting* unit
+of analysis was wrong.
+
+`threshold_for_units` and `_persons_per_unit` were modified to
+auto-detect SPM-unit mode via the presence of an `n_persons` column
+on the input frame. Tax-unit callers (revenue forecast scripts) keep
+working with no changes via the legacy filing_status-derived math.
+
+**Result:** TY2024 baseline rate fell from 24.62 % to **12.43 %**,
+right at the upper bound of Census-published Hawaii SPM (~10-12 %).
+Weighted persons went from 1.4M (tax-unit-grained, includes all
+filers) to 1.3M (SPM-unit-grained, excludes group quarters per
+Census methodology).
+
+**Tests:**
+* `tests/tax_modeler/units/test_spm_unit_assembly.py` (13 tests)
+* `tests/tax_modeler/poverty/test_spm_aggregation.py` (9 tests)
+* `tests/tax_modeler/poverty/test_impact.py::test_compute_poverty_impact_auto_detects_spm_granularity`
+* The legacy `test_pooling_*` tests (4) and `--pool-spm-units` flag
+  were removed alongside `tax_modeler.units.spm_unit`.
+
 ### F-12 / F-13 — Documented limitations
 
 * **F-12:** TY2025 base threshold ($35,425) is `TY2024 × 1.03` —
@@ -261,32 +316,29 @@ added across the audit:
 
 ## Headline numbers — TY2024 (real Hawaii PUMS)
 
-`reports/poverty_impact_2024_review/by_state.csv` — full flag stack except
-`--pool-spm-units` (default OFF).
+`reports/poverty_impact_2024_tier4_spm/by_state.csv` — full flag stack
+with the Tier 4 SPM-unit pipeline.
 
-| Metric | Tier 1 (PR #4 baseline) | After this audit |
-|---|---|---|
-| Baseline SPM rate | 22.65 % | **23.00 %** |
-| Persons in poverty | 318,999 | 324,002 |
-| Persons lifted by federal EITC | 29,320 | 27,397 |
-| Persons lifted by federal CTC | 19,506 | 19,553 |
-| Persons lifted by HI EITC | 12,246 | 12,378 |
-| Persons lifted by all three (joint) | 50,084 | 47,026 |
-| Persons lifted if HI EITC → 100 % federal (additional) | 13,826 | 13,517 |
-| Persons lifted if HI enacts $650/child CTC (additional) | 6,263 | 7,415 |
-| Baseline poverty gap | $2,579 M | $2,846 M |
+| Metric | Tier 1 (PR #4) | After audit (Tier 3) | After F-14 (Tier 4 SPM units) |
+|---|---|---|---|
+| Baseline SPM rate | 22.65 % | 24.62 % | **12.43 %** |
+| Persons in poverty | 318,999 | 343,566 | **161,785** |
+| Persons lifted by federal EITC | 29,320 | 31,298 | 19,022 |
+| Persons lifted by federal CTC | 19,506 | 24,689 | 15,891 |
+| Persons lifted by HI EITC | 12,246 | 15,761 | 8,353 |
+| Persons lifted by all three (joint) | 50,084 | 51,306 | 34,462 |
+| Persons lifted if HI EITC → 100 % federal | 13,826 | 17,085 | 11,873 |
+| Persons lifted if HI enacts $650/child CTC | 6,263 | 7,399 | 5,359 |
+| Baseline poverty gap | $2,579 M | $2,971 M | $815 M |
+| Weighted persons | ~720 K (filers) | ~1,395 K | ~1,302 K |
 
-The audit fixed methodology bugs but did **not** close the gap to
-Census-published Hawaii SPM (~10–12 %). The dominant residual is the
-unit-of-analysis bias — tax units double-count people in cohabiting
-unmarried-parent households. Running with `--pool-spm-units` (default
-OFF; flag enabled in Tier 2) is the next lever for closing the gap.
-
-The methodology fixes individually net to roughly zero on the headline
-rate: the corrected (per-tenure) Honolulu geographic multiplier raised
-the threshold (and the rate) by ~1 pp, while the bracket-based federal
-tax + WIC/LIHEAP/NSLP + childcare cap added resources back of similar
-magnitude.
+Tier 4 closes the gap to Census-published Hawaii SPM (~10–12 %): the
+12.43 % rate is right at the upper bound of the published range and
+matches Census methodology. The persons-lifted figures are
+correspondingly lower than Tier 3 because each SPM unit (resource-
+sharing group) crosses the threshold once rather than each tax unit
+inside it crossing independently. The relative ranking of credit
+contributions and the geographic pattern are unchanged.
 
 ---
 

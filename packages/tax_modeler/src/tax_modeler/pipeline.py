@@ -130,6 +130,37 @@ def _construct_units(person_df: pd.DataFrame, hh_df: pd.DataFrame) -> pd.DataFra
     return units
 
 
+def enrich_with_spm_unit_id(
+    units: pd.DataFrame,
+    persons: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Compute SPM unit IDs from PUMS and attach them to the tax-unit frame.
+
+    Thin glue around
+    :func:`tax_modeler.units.spm_unit_assembly.build_spm_unit_assignment`
+    and :func:`attach_spm_unit_id_to_tax_units`. Returns
+    ``(units_with_spm_id, persons_with_assignment)``. Either frame can
+    have ``person_id`` as a column or as the index; both are handled.
+
+    Use as the first step after PUMS load + tax-unit construction so the
+    ``spm_unit_id`` column rides through all subsequent enrichment and
+    benefit-imputation steps unchanged.
+    """
+    from tax_modeler.units.spm_unit_assembly import (
+        attach_spm_unit_id_to_tax_units,
+        build_spm_unit_assignment,
+    )
+
+    # If persons has person_id as index, reset for the assignment step so
+    # the new spm_unit_id column lands alongside it.
+    pers = persons
+    if pers.index.name == "person_id":
+        pers = pers.reset_index()
+    pers_assigned = build_spm_unit_assignment(pers)
+    units_with_id = attach_spm_unit_id_to_tax_units(units, pers_assigned)
+    return units_with_id, pers_assigned
+
+
 def enrich_for_credits(df: pd.DataFrame) -> pd.DataFrame:
     """Stage 3: derive credit-calculation inputs from TaxUnitConstructor columns.
 

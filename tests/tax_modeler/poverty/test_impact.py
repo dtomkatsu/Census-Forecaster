@@ -640,82 +640,10 @@ def test_only_workers_have_work_expense():
 # ---------------------------------------------------------------------------
 
 
-def test_pooling_reduces_persons_in_poverty():
-    """Two cohabiting single filers with shared kids combine into one above-threshold unit."""
-    from tax_modeler.units.spm_unit import build_spm_units
-
-    # Both are single/HOH with kids in the same household (hh_id=99).
-    # Individually each is below the HI 1A1C SPM threshold (~$30.7k for
-    # renter, TY2024). Pooled (2A2C, threshold ~$43.8k renter HI 2024),
-    # combined income $58k clears the threshold after fed + payroll tax.
-    units = _make_units([
-        {"hh_id": "99", "filing_status": "head_of_household",
-         "num_dependents": 1, "num_qualifying_children": 1,
-         "total_cash_income": 22_000.0, "earned_income": 22_000.0,
-         "income": 22_000.0, "weight": 100.0,
-         "primary_agep": 35, "tenure": "renter"},
-        {"hh_id": "99", "filing_status": "head_of_household",
-         "num_dependents": 1, "num_qualifying_children": 1,
-         "total_cash_income": 36_000.0, "earned_income": 36_000.0,
-         "income": 36_000.0, "weight": 100.0,
-         "primary_agep": 36, "tenure": "renter"},
-    ])
-    unpooled_persons_poor = compute_poverty_impact(
-        units, tax_year=2024
-    ).by_state.iloc[0]["persons_in_poverty_baseline"]
-    pooled_units = build_spm_units(units)
-    pooled_persons_poor = compute_poverty_impact(
-        pooled_units, tax_year=2024
-    ).by_state.iloc[0]["persons_in_poverty_baseline"]
-    assert pooled_persons_poor < unpooled_persons_poor
-
-
-def test_pooling_preserves_weighted_persons():
-    """Every person in the source frame appears exactly once in the pooled frame."""
-    from tax_modeler.units.spm_unit import build_spm_units
-    from tax_modeler.poverty.impact import _persons_per_unit
-
-    units = _make_units([
-        {"hh_id": "1", "filing_status": "head_of_household",
-         "num_dependents": 1, "num_qualifying_children": 1,
-         "total_cash_income": 22_000.0, "earned_income": 22_000.0,
-         "income": 22_000.0, "weight": 50.0},
-        {"hh_id": "1", "filing_status": "head_of_household",
-         "num_dependents": 2, "num_qualifying_children": 2,
-         "total_cash_income": 24_000.0, "earned_income": 24_000.0,
-         "income": 24_000.0, "weight": 50.0},
-        {"hh_id": "2", "filing_status": "single",
-         "num_dependents": 0, "num_qualifying_children": 0,
-         "total_cash_income": 30_000.0, "earned_income": 30_000.0,
-         "income": 30_000.0, "weight": 100.0},
-    ])
-    pre_persons = float(
-        (units["weight"].to_numpy() * _persons_per_unit(units)).sum()
-    )
-    pooled = build_spm_units(units)
-    post_persons = float(
-        (pooled["weight"].to_numpy() * _persons_per_unit(pooled)).sum()
-    )
-    assert post_persons == pytest.approx(pre_persons)
-
-
-def test_unpooled_default_unchanged():
-    """build_spm_units must be idempotent on inputs that don't match the pooling heuristic."""
-    from tax_modeler.units.spm_unit import build_spm_units
-
-    # All distinct households → no pooling. The output must equal the
-    # input up to row order on the relevant columns.
-    units = _make_units([
-        {"hh_id": f"hh_{i}", "filing_status": "single",
-         "num_dependents": 0, "num_qualifying_children": 0,
-         "total_cash_income": 25_000.0, "earned_income": 25_000.0,
-         "income": 25_000.0, "weight": 100.0}
-        for i in range(5)
-    ])
-    pooled = build_spm_units(units)
-    assert len(pooled) == len(units)
-    assert pooled["filing_status"].eq("single").all()
-    assert pooled["income"].sum() == pytest.approx(units["income"].sum())
+# Legacy tax-unit pooling heuristic (build_spm_units) was removed in
+# favor of RELSHIPP-based SPM unit assembly. See
+# tests/tax_modeler/units/test_spm_unit_assembly.py and
+# tests/tax_modeler/poverty/test_spm_aggregation.py for the new tests.
 
 
 # ---------------------------------------------------------------------------
@@ -924,7 +852,6 @@ def test_full_flag_stack_smoke():
     from tax_modeler.liability.federal import (
         compute_federal_income_tax_for_units,
     )
-    from tax_modeler.units.spm_unit import build_spm_units
 
     units = _low_income_frame(n=60, with_kids=True, seed=29)
     units["hh_id"] = [f"hh_{i}" for i in range(len(units))]
@@ -937,9 +864,9 @@ def test_full_flag_stack_smoke():
     units = compute_childcare_expense_for_units(units)
     units = compute_work_expense_for_units(units)
     units = compute_federal_income_tax_for_units(units, tax_year=2024)
-    # Pooling: single-tax-unit-per-hh frame → build_spm_units passes through.
-    units = build_spm_units(units)
 
+    # Tax-unit-mode poverty calc (no SPM aggregation): exercises the
+    # legacy fallback path for compute_poverty_impact (no n_persons col).
     result = compute_poverty_impact(units, tax_year=2024)
     assert "poverty_rate_baseline" in result.by_state.columns
     rate = float(result.by_state.iloc[0]["poverty_rate_baseline"])
@@ -957,58 +884,10 @@ def test_module_notes_mention_wic_liheap():
     assert "Federal income tax" in doc or "federal income tax" in doc
 
 
-def test_pooling_magnitude_on_stylized_frame():
-    """On a 50-pair stylized 2A2C frame, pooling reduces persons_in_poverty by ≥5%.
-
-    Each pair is a household of two cohabiting filers each with one kid,
-    each individually below the renter HI SPM threshold (~$30.6k 1A1C
-    after PR #8's per-tenure Honolulu MRI + Betson equiv scale) but
-    jointly above the pooled 2A2C renter threshold (~$43.8k). The Tier 3
-    validation criterion is a 5-25% reduction; on this pure-pool fixture
-    the reduction is large (close to 100% of the would-be-poor pairs lift
-    out) because every row is a pooling candidate. On real Hawaii PUMS
-    the magnitude is diluted by households that do NOT match the
-    heuristic. See impact.py module NOTES.
-    """
-    from tax_modeler.units.spm_unit import build_spm_units
-
-    rows = []
-    for i in range(50):
-        rows.append({
-            "hh_id": f"hh_{i}", "filing_status": "head_of_household",
-            "num_dependents": 1, "num_qualifying_children": 1,
-            "total_cash_income": 25_000.0, "earned_income": 25_000.0,
-            "income": 25_000.0, "weight": 100.0,
-            "primary_agep": 32 + (i % 5), "tenure": "renter",
-        })
-        rows.append({
-            "hh_id": f"hh_{i}", "filing_status": "head_of_household",
-            "num_dependents": 1, "num_qualifying_children": 1,
-            "total_cash_income": 50_000.0, "earned_income": 50_000.0,
-            "income": 50_000.0, "weight": 100.0,
-            "primary_agep": 34 + (i % 5), "tenure": "renter",
-        })
-    units = _make_units(rows)
-
-    pre = float(
-        compute_poverty_impact(units, tax_year=2024)
-        .by_state.iloc[0]["persons_in_poverty_baseline"]
-    )
-    pooled = build_spm_units(units)
-    post = float(
-        compute_poverty_impact(pooled, tax_year=2024)
-        .by_state.iloc[0]["persons_in_poverty_baseline"]
-    )
-
-    # Validation must show a reduction (lower bound 5%). Upper bound
-    # is intentionally loose — the stylized fixture is pure-pool so
-    # the magnitude lands well above the 5-25% expected range for real
-    # PUMS. The key claim is: pooling reduces poverty on a frame that
-    # carries the bias the heuristic is designed to catch.
-    assert pre > 0
-    assert post < pre
-    reduction = (pre - post) / pre
-    assert reduction >= 0.05
+# test_pooling_magnitude_on_stylized_frame was removed alongside the
+# legacy build_spm_units heuristic. The SPM-unit pipeline now operates
+# bottom-up from PUMS RELSHIPP codes; the equivalent end-to-end check
+# lives in tests/tax_modeler/test_e2e_spm_baseline_rate.py.
 
 
 def test_federal_tax_low_income_zero_after_std_deduction():
@@ -1026,3 +905,57 @@ def test_federal_tax_low_income_zero_after_std_deduction():
     assert out.iloc[0]["federal_tax_liability"] == 0.0
     # MFJ $25k < $29.2k std ded → 0 federal tax.
     assert out.iloc[1]["federal_tax_liability"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# SPM-unit granularity (auto-detected via `n_persons` column)
+# ---------------------------------------------------------------------------
+
+
+def test_persons_per_unit_uses_n_persons_when_present():
+    """SPM-unit frames carry an `n_persons` column from PUMS — use it."""
+    df = pd.DataFrame([
+        {"filing_status": "married_filing_jointly", "num_dependents": 2, "n_persons": 4},
+        {"filing_status": "single", "num_dependents": 0, "n_persons": 3},  # multi-tax-unit SPM unit
+    ])
+    persons = _persons_per_unit(df)
+    np.testing.assert_array_equal(persons, np.array([4.0, 3.0]))
+
+
+def test_compute_poverty_impact_auto_detects_spm_granularity():
+    """Frame with `n_persons` column triggers SPM mode; threshold reads
+    `n_adults`/`n_children` directly rather than deriving from filing_status."""
+    units = _make_units([{
+        "filing_status": "married_filing_jointly",  # used only as proxy in SPM mode
+        "num_dependents": 2,
+        "num_qualifying_children": 2,
+        "n_adults": 2,
+        "n_children": 2,
+        "n_persons": 4,
+        "total_cash_income": 60_000.0,
+        "earned_income": 60_000.0,
+        "income": 60_000.0,
+        "eitc_amount": 0.0,
+        "weight": 100.0,  # household weight
+    }])
+    result = compute_poverty_impact(units, tax_year=2024)
+    state = result.by_state.iloc[0]
+    # Weighted persons should = n_persons × weight = 400
+    assert state["weighted_persons"] == pytest.approx(400.0)
+
+
+def test_compute_poverty_impact_tax_unit_mode_unchanged():
+    """Frame without `n_persons` keeps using legacy filing_status-based math."""
+    units = _make_units([{
+        "filing_status": "married_filing_jointly",
+        "num_dependents": 2,
+        "num_qualifying_children": 2,
+        "total_cash_income": 60_000.0,
+        "earned_income": 60_000.0,
+        "income": 60_000.0,
+        "weight": 100.0,
+    }])
+    result = compute_poverty_impact(units, tax_year=2024)
+    state = result.by_state.iloc[0]
+    # MFJ + 2 deps → n_adults=2, n_children=2 → 4 persons; weighted = 400
+    assert state["weighted_persons"] == pytest.approx(400.0)

@@ -644,7 +644,7 @@ def _render_html(data: dict) -> str:
         <summary>Known limitations</summary>
         <ul>
           <li>Static counterfactual: no modeled labor supply / marriage / fertility / filing response</li>
-          <li>Tax unit ≠ SPM unit: cohabiting unmarried partners may be counted as two thresholds (pooling correction available via <code>--pool-spm-units</code>, default off pending real-PUMS validation)</li>
+          <li>Unit of analysis: SPM unit (per Census P60-280). Tax-unit-grained calculations are also available via <code>--by-tax-unit</code> for diagnostic comparisons.</li>
           <li>District assignment: within-PUMA HD/SD via deterministic SERIALNO hash; ±20% point-estimate uncertainty until IRS SOI ZIP raking enabled</li>
           <li>Marginal attribution is non-additive: sum of single-credit lifts ≠ combined-credit lift due to phase-out interactions</li>
         </ul>

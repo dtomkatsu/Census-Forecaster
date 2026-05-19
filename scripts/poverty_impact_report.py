@@ -66,8 +66,15 @@ DEFAULT_FIXTURE_DIR = REPO_ROOT / "tests" / "tax_modeler" / "fixtures"
 # ---------------------------------------------------------------------------
 
 
-def _load_units(pums_data_dir: Optional[Path], use_fixture: bool) -> pd.DataFrame:
-    """Build enriched, taxed tax units with HI EITC + geography assigned."""
+def _load_units(
+    pums_data_dir: Optional[Path], use_fixture: bool
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Build enriched, taxed tax units with HI EITC + geography assigned.
+
+    Returns ``(units, persons)``. The ``persons`` frame is returned so
+    downstream SPM-unit assembly can read RELSHIPP, AGEP, and WGTP
+    directly from PUMS.
+    """
     from tax_modeler.pipeline import enrich_for_credits
     from tax_modeler.units.constructor import TaxUnitConstructor
     from tax_modeler.analysis.puma_crosswalk import assign_geography
@@ -103,6 +110,14 @@ def _load_units(pums_data_dir: Optional[Path], use_fixture: bool) -> pd.DataFram
         households = _coalesce(households)
         persons = _coalesce(persons)
 
+    # Broadcast WGTP from households onto persons so the SPM aggregator
+    # can pick up the household weight without re-joining downstream.
+    if "WGTP" not in persons.columns and "WGTP" in households.columns:
+        persons = persons.merge(
+            households[["SERIALNO", "WGTP"]].drop_duplicates(subset=["SERIALNO"]),
+            how="left", on="SERIALNO",
+        )
+
     ctor = TaxUnitConstructor(
         persons.copy(), households.copy(),
         use_soi_calibration=False, progress_bar=False,
@@ -110,7 +125,7 @@ def _load_units(pums_data_dir: Optional[Path], use_fixture: bool) -> pd.DataFram
     units = ctor.create_rule_based_units(parallel=False)
     units = enrich_for_credits(units)
     units = assign_geography(units)
-    return units
+    return units, persons
 
 
 def _build_units_for_tax_year(units: pd.DataFrame, tax_year: int, project: bool) -> pd.DataFrame:
@@ -378,11 +393,13 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                         "Compute the modeled Hawaii RxKids cash prescription "
                         "amount per filing unit. Requires the 'rxkids_hi' "
                         "scenario to surface poverty-lift estimates.")
-    p.add_argument("--pool-spm-units", action="store_true", default=False,
-                   help="(Default OFF.) Pool cohabiting unmarried partners + "
-                        "shared children into SPM units before threshold "
-                        "comparison. Eliminates double-counting persons across "
-                        "tax units sharing one household.")
+    p.add_argument("--by-tax-unit", action="store_true", default=False,
+                   help="(Default OFF; SPM-unit aggregation is the default.) "
+                        "Opt out of SPM-unit aggregation and report poverty at "
+                        "tax-unit granularity. Useful only for backward-compat "
+                        "checks. Persons-in-poverty will be overstated by "
+                        "~10 percentage points relative to Census published "
+                        "Hawaii SPM under this flag.")
     p.add_argument("--rake-to-irs-zip", action="store_true", default=False,
                    help="(Default OFF.) Rake unit weights so per-HD totals "
                         "match IRS SOI ZIP filer counts, holding PUMA "
@@ -465,8 +482,17 @@ def main(argv: Optional[list] = None) -> int:
         return 2
     args.out.mkdir(parents=True, exist_ok=True)
 
-    # 1. Build base units.
-    base_units = _load_units(args.pums_data_dir, args.use_fixture)
+    # 1. Build base units + load persons frame (needed for SPM unit assembly).
+    base_units, persons = _load_units(args.pums_data_dir, args.use_fixture)
+
+    # 1b. Attach SPM unit IDs to both frames using PUMS RELSHIPP/AGEP per
+    #     Census P60-280. Done early so the spm_unit_id column rides
+    #     through all subsequent enrichment/projection steps unchanged.
+    from tax_modeler.pipeline import enrich_with_spm_unit_id
+    base_units, persons = enrich_with_spm_unit_id(base_units, persons)
+    n_assigned = int(base_units["spm_unit_id"].notna().sum())
+    LOG.info("Attached spm_unit_id: %d / %d tax units in SPM accounting",
+             n_assigned, len(base_units))
 
     # 2. Compute tax + credits for the requested year.
     PUMS_CONSTRUCTION_YEAR = 2022
@@ -549,20 +575,25 @@ def main(argv: Optional[list] = None) -> int:
         LOG.info("Computing RxKids Hawaiʻi benefit amounts for TY %d", args.tax_year)
         units = compute_rxkids_for_units(units, tax_year=args.tax_year)
 
-    # 6d. SPM-unit pooling: merge cohabiting unmarried partners + shared kids
-    #     into a single SPM unit so one threshold is applied per real household.
-    if args.pool_spm_units:
-        from tax_modeler.units.spm_unit import build_spm_units
-        units = build_spm_units(units)
-    else:
+    # 6d. SPM-unit aggregation (default): roll the tax-unit-grained
+    #     credit/tax/benefit dollars up to SPM-unit granularity using the
+    #     RELSHIPP-based assignment computed at step 1b. Census P60-280
+    #     specifies the SPM unit (resource-sharing group within a
+    #     household) as the unit of poverty analysis.
+    if args.by_tax_unit:
         LOG.warning(
-            "--pool-spm-units not enabled; persons_in_poverty may be "
-            "overstated by ~10-20% due to tax-unit ≠ SPM-unit double-counting "
-            "in households where cohabiting unmarried partners file as "
-            "separate tax units. Tier 3 validation: pooling on a 2-tax-unit "
-            "stylized frame reduces poverty ~50% (within expectations); on "
-            "real Hawaii PUMS the magnitude must be checked before flipping "
-            "default ON."
+            "--by-tax-unit set; reporting poverty at tax-unit granularity. "
+            "Persons-in-poverty will be overstated by ~10 percentage points "
+            "vs Census-published Hawaii SPM. Used only for backward-compat "
+            "diagnostics."
+        )
+        poverty_frame = units
+    else:
+        from tax_modeler.poverty.spm_aggregation import aggregate_to_spm_units
+        poverty_frame = aggregate_to_spm_units(units, persons)
+        LOG.info(
+            "Aggregated %d tax units -> %d SPM units (P60-280 RELSHIPP rules).",
+            len(units), len(poverty_frame),
         )
 
     # 6e. District raking to IRS SOI ZIP filer/AGI totals. Holds per-PUMA sum(weight)
@@ -596,9 +627,12 @@ def main(argv: Optional[list] = None) -> int:
     else:
         scenarios = _DEFAULT_SCENARIOS
 
-    # 8. Compute impact.
+    # 8. Compute impact. ``poverty_frame`` is either the SPM-unit-grained
+    #    rollup (default) or the tax-unit frame (--by-tax-unit). The
+    #    compute_poverty_impact function auto-detects via the n_persons
+    #    column emitted by the aggregator.
     result = compute_poverty_impact(
-        units, tax_year=args.tax_year, scenarios=scenarios,
+        poverty_frame, tax_year=args.tax_year, scenarios=scenarios,
         hi_ctc_per_child=args.hi_ctc_per_child,
         hi_ctc_takeup_rate=args.hi_ctc_takeup_rate,
         hi_eitc_100pct_takeup_rate=args.hi_eitc_100pct_takeup_rate,

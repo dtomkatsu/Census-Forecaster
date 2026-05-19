@@ -28,6 +28,7 @@ LIGHT_GRAY = "#F5F5F5"
 WHITE = "#FFFFFF"
 
 TIER_PREFERENCE = [
+    "poverty_impact_2024_tier4_spm",
     "poverty_impact_2024_tier3",
     "poverty_impact_2024_tier2",
     "poverty_impact_2024_review",
@@ -72,6 +73,8 @@ class BriefData:
     counties: pd.DataFrame
     house_districts: pd.DataFrame
     senate_districts: pd.DataFrame
+    household_types: pd.DataFrame | None = None
+    racial_stats: pd.DataFrame | None = None
     rxkids_state: pd.Series | None = None
     rxkids_dir: Path | None = None
 
@@ -100,6 +103,46 @@ def _resolve_rxkids_dir(explicit: Path | None, tax_year: int) -> Path | None:
     return cand if (cand / "by_state.csv").exists() else None
 
 
+def _compute_racial_stats(pums_dir: Path) -> pd.DataFrame | None:
+    """Compute poverty rate and median personal income by race from ACS 2024 1-year PUMS."""
+    # Prefer 2024 1-year PUMS; fall back to 2018-2022 5-year if absent.
+    acs2024_dir = pums_dir / "pums_2024_1yr"
+    if (acs2024_dir / "psam_p15.parquet").exists():
+        persons_path = acs2024_dir / "psam_p15.parquet"
+        vintage = "ACS 2024 1-Year"
+    elif (pums_dir / "psam_p15.parquet").exists():
+        persons_path = pums_dir / "psam_p15.parquet"
+        vintage = "ACS 2018-2022 5-Year"
+    else:
+        return None
+    import numpy as np
+    persons = pd.read_parquet(persons_path)
+    race_groups = [
+        ("White alone", persons["RAC1P"] == 1),
+        ("Asian alone", persons["RAC1P"] == 6),
+        ("Native Hawaiian\n(alone or in combo)", persons["RACNH"] == 1),
+        ("Pacific Islander\n(NHPI alone)", persons["RAC1P"] == 7),
+        ("Two or more races", persons["RAC1P"] == 9),
+        ("Black alone", persons["RAC1P"] == 2),
+    ]
+    rows = []
+    for label, mask in race_groups:
+        sub = persons[mask]
+        tot = sub["PWGTP"].sum()
+        if tot < 10000:
+            continue
+        pov = sub[sub["POVPIP"] < 100]["PWGTP"].sum()
+        earners = sub[(sub["PERNP"] > 0) & sub["PERNP"].notna()].copy()
+        earners["adj"] = earners["PERNP"] * earners["ADJINC"] / 1e6
+        earners = earners.sort_values("adj")
+        cum = earners["PWGTP"].cumsum()
+        half = earners["PWGTP"].sum() / 2
+        med_row = earners[cum >= half]
+        med_inc = float(med_row["adj"].iloc[0]) if len(med_row) > 0 else np.nan
+        rows.append({"race": label, "poverty_rate": pov / tot, "median_income": med_inc, "n": int(tot), "vintage": vintage})
+    return pd.DataFrame(rows)
+
+
 def _load_data(
     data_dir: Path, tax_year: int, rxkids_dir: Path | None
 ) -> BriefData:
@@ -107,9 +150,13 @@ def _load_data(
     counties = pd.read_csv(data_dir / "by_county.csv")
     hd = pd.read_csv(data_dir / "by_house_district.csv")
     sd = pd.read_csv(data_dir / "by_senate_district.csv")
+    hht_path = data_dir / "by_household_type.csv"
+    household_types = pd.read_csv(hht_path) if hht_path.exists() else None
     rxkids_state = None
     if rxkids_dir is not None:
         rxkids_state = pd.read_csv(rxkids_dir / "by_state.csv").iloc[0]
+    pums_dir = REPO_ROOT / "packages" / "data" / "raw"
+    racial_stats = _compute_racial_stats(pums_dir)
     return BriefData(
         tax_year=tax_year,
         data_dir=data_dir,
@@ -117,6 +164,8 @@ def _load_data(
         counties=counties,
         house_districts=hd,
         senate_districts=sd,
+        household_types=household_types,
+        racial_stats=racial_stats,
         rxkids_state=rxkids_state,
         rxkids_dir=rxkids_dir,
     )
@@ -440,7 +489,7 @@ def _make_figures(data: BriefData, charts_dir: Path) -> dict[str, Path]:
     )
 
     fig6 = charts_dir / "fig6_expansion_scenarios.png"
-    scen_series = {
+    scen_series_6: dict[str, list[float]] = {
         "HI EITC at 100% of federal": [
             float(data.state["persons_lifted_hi_eitc_100pct"])
         ],
@@ -448,18 +497,78 @@ def _make_figures(data: BriefData, charts_dir: Path) -> dict[str, Path]:
             float(data.state["persons_lifted_hi_ctc_650"])
         ],
     }
-    _grouped_vertical_bar(
+    colors_6: dict[str, str] = {
+        "HI EITC at 100% of federal": TEAL,
+        "New $650/child HI state CTC": GOLD,
+    }
+    if data.rxkids_state is not None:
+        scen_series_6["RxKids Hawaiʻi"] = [
+            float(data.rxkids_state["persons_lifted_rxkids_hi"])
+        ]
+        colors_6["RxKids Hawaiʻi"] = SLATE
+    _stacked_vertical_bar(
         [f"Hawaiʻi statewide (TY{data.tax_year})"],
-        scen_series,
-        {
-            "HI EITC at 100% of federal": TEAL,
-            "New $650/child HI state CTC": GOLD,
-        },
+        scen_series_6,
+        colors_6,
         fig6,
-        f"Figure 6. Additional people who would be lifted out of poverty under proposed policy changes (TY{data.tax_year})",
+        f"Figure 6. Additional people lifted by proposed expansions — additive (TY{data.tax_year})",
         value_fmt="{:,.0f}",
-        ylabel="Additional people lifted",
+        ylabel="Additional people lifted out of poverty",
     )
+
+    # Background section charts
+    fig_bg1 = None
+    if data.household_types is not None:
+        hht = data.household_types.copy()
+        label_map = {
+            "head_of_household": "Single parent\n(head of household)",
+            "single": "Single adult\n(no dependents)",
+            "married_filing_jointly": "Married couple",
+            "married_filing_separately": "Married filing\nseparately",
+        }
+        hht["label"] = hht["filing_status"].map(label_map)
+        hht = hht[hht["label"].notna()].sort_values("poverty_rate_baseline", ascending=True)
+        state_rate = float(data.state["poverty_rate_baseline"]) * 100
+        labels_bg = list(hht["label"]) + ["Hawaiʻi\n(statewide)"]
+        values_bg = list(hht["poverty_rate_baseline"] * 100) + [state_rate]
+        colors_bg = [TEAL] * len(hht) + [GOLD]
+        fig_bg1 = charts_dir / "fig_bg1_poverty_by_household_type.png"
+        fig_b, ax_b = plt.subplots(figsize=(7.5, 3.8))
+        bars = ax_b.barh(labels_bg, values_bg, color=colors_bg, edgecolor="white")
+        for bar, v in zip(bars, values_bg):
+            ax_b.text(v + 0.3, bar.get_y() + bar.get_height() / 2, f"{v:.1f}%",
+                      va="center", fontsize=9, color=CHARCOAL)
+        ax_b.set_xlabel("SPM Poverty Rate (%)")
+        ax_b.set_xlim(0, max(values_bg) * 1.2)
+        ax_b.tick_params(axis="x", length=0)
+        ax_b.set_title(
+            f"Figure B1. SPM poverty rate by household type, Hawaiʻi (TY{data.tax_year})",
+            loc="left", pad=10)
+        plt.tight_layout()
+        fig_b.savefig(fig_bg1, dpi=200, bbox_inches="tight", facecolor="white")
+        plt.close(fig_b)
+
+    fig_bg2 = None
+    if data.racial_stats is not None:
+        rs = data.racial_stats.sort_values("poverty_rate", ascending=True).copy()
+        fig_bg2 = charts_dir / "fig_bg2_poverty_by_race.png"
+        fig_r, ax_r = plt.subplots(figsize=(7.5, 3.8))
+        bar_colors = [GOLD if "Hawaiian" in r or "Pacific" in r or "NHPI" in r else TEAL for r in rs["race"]]
+        bars_r = ax_r.barh(list(rs["race"]), list(rs["poverty_rate"] * 100),
+                           color=bar_colors, edgecolor="white")
+        for bar, v in zip(bars_r, rs["poverty_rate"] * 100):
+            ax_r.text(v + 0.3, bar.get_y() + bar.get_height() / 2, f"{v:.1f}%",
+                      va="center", fontsize=9, color=CHARCOAL)
+        ax_r.set_xlabel("Official Poverty Rate (%)")
+        ax_r.set_xlim(0, max(rs["poverty_rate"] * 100) * 1.25)
+        ax_r.tick_params(axis="x", length=0)
+        rs_vintage = rs["vintage"].iloc[0] if "vintage" in rs.columns else "ACS PUMS"
+        ax_r.set_title(
+            f"Figure B2. Official poverty rate by race/ethnicity, Hawaiʻi ({rs_vintage})",
+            loc="left", pad=10)
+        plt.tight_layout()
+        fig_r.savefig(fig_bg2, dpi=200, bbox_inches="tight", facecolor="white")
+        plt.close(fig_r)
 
     out = {
         "fig1": fig1,
@@ -470,6 +579,10 @@ def _make_figures(data: BriefData, charts_dir: Path) -> dict[str, Path]:
     }
     if fig4 is not None:
         out["fig4"] = fig4
+    if fig_bg1 is not None:
+        out["fig_bg1"] = fig_bg1
+    if fig_bg2 is not None:
+        out["fig_bg2"] = fig_bg2
     return out
 
 
@@ -743,25 +856,27 @@ def _executive_summary(pdf: BriefPDF, data: BriefData) -> None:
     _body_paragraph(
         pdf,
         "This brief uses the Supplemental Poverty Measure (SPM), the Census "
-        "Bureau’s more comprehensive measure of poverty, applied to the "
+        "Bureau's more comprehensive measure of poverty, applied to the "
         "American Community Survey 5-Year Public Use Microdata Sample for "
         "Hawaiʻi (2018–2022). It estimates how many local residents are "
         "kept above the poverty line each year by the federal Earned Income Tax "
-        "Credit (EITC), the federal Child Tax Credit (CTC), and Hawaiʻi’s "
+        "Credit (EITC), the federal Child Tax Credit (CTC), and Hawaiʻi's "
         "state EITC — and what would happen if Hawaiʻi expanded its own "
         "credits.",
     )
 
+    combined_pp = (float(state["poverty_rate_no_credits"]) - float(state["poverty_rate_baseline"])) * 100
     state_rate = _fmt_pct(state["poverty_rate_baseline"])
     persons_in_pov = _fmt_int(state["persons_in_poverty_baseline"])
+    no_credits_pop = _fmt_int(int(round(float(state["persons_in_poverty_baseline"]))) + combined_lifted)
     _body_paragraph(
         pdf,
         f"In TY{data.tax_year}, an estimated {persons_in_pov} Hawaiʻi "
-        f"residents ({state_rate}) lived below the SPM poverty line. Without "
-        f"the three refundable credits modeled here, that figure would be "
-        f"roughly {_fmt_int(int(round(float(state['persons_in_poverty_baseline']))) + combined_lifted)} — "
-        f"meaning tax credits are doing the work of an entire safety-net "
-        f"program on their own.",
+        f"residents ({state_rate}) lived below the SPM poverty line. Together, "
+        f"the federal EITC, federal CTC, and Hawaiʻi state EITC reduce the SPM "
+        f"poverty rate by {combined_pp:.1f} percentage points — keeping "
+        f"{_fmt_int(combined_lifted)} residents above the line. Without these "
+        f"credits, approximately {no_credits_pop} residents would be in poverty.",
     )
 
     pdf.set_y(pdf.h - 1.2)
@@ -825,7 +940,33 @@ def _expansion_page(
             _fmt_money_m(state["gap_closed_hi_ctc_650_$"]),
             "~$83M",
         ),
-        (
+    ]
+    _rx = data.rxkids_state
+    if _rx is not None:
+        rows.append((
+            "RxKids Hawaiʻi (proposed)",
+            _fmt_int(_rx["persons_lifted_rxkids_hi"]),
+            _fmt_money_m(_rx["gap_closed_rxkids_hi_$"]),
+            "~$60M",
+        ))
+        _total_lifted = (
+            float(state["persons_lifted_hi_eitc_100pct"])
+            + float(state["persons_lifted_hi_ctc_650"])
+            + float(_rx["persons_lifted_rxkids_hi"])
+        )
+        _total_gap = (
+            float(state["gap_closed_hi_eitc_100pct_$"])
+            + float(state["gap_closed_hi_ctc_650_$"])
+            + float(_rx["gap_closed_rxkids_hi_$"])
+        )
+        rows.append((
+            "All three combined",
+            "~" + _fmt_int(_total_lifted),
+            _fmt_money_m(_total_gap),
+            "~$173M",
+        ))
+    else:
+        rows.append((
             "Both combined (non-additive)",
             "~"
             + _fmt_int(
@@ -837,8 +978,7 @@ def _expansion_page(
                 + float(state["gap_closed_hi_ctc_650_$"])
             ),
             "~$113M",
-        ),
-    ]
+        ))
     pdf.set_text_color(*_hex_to_rgb(CHARCOAL))
     pdf.set_font(BriefPDF.BODY_FONT, "", 10)
     for i, row in enumerate(rows):
@@ -866,15 +1006,28 @@ def _expansion_page(
     pdf.ln(0.1)
     pdf.set_font(BriefPDF.BODY_FONT, "", 10.5)
     pdf.set_text_color(*_hex_to_rgb(CHARCOAL))
-    _body_paragraph(
-        pdf,
-        "Either expansion would meaningfully reduce poverty in Hawaiʻi; "
-        "together they would lift several thousand additional residents above "
-        "the SPM threshold and close hundreds of millions of dollars in "
-        "remaining poverty gap. Because both credits are refundable, they reach "
-        "the families with the lowest incomes — those most likely to spend "
-        "every dollar locally on rent, food, and child care.",
-    )
+    if data.rxkids_state is not None:
+        _body_paragraph(
+            pdf,
+            "Any of these three policies would meaningfully reduce poverty in "
+            "Hawaiʻi. Enacted together, they represent a comprehensive strategy: "
+            "expanding EITC reaches low-income workers; a new state CTC supports "
+            "parents of young children; and RxKids delivers direct cash to "
+            "expecting mothers and infants in the critical first months of life. "
+            "Because all three channels target the families with the lowest "
+            "incomes, every dollar is likely to flow back into the local economy "
+            "through rent, food, and child care.",
+        )
+    else:
+        _body_paragraph(
+            pdf,
+            "Either expansion would meaningfully reduce poverty in Hawaiʻi; "
+            "together they would lift several thousand additional residents above "
+            "the SPM threshold and close hundreds of millions of dollars in "
+            "remaining poverty gap. Because both credits are refundable, they reach "
+            "the families with the lowest incomes — those most likely to spend "
+            "every dollar locally on rent, food, and child care.",
+        )
 
 
 def _methodology_page(pdf: BriefPDF, data: BriefData) -> None:
@@ -884,7 +1037,7 @@ def _methodology_page(pdf: BriefPDF, data: BriefData) -> None:
         pdf,
         "These estimates are produced by the Census-Forecaster tax simulation "
         "model maintained by Hawaiʻi Appleseed. The model uses the U.S. "
-        "Census Bureau’s 5-Year American Community Survey Public Use "
+        "Census Bureau's 5-Year American Community Survey Public Use "
         "Microdata Sample (ACS PUMS) for Hawaiʻi, 2018–2022, projected "
         "forward to the tax year of interest using a recency-weighted, "
         "cadence-aware damped-trend ensemble.",
@@ -892,12 +1045,21 @@ def _methodology_page(pdf: BriefPDF, data: BriefData) -> None:
     _body_paragraph(
         pdf,
         "Poverty is measured using the Supplemental Poverty Measure (SPM), the "
-        "Census Bureau’s comprehensive poverty measure. Unlike the official "
+        "Census Bureau's comprehensive poverty measure. Unlike the official "
         "poverty measure, the SPM accounts for federal and state tax payments, "
         "refundable tax credits, non-cash benefits such as SNAP and housing "
-        "subsidies, medical out-of-pocket costs, and Hawaiʻi’s "
+        "subsidies, medical out-of-pocket costs, and Hawaiʻi's "
         "above-average cost of living through a geographic adjustment to the "
         "poverty threshold.",
+    )
+    _body_paragraph(
+        pdf,
+        "Following Census P60-280, poverty is measured at the SPM-unit level "
+        "(the resource-sharing group within a household: householder + "
+        "relatives + unmarried partner + foster children + any unrelated "
+        "children under 15), not at the tax-unit level. Tax credits and "
+        "benefits are computed on tax returns and then summed to the SPM "
+        "unit for the poverty comparison.",
     )
     _body_paragraph(
         pdf,
@@ -918,7 +1080,7 @@ def _methodology_page(pdf: BriefPDF, data: BriefData) -> None:
     _body_paragraph(
         pdf,
         "The methodology, parameters, and full results tables are documented "
-        "in this project’s public methodology files (METHODOLOGY.md, "
+        "in this project's public methodology files (METHODOLOGY.md, "
         "REVIEW_FINDINGS.md). The model and its source code are maintained as a "
         "Python package; a v2 release was published in 2025.",
     )
@@ -976,6 +1138,92 @@ def _about_page(pdf: BriefPDF, date_str: str) -> None:
     pdf.multi_cell(0, 0.16, DATA_SOURCE_CITATION, align="L")
 
 
+def _background_page(
+    pdf: BriefPDF,
+    data: BriefData,
+    charts: dict[str, Path],
+) -> None:
+    pdf.add_page()
+    _add_section_title(pdf, "Background", "WHO BEARS THE BURDEN OF POVERTY IN HAWAIʻI?")
+
+    state = data.state
+    hht = data.household_types
+    rs = data.racial_stats
+
+    hoh_rate = None
+    mfj_rate = None
+    if hht is not None:
+        hoh_row = hht[hht["filing_status"] == "head_of_household"]
+        mfj_row = hht[hht["filing_status"] == "married_filing_jointly"]
+        if len(hoh_row) > 0:
+            hoh_rate = float(hoh_row.iloc[0]["poverty_rate_baseline"])
+        if len(mfj_row) > 0:
+            mfj_rate = float(mfj_row.iloc[0]["poverty_rate_baseline"])
+
+    if hoh_rate is not None and mfj_rate is not None:
+        ratio = hoh_rate / mfj_rate
+        _body_paragraph(
+            pdf,
+            f"Poverty in Hawaiʻi is not spread evenly. Single-parent households "
+            f"face an SPM poverty rate of {hoh_rate*100:.1f}% — more than "
+            f"{ratio:.0f} times the {mfj_rate*100:.1f}% rate among married-couple "
+            f"households. These are the families most exposed when rent increases, "
+            f"child-care costs rise, or a job is lost — and they are the primary "
+            f"beneficiaries of the tax credits analyzed in this brief.",
+        )
+
+    if "fig_bg1" in charts:
+        fig_img_w = pdf.w - pdf.l_margin - pdf.r_margin
+        fig_img_h = fig_img_w * (3.8 / 7.5)
+        y_fig = pdf.get_y() + 0.1
+        pdf.image(str(charts["fig_bg1"]), x=pdf.l_margin, y=y_fig,
+                  w=fig_img_w, h=fig_img_h)
+        pdf.set_y(y_fig + fig_img_h + 0.15)
+
+    if rs is not None:
+        nhpi = rs[rs["race"].str.contains("Pacific Islander|NHPI", na=False)]
+        nh_combo = rs[rs["race"].str.contains("Hawaiian.*alone or", na=False)]
+        wht = rs[rs["race"].str.contains("White", na=False)]
+        rs_vintage = rs["vintage"].iloc[0] if "vintage" in rs.columns else "ACS PUMS"
+        if len(nhpi) > 0 and len(wht) > 0:
+            nhpi_rate = float(nhpi.iloc[0]["poverty_rate"])
+            wht_rate = float(wht.iloc[0]["poverty_rate"])
+            nhpi_inc = float(nhpi.iloc[0]["median_income"])
+            wht_inc = float(wht.iloc[0]["median_income"])
+            nh_txt = ""
+            if len(nh_combo) > 0:
+                nh_rate = float(nh_combo.iloc[0]["poverty_rate"])
+                nh_txt = (
+                    f" Native Hawaiians (alone or in combination with another race) "
+                    f"experience a {nh_rate*100:.1f}% official poverty rate, "
+                    f"compared to {wht_rate*100:.1f}% for White alone residents."
+                )
+            _body_paragraph(
+                pdf,
+                f"Racial disparities compound this picture. Pacific Islander households "
+                f"(NHPI alone) have an official poverty rate of {nhpi_rate*100:.1f}% — "
+                f"nearly twice the {wht_rate*100:.1f}% rate for White alone residents. "
+                f"The median personal income for NHPI-alone earners is "
+                f"${nhpi_inc:,.0f}/year, compared to ${wht_inc:,.0f} for White alone "
+                f"earners — a gap of ${wht_inc - nhpi_inc:,.0f}.{nh_txt} "
+                f"(Source: {rs_vintage} PUMS, official poverty measure.)",
+            )
+
+    if "fig_bg2" in charts:
+        fig_img_w = pdf.w - pdf.l_margin - pdf.r_margin
+        fig_img_h = fig_img_w * (3.8 / 7.5)
+        y_fig2 = pdf.get_y() + 0.1
+        if y_fig2 + fig_img_h < pdf.h - 1.5:
+            pdf.image(str(charts["fig_bg2"]), x=pdf.l_margin, y=y_fig2,
+                      w=fig_img_w, h=fig_img_h)
+            pdf.set_y(y_fig2 + fig_img_h + 0.1)
+
+    pdf.set_y(pdf.h - 1.2)
+    pdf.set_font(BriefPDF.BODY_FONT, "I", 8.5)
+    pdf.set_text_color(*_hex_to_rgb(SLATE))
+    pdf.multi_cell(0, 0.16, DATA_SOURCE_CITATION, align="L")
+
+
 def _build_pdf(
     data: BriefData,
     charts: dict[str, Path],
@@ -985,6 +1233,7 @@ def _build_pdf(
     pdf = BriefPDF(tax_year=data.tax_year)
     _cover_page(pdf, data, date_str)
     _executive_summary(pdf, data)
+    _background_page(pdf, data, charts)
 
     state = data.state
     state_rate = _fmt_pct(state["poverty_rate_baseline"])
@@ -1001,7 +1250,7 @@ def _build_pdf(
             f"lived in poverty in TY{data.tax_year}. The SPM differs from the "
             "official poverty measure by accounting for taxes, refundable tax "
             "credits, non-cash benefits, medical out-of-pocket costs, and "
-            "Hawaiʻi’s above-average cost of living.",
+            "Hawaiʻi's above-average cost of living.",
             "Neighbor-island counties show higher SPM rates than Oʻahu, "
             "reflecting lower wages combined with rents and food prices that "
             "remain near urban-Honolulu levels. These geographic differences "
@@ -1011,18 +1260,22 @@ def _build_pdf(
     fed_eitc = int(round(float(state["persons_lifted_no_eitc"])))
     hi_eitc = int(round(float(state["persons_lifted_no_hi_eitc"])))
     eitc_total = fed_eitc + hi_eitc
+    fed_eitc_pp = (float(state["poverty_rate_no_eitc"]) - float(state["poverty_rate_baseline"])) * 100
+    hi_eitc_pp = (float(state["poverty_rate_no_hi_eitc"]) - float(state["poverty_rate_baseline"])) * 100
     _figure_page(
         pdf,
         "EITC (Federal + State)",
-        "HAWAIʻI’S LARGEST ANTI-POVERTY CREDIT",
+        "HAWAIʻI'S LARGEST ANTI-POVERTY CREDIT",
         charts["fig2"],
         [
-            f"The Earned Income Tax Credit is Hawaiʻi’s single most "
-            f"powerful anti-poverty tool. The federal EITC lifts "
-            f"{_fmt_int(fed_eitc)} residents above the SPM poverty line each "
-            f"year; Hawaiʻi’s state EITC — made fully refundable and "
-            f"raised to 40% of the federal credit by Act 209 (2023) — lifts "
-            f"an additional {_fmt_int(hi_eitc)} residents. Combined, the two "
+            f"The Earned Income Tax Credit is Hawaiʻi's single most "
+            f"powerful anti-poverty tool. The federal EITC alone reduces "
+            f"the SPM poverty rate by {fed_eitc_pp:.1f} percentage points, "
+            f"lifting {_fmt_int(fed_eitc)} residents above the poverty line "
+            f"each year. Hawaiʻi's state EITC — made fully refundable and "
+            f"raised to 40% of the federal credit by Act 209 (2023) — reduces "
+            f"the rate by an additional {hi_eitc_pp:.1f} percentage points, "
+            f"lifting {_fmt_int(hi_eitc)} more residents. Combined, the two "
             f"EITCs keep roughly {_fmt_int(eitc_total)} local residents out "
             f"of poverty annually (sum is approximate; the credits interact).",
             "Both credits are fully refundable, targeted at low- and "
@@ -1031,22 +1284,25 @@ def _build_pdf(
             "families. Because EITC dollars arrive as a tax refund, they "
             "typically flow back into the local economy through rent, "
             "groceries, and child care.",
-            "Hawaiʻi’s 40% state match is now among the most generous in "
+            "Hawaiʻi's 40% state match is now among the most generous in "
             "the country. Raising it further — or simplifying eligibility "
             "for the lowest-income filers — would deliver meaningful "
             "additional poverty reduction at modest fiscal cost (see "
             "expansion scenarios below).",
         ],
     )
+    ctc_pp = (float(state["poverty_rate_no_ctc"]) - float(state["poverty_rate_baseline"])) * 100
+    ctc_lifted_str = _fmt_int(state["persons_lifted_no_ctc"])
     _figure_page(
         pdf,
         "Federal CTC",
         "THE FEDERAL CHILD TAX CREDIT",
         charts["fig3"],
         [
-            f"The federal Child Tax Credit lifts an additional {_fmt_int(state['persons_lifted_no_ctc'])} "
-            f"Hawaiʻi residents above the SPM poverty line. After the "
-            "American Rescue Plan’s 2021 expansion expired, the credit reverted "
+            f"The federal Child Tax Credit reduces the SPM poverty rate by "
+            f"{ctc_pp:.1f} percentage points, lifting {ctc_lifted_str} "
+            f"Hawaiʻi residents above the poverty line. After the "
+            "American Rescue Plan's 2021 expansion expired, the credit reverted "
             "to a partially refundable structure that leaves many of the lowest-income "
             "families with less than the full benefit.",
             "Even in its current form, the CTC remains one of the most "
@@ -1059,10 +1315,11 @@ def _build_pdf(
         rx = data.rxkids_state
         rx_lifted = int(round(float(rx["persons_lifted_rxkids_hi"])))
         rx_gap = float(rx["gap_closed_rxkids_hi_$"])
+        rx_pp = (float(rx["poverty_rate_baseline"]) - float(rx["poverty_rate_rxkids_hi"])) * 100
         _figure_page(
             pdf,
             "RxKids Hawaiʻi (Proposed)",
-            "A CASH PRESCRIPTION FOR HAWAIʻI’S YOUNGEST",
+            "A CASH PRESCRIPTION FOR HAWAIʻI'S YOUNGEST",
             charts["fig4"],
             [
                 f"RxKids is a prenatal-and-infant cash-transfer program "
@@ -1075,12 +1332,14 @@ def _build_pdf(
                 f"total per child).",
                 f"Under this design, an estimated {_fmt_int(rx_lifted)} "
                 f"Hawaiʻi residents would be lifted above the SPM poverty "
-                f"line, closing {_fmt_money_m(rx_gap)} in poverty gap. "
+                f"line, reducing the SPM poverty rate by {rx_pp:.1f} percentage "
+                f"points and closing "
+                f"{_fmt_money_m(rx_gap)} in poverty gap. "
                 f"The program would cost roughly $60M per year statewide — "
                 f"reaching all ~15,500 annual births with a combined "
                 f"$4,500 per pregnancy benefit.",
                 "The SPM poverty-line crossing count is a conservative "
-                "floor on the program’s value. Research on the Flint "
+                "floor on the program's value. Research on the Flint "
                 "program documents significant downstream effects on "
                 "birth weight, maternal mental health, and infant "
                 "developmental outcomes that are not captured in the "
@@ -1095,7 +1354,7 @@ def _build_pdf(
         "BY STATE SENATE DISTRICT",
         charts["fig5"],
         [
-            "Looking across the state’s 25 Senate districts, the top ten "
+            "Looking across the state's 25 Senate districts, the top ten "
             "districts — generally those covering working-class "
             "neighborhoods on Oʻahu and the neighbor islands — "
             "account for more than half of all residents lifted out of poverty "
@@ -1116,10 +1375,11 @@ def _rxkids_html_section(data: BriefData, images: dict[str, str]) -> str:
     if "fig4" not in images or data.rxkids_state is None:
         return ""
     rx = data.rxkids_state
+    rx_pp = (float(rx["poverty_rate_baseline"]) - float(rx["poverty_rate_rxkids_hi"])) * 100
     return f"""
 <section>
   <div class="smalllabel">RxKids Hawaiʻi (Proposed)</div>
-  <h2>A Cash Prescription for Hawaiʻi’s Youngest</h2>
+  <h2>A Cash Prescription for Hawaiʻi's Youngest</h2>
   <div class="figure">
     <img src="data:image/png;base64,{images['fig4']}" />
   </div>
@@ -1127,9 +1387,10 @@ def _rxkids_html_section(data: BriefData, images: dict[str, str]) -> str:
     A Hawaiʻi-equivalent of the Flint RxKids program — $4,500 prenatal
     plus $1,500/year per child under 5, targeted at Medicaid-eligible
     families — would reach a cohort of roughly
-    {_fmt_int(rx['weighted_persons'])} local residents and lift an
+    {_fmt_int(rx['weighted_persons'])} local residents, lift an
     additional {_fmt_int(rx['persons_lifted_rxkids_hi'])} infants and
-    young children above the SPM poverty line.
+    young children above the SPM poverty line, and reduce the SPM
+    poverty rate by {rx_pp:.1f} percentage points.
   </p>
 </section>
 """
@@ -1151,6 +1412,86 @@ def _build_html_fallback(
     combined_lifted = _fmt_int(state["persons_lifted_no_credits"])
     combined_gap = _fmt_money_m(state["gap_closed_no_credits_$"])
     hi_ctc_lifted = _fmt_int(state["persons_lifted_hi_ctc_650"])
+    _html_fed_eitc_pp = (float(state["poverty_rate_no_eitc"]) - float(state["poverty_rate_baseline"])) * 100
+    _html_hi_eitc_pp = (float(state["poverty_rate_no_hi_eitc"]) - float(state["poverty_rate_baseline"])) * 100
+    _html_ctc_pp = (float(state["poverty_rate_no_ctc"]) - float(state["poverty_rate_baseline"])) * 100
+    _html_combined_pp = (float(state["poverty_rate_no_credits"]) - float(state["poverty_rate_baseline"])) * 100
+
+    # Background section text (images added after images dict is built below)
+    hht = data.household_types
+    rs = data.racial_stats
+    _bg_hh_text = ""
+    if hht is not None:
+        hoh_rows = hht[hht["filing_status"] == "head_of_household"]
+        mfj_rows = hht[hht["filing_status"] == "married_filing_jointly"]
+        if len(hoh_rows) > 0 and len(mfj_rows) > 0:
+            hoh_r = float(hoh_rows.iloc[0]["poverty_rate_baseline"])
+            mfj_r = float(mfj_rows.iloc[0]["poverty_rate_baseline"])
+            _bg_hh_text = (
+                f"<p>Single-parent households face an SPM poverty rate of "
+                f"{hoh_r*100:.1f}% — more than {hoh_r/mfj_r:.0f} times the "
+                f"{mfj_r*100:.1f}% rate among married-couple households.</p>"
+            )
+    _bg_race_text = ""
+    if rs is not None:
+        nhpi_rows = rs[rs["race"].str.contains("Pacific Islander|NHPI", na=False)]
+        wht_rows = rs[rs["race"].str.contains("White", na=False)]
+        nh_combo_rows = rs[rs["race"].str.contains("Hawaiian.*alone or", na=False)]
+        rs_vintage_html = rs["vintage"].iloc[0] if "vintage" in rs.columns else "ACS PUMS"
+        if len(nhpi_rows) > 0 and len(wht_rows) > 0:
+            nhpi_r = float(nhpi_rows.iloc[0]["poverty_rate"])
+            wht_r = float(wht_rows.iloc[0]["poverty_rate"])
+            nhpi_i = float(nhpi_rows.iloc[0]["median_income"])
+            wht_i = float(wht_rows.iloc[0]["median_income"])
+            nh_sentence = ""
+            if len(nh_combo_rows) > 0:
+                nh_r = float(nh_combo_rows.iloc[0]["poverty_rate"])
+                nh_sentence = (
+                    f" Native Hawaiians (alone or in combination) face a "
+                    f"{nh_r*100:.1f}% official poverty rate vs {wht_r*100:.1f}% "
+                    f"for White alone residents."
+                )
+            _bg_race_text = (
+                f"<p>Pacific Islander households (NHPI alone) have an official poverty "
+                f"rate of {nhpi_r*100:.1f}% — nearly twice the {wht_r*100:.1f}% rate "
+                f"for White alone residents. Median earnings for NHPI-alone workers "
+                f"are ${nhpi_i:,.0f}/year vs ${wht_i:,.0f} for White alone — a gap of "
+                f"${wht_i - nhpi_i:,.0f}.{nh_sentence} "
+                f"({rs_vintage_html} PUMS, official poverty measure.)</p>"
+            )
+
+    _hrx = data.rxkids_state
+    if _hrx is not None:
+        _html_rx_row = (
+            f"<tr><td>RxKids Hawaiʻi (proposed)</td>"
+            f"<td style=\"text-align:right;\">{_fmt_int(_hrx['persons_lifted_rxkids_hi'])}</td>"
+            f"<td style=\"text-align:right;\">{_fmt_money_m(_hrx['gap_closed_rxkids_hi_$'])}</td>"
+            f"<td style=\"text-align:right;\">~$60M</td></tr>"
+        )
+        _html_c_lifted = (
+            float(state["persons_lifted_hi_eitc_100pct"])
+            + float(state["persons_lifted_hi_ctc_650"])
+            + float(_hrx["persons_lifted_rxkids_hi"])
+        )
+        _html_c_gap = (
+            float(state["gap_closed_hi_eitc_100pct_$"])
+            + float(state["gap_closed_hi_ctc_650_$"])
+            + float(_hrx["gap_closed_rxkids_hi_$"])
+        )
+        _html_combined_row = (
+            f"<tr><td>All three combined</td>"
+            f"<td style=\"text-align:right;\">~{_fmt_int(_html_c_lifted)}</td>"
+            f"<td style=\"text-align:right;\">{_fmt_money_m(_html_c_gap)}</td>"
+            f"<td style=\"text-align:right;\">~$173M</td></tr>"
+        )
+    else:
+        _html_rx_row = ""
+        _html_combined_row = (
+            f"<tr><td>Both combined (non-additive)</td>"
+            f"<td style=\"text-align:right;\">~{_fmt_int(float(state['persons_lifted_hi_eitc_100pct']) + float(state['persons_lifted_hi_ctc_650']))}</td>"
+            f"<td style=\"text-align:right;\">{_fmt_money_m(float(state['gap_closed_hi_eitc_100pct_$']) + float(state['gap_closed_hi_ctc_650_$']))}</td>"
+            f"<td style=\"text-align:right;\">~$113M</td></tr>"
+        )
 
     css = f"""
     @page {{ size: Letter; margin: 0.75in; }}
@@ -1180,18 +1521,37 @@ def _build_html_fallback(
 
     images = {k: _img_b64(v) for k, v in charts.items()}
 
+    _bg_hh_img = (
+        f'<div class="figure"><img src="data:image/png;base64,{images["fig_bg1"]}" /></div>'
+        if "fig_bg1" in images else ""
+    )
+    _bg_race_img = (
+        f'<div class="figure"><img src="data:image/png;base64,{images["fig_bg2"]}" /></div>'
+        if "fig_bg2" in images else ""
+    )
+    _html_background_section = f"""
+<section>
+  <div class="smalllabel">Background</div>
+  <h2>Who Bears the Burden of Poverty in Hawaiʻi?</h2>
+  {_bg_hh_text}
+  {_bg_hh_img}
+  {_bg_race_text}
+  {_bg_race_img}
+</section>
+"""
+
     html = f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Keeping Hawaiʻi’s Families Out of Poverty</title>
+<title>Keeping Hawaiʻi's Families Out of Poverty</title>
 <style>{css}</style>
 </head>
 <body>
 
 <section class="cover">
   <div class="smalllabel" style="color:{GOLD};">{date_str}</div>
-  <h1>Keeping Hawaiʻi’s<br/>Families Out of Poverty</h1>
+  <h1>Keeping Hawaiʻi's<br/>Families Out of Poverty</h1>
   <p style="font-size: 13pt; max-width: 6.5in;">
     How federal and state tax credits lift tens of thousands of local
     residents above the poverty line — and what expanding them would do.
@@ -1229,13 +1589,16 @@ def _build_html_fallback(
   <p>
     Hawaiʻi has the highest cost of living in the nation. Refundable tax
     credits remain among the most effective anti-poverty tools we have.
-    This brief uses the Census Bureau’s Supplemental Poverty Measure (SPM)
+    This brief uses the Census Bureau's Supplemental Poverty Measure (SPM)
     applied to the 5-Year ACS PUMS to estimate how many local residents are
     kept above the poverty line each year by the federal EITC, the federal
-    CTC, and Hawaiʻi’s state EITC — and what would happen if Hawaiʻi
-    expanded its own credits.
+    CTC, and Hawaiʻi's state EITC — and what would happen if Hawaiʻi
+    expanded its own credits. Together, the three credits reduce the SPM
+    poverty rate by {_html_combined_pp:.1f} percentage points.
   </p>
 </section>
+
+{_html_background_section}
 
 <section>
   <div class="smalllabel">Baseline</div>
@@ -1252,16 +1615,19 @@ def _build_html_fallback(
 
 <section>
   <div class="smalllabel">EITC (Federal + State)</div>
-  <h2>Hawaiʻi’s Largest Anti-Poverty Credit</h2>
+  <h2>Hawaiʻi's Largest Anti-Poverty Credit</h2>
   <div class="figure">
     <img src="data:image/png;base64,{images['fig2']}" />
   </div>
   <p>
-    Combined, the federal EITC ({_fmt_int(state['persons_lifted_no_eitc'])})
-    and Hawaiʻi’s state EITC ({_fmt_int(state['persons_lifted_no_hi_eitc'])})
+    The federal EITC reduces the SPM poverty rate by {_html_fed_eitc_pp:.1f} percentage
+    points, lifting {_fmt_int(state['persons_lifted_no_eitc'])} residents above
+    the poverty line. Hawaiʻi's state EITC reduces the rate by an additional
+    {_html_hi_eitc_pp:.1f} percentage points, lifting
+    {_fmt_int(state['persons_lifted_no_hi_eitc'])} more. Combined, the two EITCs
     keep roughly
     {_fmt_int(float(state['persons_lifted_no_eitc']) + float(state['persons_lifted_no_hi_eitc']))}
-    local residents out of poverty each year. Hawaiʻi’s 40% state match
+    local residents out of poverty each year. Hawaiʻi's 40% state match
     (Act 209, 2023) is among the most generous in the country.
   </p>
 </section>
@@ -1272,6 +1638,11 @@ def _build_html_fallback(
   <div class="figure">
     <img src="data:image/png;base64,{images['fig3']}" />
   </div>
+  <p>
+    The federal Child Tax Credit reduces the SPM poverty rate by {_html_ctc_pp:.1f} percentage
+    points, lifting {_fmt_int(state['persons_lifted_no_ctc'])} Hawaiʻi residents
+    above the poverty line.
+  </p>
 </section>
 {_rxkids_html_section(data, images)}
 
@@ -1307,10 +1678,8 @@ def _build_html_fallback(
         <td style="text-align:right;">{_fmt_int(state['persons_lifted_hi_ctc_650'])}</td>
         <td style="text-align:right;">{_fmt_money_m(state['gap_closed_hi_ctc_650_$'])}</td>
         <td style="text-align:right;">~$83M</td></tr>
-      <tr><td>Both combined (non-additive)</td>
-        <td style="text-align:right;">~{_fmt_int(float(state['persons_lifted_hi_eitc_100pct']) + float(state['persons_lifted_hi_ctc_650']))}</td>
-        <td style="text-align:right;">{_fmt_money_m(float(state['gap_closed_hi_eitc_100pct_$']) + float(state['gap_closed_hi_ctc_650_$']))}</td>
-        <td style="text-align:right;">~$113M</td></tr>
+      {_html_rx_row}
+      {_html_combined_row}
     </tbody>
   </table>
   <p style="font-size:9pt; color:{SLATE}; font-style:italic;">
@@ -1323,14 +1692,18 @@ def _build_html_fallback(
   <h2>How We Did This</h2>
   <p>
     Estimates are produced by the Census-Forecaster tax simulation model
-    using the U.S. Census Bureau’s 5-Year ACS PUMS for Hawaiʻi (2018–2022),
+    using the U.S. Census Bureau's 5-Year ACS PUMS for Hawaiʻi (2018–2022),
     projected forward using a cadence-aware damped-trend ensemble. Poverty is
     measured using the Supplemental Poverty Measure with Hawaiʻi-specific
-    geographic adjustment. Counterfactual scenarios re-run the SPM
-    calculation with the relevant credit removed or expanded, holding labor
-    supply fixed and calibrating take-up to IRS SOI Hawaiʻi administrative
-    totals. District-level estimates carry larger uncertainty (typically
-    ±20 percent).
+    geographic adjustment. The unit of analysis is the SPM unit per Census
+    P60-280 (the resource-sharing group within a household: householder +
+    relatives + unmarried partner + foster children + any unrelated
+    children under 15); tax credits and benefits are computed on tax
+    returns and summed to the SPM unit for the poverty comparison.
+    Counterfactual scenarios re-run the SPM calculation with the relevant
+    credit removed or expanded, holding labor supply fixed and calibrating
+    take-up to IRS SOI Hawaiʻi administrative totals. District-level
+    estimates carry larger uncertainty (typically ±20 percent).
   </p>
 </section>
 

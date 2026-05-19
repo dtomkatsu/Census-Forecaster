@@ -45,21 +45,17 @@ NOTES (also surfaced via :class:`PovertyImpactResult.notes`):
     + lifted_hi_eitc ≠ lifted_combined`` because EITC and CTC phase-outs
     interact. Use ``lifted_combined`` for headline claims; marginals for
     relative ranking.
-  * **Unit-of-analysis** (Tier 2 architectural change, Tier 3 validated):
-    frame is *tax-unit*-grained by default; pass the units through
-    :func:`tax_modeler.units.spm_unit.build_spm_units` (or set
-    ``--pool-spm-units`` on ``scripts/poverty_impact_report.py``) to
-    pool cohabiting unmarried partners with shared kids into one SPM
-    unit. The Tier 3 unit-test fixture confirms pooling reduces
-    persons-in-poverty by ~50% on a stylized 2-tax-unit/2-kid frame
-    (above the 5-25% acceptance range — large because the fixture is
-    pure-pool with no never-pool households diluting the signal).
-    On real Hawaii PUMS the synthetic fixture exhibits **zero**
-    candidate households (heuristic requires ≥2 tax units sharing an
-    ``hh_id``, none filed jointly, with ≥2 carrying dependents); real
-    PUMS frames must be checked to confirm the magnitude is in range
-    before flipping ``--pool-spm-units`` ON by default. Until then the
-    flag stays OFF and the script logs a "not validated" warning.
+  * **Unit-of-analysis** (Tier 4 — fixed): poverty is reported at
+    *SPM-unit* granularity per Census P60-280. SPM units are built
+    bottom-up from PUMS RELSHIPP codes via
+    :func:`tax_modeler.units.spm_unit_assembly.build_spm_unit_assignment`
+    and the tax-unit-grained credit/tax/benefit dollars are rolled up
+    via :func:`tax_modeler.poverty.spm_aggregation.aggregate_to_spm_units`
+    before threshold comparison. ``compute_poverty_impact`` auto-detects
+    SPM-unit input via the ``n_persons`` column; tax-unit-grained input
+    (no ``n_persons``) still works for legacy callers (revenue forecast
+    scripts) and the ``--by-tax-unit`` opt-out on
+    ``scripts/poverty_impact_report.py``.
   * **SPM resource gaps** (Tier 2 — closed): MOOP, housing subsidies,
     CCSP childcare subsidies, work-related childcare expense, and
     other work expenses are now wired into the resource calculation
@@ -156,11 +152,19 @@ class PovertyImpactResult:
 
 
 def _persons_per_unit(units: pd.DataFrame) -> np.ndarray:
-    """SPM-unit-equivalent person count per filing unit.
+    """SPM-unit-equivalent person count per row.
 
-    `n_adults = 2 if MFJ else 1` (mirrors threshold_for_units convention).
-    `+ num_dependents` (clipped to >= 0).
+    Two modes, auto-detected:
+
+      * **SPM-unit mode** (preferred): if ``n_persons`` is present, return
+        it directly. This is the actual person count from PUMS for the
+        rolled-up SPM unit.
+      * **Tax-unit fallback**: derive ``n_adults = 1 + (filing_status ==
+        "married_filing_jointly")`` and add ``num_dependents`` (clipped
+        to >= 0). Mirrors the legacy threshold_for_units convention.
     """
+    if "n_persons" in units.columns:
+        return units["n_persons"].fillna(0).clip(lower=0).astype(float).to_numpy()
     is_joint = (units["filing_status"] == "married_filing_jointly").to_numpy()
     n_adults = 1 + is_joint.astype(int)
     n_children = units["num_dependents"].fillna(0).clip(lower=0).astype(int).to_numpy()
@@ -372,9 +376,18 @@ def compute_poverty_impact(
         Take-up rate applied to the expanded_ctc_2021 increment.
         Default 0.95 — federal CTC steady-state participation rate.
     """
-    required = {"filing_status", "num_dependents", "county",
-                "house_district", "senate_district", weight_col, eitc_col,
-                ctc_col, hi_eitc_col}
+    # Auto-detect granularity: SPM-unit frames carry ``n_persons``;
+    # tax-unit frames don't. In SPM mode, ``filing_status`` and
+    # ``num_dependents`` are still present (the aggregator emits a
+    # composition-derived filing_status proxy + summed num_dependents),
+    # so the required-column set is the same for both modes — but the
+    # error message is clearer if we don't claim ``num_dependents`` is
+    # required when ``n_children`` is also a valid substitute.
+    is_spm_mode = "n_persons" in units.columns
+    required = {"county", "house_district", "senate_district",
+                weight_col, eitc_col, ctc_col, hi_eitc_col}
+    if not is_spm_mode:
+        required |= {"filing_status", "num_dependents"}
     missing = required - set(units.columns)
     if missing:
         raise KeyError(
