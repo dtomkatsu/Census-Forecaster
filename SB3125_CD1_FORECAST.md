@@ -837,12 +837,31 @@ REEC see different decays:
   - `pre_obbba` — no demand decay (upper bound)
   - `obbba_mid` — −10% in 2026 (Hawaii-tempered; SEIA national −19% discounted for Hawaii's lease-heavy market), gradual recovery
   - `obbba_severe` — −19% in 2026 (SEIA national figures applied directly), slow recovery
+  - `safe_harbor_mid` — OBBBA Mid base + §25D safe-harbor overhang. IRS
+    Notice 2013-29 allows filers to lock in §25D at commencement of
+    construction (5% safe-harbor payment) with up to 4 years to complete.
+    HECO recorded a +37% surge in H2 2025 interconnection applications;
+    that backlog completes installation in 2026-2027. Factors: 2026 = 1.05
+    (above pre-OBBBA baseline), 2027 = 0.97, reverting to OBBBA Mid from
+    2028. Under confirmed Interpretation A retroactivity (SB 3125 §9(1),
+    TY beginning after 12/31/2025), this elevated 2026-2027 demand binds
+    the $40M cap more tightly → lower pro-rata factor → higher state
+    savings. Used in the REEC report's sensitivity band upper bound.
 - *Corporate / commercial REEC* uses ``_reec_demand_factor_corporate``
   which returns **1.0** for all forecast years (no §48E impact through
   2027; tapering schedule is downstream of the forecast horizon).
 
 The previous version applied the residential decay factor to both
 pools, biasing total revenue gain down.
+
+**Interpretation A (retroactivity, May 2026):** SB 3125 §9(1) confirmed to
+apply retroactively to taxable years beginning after 12/31/2025 (TY2026),
+with only the §235-12.5(a) AGI-limit amendments deferred to TY2027+. The
+model now uses `interpretation="A"` for all scenarios: TY2026 certifications
+(filed in CY2027) fall under the $40M cap. AGI limit still does not apply to
+TY2026. Net effect: less nonrefundable stock enters the carryforward pool from
+TY2026 → lower state RETITC cost in TY2027-2031 → ~+$9M cumulative savings
+vs prior Interpretation B baseline.
 
 **Cap impact logic:**
 - TY2027–2030: `cap_savings = max(0, projected_baseline − $40M cap)`

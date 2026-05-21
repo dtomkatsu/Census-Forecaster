@@ -177,6 +177,35 @@ REEC_DEMAND_SCENARIOS: dict[str, dict[int, float]] = {
     # Severe case: Hawaii REEC declines as solar economics deteriorate.
     "obbba_severe": {2024: 1.00, 2025: 1.10, 2026: 0.81, 2027: 0.79,
                      2028: 0.80, 2029: 0.85, 2030: 0.90, 2031: 0.95},
+
+    # Federal §25D safe-harbor overhang variant (OBBBA Mid base + safe-harbor
+    # demand boost in 2026-2027).
+    #
+    # IRS Notice 2013-29 (and successor guidance) allows residential solar
+    # filers to lock in the §25D credit at the point of "commencement of
+    # construction" — a 5% safe-harbor payment suffices — with up to 4 years
+    # to complete installation. The +37% surge in HECO interconnection
+    # applications in H2 2025 (representing projects that commenced
+    # construction before the 12/31/2025 §25D termination deadline) creates
+    # a backlog of installations completing in 2026-2027 that is NOT captured
+    # in the OBBBA Mid trough factors (0.85 / 0.83).
+    #
+    # This scenario superimposes that safe-harbor backlog:
+    #   2026: 1.05  — above pre-OBBBA baseline; H2 2025 applications
+    #                 (~+37% HECO surge) completing installation in early 2026,
+    #                 net of the share already counted in the 2025 pull-forward.
+    #   2027: 0.97  — tail of safe-harbor completions (larger / more complex
+    #                 systems); still near pre-OBBBA levels before fading.
+    #   2028+:       reverts to OBBBA Mid trajectory; safe-harbor backlog
+    #                exhausted by this point.
+    #
+    # SB 3125 retroactivity: confirmed (Section 9(1)) to apply to taxable
+    # years beginning after 12/31/2025. Under Interpretation A, TY2026
+    # certifications (filed in CY2027) fall under the $40M cap.  The elevated
+    # 2026 demand therefore binds the cap more tightly → lower pro-rata factor
+    # → higher state savings, but more filers pro-rated.
+    "safe_harbor_mid": {2024: 1.00, 2025: 1.10, 2026: 1.05, 2027: 0.97,
+                        2028: 0.85, 2029: 0.87, 2030: 0.90, 2031: 0.85},
 }
 DEFAULT_REEC_DEMAND_SCENARIO = "obbba_mid"
 
