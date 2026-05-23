@@ -545,3 +545,122 @@ sees exactly the keys it expects.
 * **Cleveland Fed rent blending:** Adams, B., Hertz, B., Verbrugge, R.
   (2022). "New-Tenant Repeat Rent Inflation." *Cleveland Fed
   Working Paper 22-38r.*
+
+---
+
+## Poverty-impact module (May 2026)
+
+The poverty-impact module (`tax_modeler.poverty`) estimates persons lifted
+above the Hawaii Supplemental Poverty Measure (SPM) threshold under eight
+credit scenarios.  Each empirical anchor is documented here.
+
+### SPM threshold: Hawaii RPP adjustment
+
+**Anchor:** BEA Regional Price Parity (RPP) for Honolulu All-items, 2022 =
+113.093 (national = 100), yielding a factor of 1.131.
+
+**Effect:** Hawaii 4-person SPM threshold = $32,000 × 1.131 = $36,192
+(vs. $32,000 nationally).
+
+**Source:** BEA Table RPP1, "Regional Price Parities by State," 2022
+vintage.  Honolulu metro used as the Hawaii proxy because ≥70% of the
+state population is on Oahu and the state-level RPP is unavailable as a
+direct BEA series.
+
+**Margin of error:** RPP series has no published SE; BEA's own accuracy
+assessment suggests ±1–2 percentage points at the metro level.  This
+translates to ±$320–$640 on the 4-person threshold, or roughly ±1–2%.
+
+### SPM threshold: annual CPI update
+
+**Anchor:** BLS CPI-U Honolulu (CUUSA426SA0), base value 308.358 for 2022.
+For other years: threshold × (CPI_target / 308.358).
+
+**Source:** BLS series CUUSA426SA0 loaded from
+`packages/census_forecaster/src/census_forecaster/data/anchors/cpi_honolulu_allitems.json`.
+
+**Fallback:** If the CPI file is absent or the target year is not in the
+file, the base-year threshold is used without inflation adjustment
+(conservative: understates poverty in later years, overstates in earlier).
+
+### Federal effective tax rates: IRS SOI TY2022
+
+**Anchor:** IRS Statistics of Income Table 1.4, TY2022 (national).
+13-bracket effective-rate table.
+
+**Effect on poverty count:** The federal-tax fallback is used when
+`federal_tax_effective` is absent from the tax-unit DataFrame.  It
+replaces an old "10% of positive money income" placeholder with bracket-
+aware rates ranging from 0.12% (under $5K) to 23.16% (over $500K).
+
+**Margin of error:** SOI effective rates are averages within a bracket;
+within-bracket variance (especially at bracket endpoints) can be ±2–3 pp.
+For poverty-impact purposes the effect is small: even a 3 pp swing in the
+federal effective rate changes SPM resources by at most ±$1,500 for a
+$50K household, which is well below the ≈$36K 4-person threshold.
+
+### HI EITC take-up: base rate (current-law scenarios)
+
+**Anchor:** 84,010 HI EITC returns filed (IRS SOI TY2022, Hawaii, col 129)
+÷ 120,000 estimated eligible households (PUMS 2022 5-year eligibility run)
+= 0.70, rounded to nearest 0.05.
+
+**Sources:**
+- IRS SOI Table 2 ZIP Code data, TY2022 (hawaii_irs_soi_processed.csv)
+- PUMS 2022 5-year, Hawaii — federal EITC eligibility applied to
+  construct the denominator
+
+**90% CI:** ±12% PUMS sampling SE yields a band of approximately
+[0.58, 0.82] (computed by `takeup_uncertainty_band()` in
+`calibration/hi_eitc_takeup_estimate.py`).
+
+**Usage:** Applied as an expected-value multiplier in `compute_poverty_impact`:
+  `effective_credit = credit_amount × takeup_rate`.
+
+### HI EITC take-up: 100%-of-federal scenario
+
+**Anchor:** 0.95 — the rate at which existing federal EITC claimants claim
+the Hawaii state EITC when it is claimed on the same return.
+
+**Rationale:** Claiming the HI EITC requires no additional forms beyond
+the federal EITC return, so compliance costs are minimal for existing
+federal claimants.  The 0.95 represents the marginal non-take-up from
+clerical omission and similar frictions.
+
+**Source:** DOTAX Annual Report 2022 cross-tab of HI returns with federal
+EITC claimed vs. state EITC claimed.
+
+### ARPA 2021 CTC take-up
+
+**Anchor:** 0.82 — 82% of eligible Hawaii children received advance CTC
+payments in the July–December 2021 monthly payment program.
+
+**Source:** US Treasury, "Monthly Advance Child Tax Credit Payments by
+State," monthly releases, 2021 (treasury.gov/resource-center/data-chart-center/monitoring-the-economy).
+
+**Note:** This is an upper bound on actual take-up since some eligible
+families who did not receive advance payments may still have claimed the
+credit at filing.  Used here as the primary take-up parameter for the
+`expanded_ctc_2021` scenario.
+
+### HI CTC take-up (hypothetical $300/$650/$1,000 scenarios)
+
+**Anchor:** 0.70 — matches the empirical HI EITC base take-up rate as a
+conservative prior.
+
+**Rationale:** There is no historical take-up data for a state-level CTC
+in Hawaii (no such credit exists as of 2026).  The 0.70 prior mirrors the
+HI EITC experience and reflects that new credits typically face higher non-
+take-up in early years.  A sensitivity sweep over [0.50, 0.90] is
+recommended for published estimates.
+
+### Standard-error estimation
+
+When PUMS replicate weight columns (`weight_r01`..`weight_r80`) are present,
+`compute_poverty_impact_with_se` applies the successive-difference replicate
+(SDR) variance estimator (factor = 4/80 per Census guidance).
+
+When replicate weights are absent, a ±10% one-at-a-time (OAT) income sweep
+provides a parameter-range SE proxy.  This is a rough bound, not a formal
+confidence interval; bootstrap or replicate-weight methods are preferred for
+publication.
