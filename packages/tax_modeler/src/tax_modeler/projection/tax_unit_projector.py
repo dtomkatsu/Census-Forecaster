@@ -232,6 +232,7 @@ def project_tax_units_forward(
     bls_oes_data: Optional[pd.DataFrame] = None,
     acs_weight: float = 0.4,
     bls_weight: float = 0.6,
+    eitc_poverty_alpha: float = 0.5,
 ) -> pd.DataFrame:
     """
     Project tax units to ``target_year`` using county-specific income growth.
@@ -293,6 +294,13 @@ def project_tax_units_forward(
         Weight assigned to the BLS occupation-specific component (default 0.6).
         Effective BLS weight is scaled by per-row match confidence; low-quality
         matches fall back toward the ACS aggregate.
+    eitc_poverty_alpha:
+        Elasticity exponent applied to the S1701 poverty-rate growth factor
+        when scaling forward-year EITC amounts via
+        :func:`scale_eitc_for_poverty`. Default 0.5 (a conservative
+        half-elasticity, motivated by the B19013/S1701 signal correlation).
+        Set to 0.0 to disable the poverty-rate correction entirely; tune
+        upward (e.g. 0.7) for a more aggressive distributional response.
 
     Returns
     -------
@@ -543,6 +551,7 @@ def project_tax_units_forward(
         df,
         county_poverty_factors=county_poverty_factors,
         default_factor=state_poverty_factor,
+        alpha=eitc_poverty_alpha,
     )
 
     # --- Metadata columns ----------------------------------------------------

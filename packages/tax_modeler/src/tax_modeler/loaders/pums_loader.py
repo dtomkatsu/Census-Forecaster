@@ -34,18 +34,38 @@ DEFAULT_STATE = '15'      # Hawaii FIPS code
 DEFAULT_DATA_DIR = Path(__file__).parent.parent.parent.parent.parent / 'data' / 'raw' / 'pums'
 DEFAULT_PUMS_TYPE = '5yr' # 5-year data
 
+# PUMS replicate weight column names (Census ships 80 for variance estimation
+# via Successive Difference Replication). PWGTP1..PWGTP80 on the person file,
+# WGTP1..WGTP80 on the household file. For the SPM poverty pipeline we only
+# need household-grain WGTP_r because aggregate_to_spm_units picks up WGTP
+# per household, but PWGTP_r is loaded too so person-grain estimators (kept
+# out of scope for the poverty path) can opt in later.
+N_PUMS_REPLICATES = 80
+PWGTP_REPLICATE_COLS = tuple(f'PWGTP{i}' for i in range(1, N_PUMS_REPLICATES + 1))
+WGTP_REPLICATE_COLS = tuple(f'WGTP{i}' for i in range(1, N_PUMS_REPLICATES + 1))
+
 
 class PUMSDataLoader:
     """Handles loading and processing of PUMS data for tax benefit analysis."""
 
-    def __init__(self, data_dir: Path = DEFAULT_DATA_DIR):
+    def __init__(
+        self,
+        data_dir: Path = DEFAULT_DATA_DIR,
+        load_replicate_weights: bool = False,
+    ):
         """Initialize the PUMS data loader.
 
         Args:
             data_dir: Directory containing PUMS data files
+            load_replicate_weights: If True, request the 80 PUMS replicate
+                weight columns (``PWGTP1``-``PWGTP80`` on persons,
+                ``WGTP1``-``WGTP80`` on households) for SDR variance
+                estimation downstream. Default ``False`` keeps the file
+                I/O cheap for the common case.
         """
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.load_replicate_weights = bool(load_replicate_weights)
 
         # Batch state (used by load_households_batch / reset_batch_state)
         self._batch_offset = 0
@@ -81,6 +101,12 @@ class PUMSDataLoader:
             'TAXP': int, 'WIF': int, 'WKEXREL': int, 'WORKSTAT': int,
             'YBL': int,
         }
+
+        if self.load_replicate_weights:
+            for col in PWGTP_REPLICATE_COLS:
+                self.person_columns[col] = int
+            for col in WGTP_REPLICATE_COLS:
+                self.household_columns[col] = int
 
     def _hh_file_path(self, state: str, pums_type: str) -> Path:
         """Return the household PUMS file path (parquet preferred over CSV)."""

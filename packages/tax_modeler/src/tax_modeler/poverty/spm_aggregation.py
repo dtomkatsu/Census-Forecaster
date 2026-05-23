@@ -122,6 +122,16 @@ def _classify_spm_household_type(n_adults: int, n_children: int) -> str:
     return "married_filing_jointly"
 
 
+# SPM-unit weight columns produced when PUMS replicate weights are present
+# on the input. Census ships 80 replicate weights for variance estimation
+# via Successive Difference Replication. Naming: ``weight_r01``..``weight_r80``
+# mirrors the main ``weight`` column on the SPM frame.
+N_REPLICATES = 80
+REPLICATE_WEIGHT_COLS: tuple[str, ...] = tuple(
+    f"weight_r{i:02d}" for i in range(1, N_REPLICATES + 1)
+)
+
+
 def aggregate_to_spm_units(
     tax_units: pd.DataFrame,
     persons: pd.DataFrame,
@@ -133,6 +143,7 @@ def aggregate_to_spm_units(
     agep_col: str = "AGEP",
     sum_cols: Iterable[str] | None = None,
     representative_cols: Iterable[str] | None = None,
+    include_replicate_weights: bool = True,
 ) -> pd.DataFrame:
     """Roll tax units up to SPM units.
 
@@ -217,24 +228,45 @@ def aggregate_to_spm_units(
             .first()
             .rename("weight")
         )
+        replicate_source_frame = pers
     elif household_weight_col in tu.columns:
         wgtp_per_spm = (
             tu.groupby(spm_unit_id_col, dropna=False, sort=False)[household_weight_col]
             .first()
             .rename("weight")
         )
+        replicate_source_frame = tu
     elif "hh_weight" in tu.columns:
         wgtp_per_spm = (
             tu.groupby(spm_unit_id_col, dropna=False, sort=False)["hh_weight"]
             .first()
             .rename("weight")
         )
+        replicate_source_frame = tu
     else:
         raise DataValidationError(
             f"aggregate_to_spm_units: cannot find a household weight column "
             f"({household_weight_col!r} on persons or tax_units; 'hh_weight' "
             "on tax_units). One of these is required for the SPM-unit weight."
         )
+
+    # ---- 4b. Replicate weights (optional). Census ships 80 PUMS replicate
+    # weights as WGTP1..WGTP80 for variance estimation via SDR. If they are
+    # present on the source frame, roll them up identically to the main
+    # WGTP — first value per SPM unit (they are household-constant).
+    replicate_per_spm: dict[str, pd.Series] = {}
+    if include_replicate_weights:
+        for r in range(1, N_REPLICATES + 1):
+            src_col = f"{household_weight_col}{r}"
+            if src_col in replicate_source_frame.columns:
+                out_col = f"weight_r{r:02d}"
+                replicate_per_spm[out_col] = (
+                    replicate_source_frame.groupby(
+                        spm_unit_id_col, dropna=False, sort=False
+                    )[src_col]
+                    .first()
+                    .rename(out_col)
+                )
 
     # ---- 5. Audit columns
     n_tax_units = (
@@ -247,8 +279,11 @@ def aggregate_to_spm_units(
         .join(composition, how="left")
         .join(wgtp_per_spm, how="left")
         .join(n_tax_units, how="left")
-        .reset_index()
     )
+    if replicate_per_spm:
+        rep_df = pd.concat(replicate_per_spm.values(), axis=1)
+        out = out.join(rep_df, how="left")
+    out = out.reset_index()
 
     # ---- 7. Derive spm-unit filing status proxy (for by_household_type)
     out["filing_status"] = [
@@ -271,4 +306,8 @@ def aggregate_to_spm_units(
     return out
 
 
-__all__ = ["aggregate_to_spm_units"]
+__all__ = [
+    "aggregate_to_spm_units",
+    "N_REPLICATES",
+    "REPLICATE_WEIGHT_COLS",
+]
