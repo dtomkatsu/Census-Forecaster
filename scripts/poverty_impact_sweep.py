@@ -61,15 +61,33 @@ def _build_synthetic_units(n: int = 3000, seed: int = 42) -> pd.DataFrame:
             for _ in range(nc)
         ]
         dependents_list.append(deps)
+    from tax_modeler.credits.eitc import calculate_eitc
+    from tax_modeler.credits.ctc import calculate_ctc
+    eitc_amounts, ctc_refundable = [], []
+    for i in range(n):
+        unit = {
+            "filing_status": filing_statuses[i],
+            "income": float(incomes[i]),
+            "earned_income": float(earned_income[i]),
+            "investment_income": 0.0,
+            "dependents_details": dependents_list[i],
+            "dependents": dependents_list[i],
+            "num_dependents": int(num_children[i]),
+        }
+        eitc_amounts.append(calculate_eitc(unit)["eitc_amount"])
+        ctc_refundable.append(calculate_ctc(unit)["ctc_refundable"])
     return pd.DataFrame({
         "income": incomes,
         "earned_income": earned_income,
         "investment_income": 0.0,
         "filing_status": filing_statuses,
         "num_dependents": num_children.astype(int),
+        "num_children": num_children.astype(int),
         "dependents_details": dependents_list,
         "weight": weights,
         "num_people": num_people.astype(int),
+        "eitc_amount": eitc_amounts,
+        "ctc_refundable": ctc_refundable,
     })
 
 

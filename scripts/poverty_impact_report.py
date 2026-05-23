@@ -226,8 +226,9 @@ def print_report(
         persons = int(row.get("persons_lifted", 0))
         families = int(row.get("families_lifted", 0))
         children = int(row.get("children_lifted", 0))
-        reduction_pp = float(row.get("poverty_reduction_pp", 0))
-        pct_poor_with = float(row.get("pct_poor_with_credit", 0))
+        # pct values from compute_poverty_impact are fractions (0–1); convert to %
+        reduction_pp = float(row.get("poverty_reduction_pp", 0)) * 100
+        pct_poor_with = float(row.get("pct_poor_with_credit", 0)) * 100
 
         print(_hr())
         print(f"  {label}")
@@ -248,7 +249,11 @@ def print_report(
             print(f"  Persons lifted (±10% param range):  {lo:>10,} – {hi:,}")
 
         print()
-        narrative = _get_narrative(scenario, row)
+        # Pass pre-converted percentage values to narrative functions
+        row_pct = dict(row)
+        row_pct["poverty_reduction_pp"] = reduction_pp
+        row_pct["pct_poor_with_credit"] = pct_poor_with
+        narrative = _get_narrative(scenario, row_pct)
         for line in textwrap.wrap(narrative, width=70):
             print(f"  {line}")
         print()
@@ -327,15 +332,41 @@ def _build_synthetic_units(n: int = 2000, year: int = 2022, seed: int = 42) -> p
         ]
         dependents_list.append(deps)
 
+    # Pre-compute simple EITC/CTC for synthetic units (needed for credit scenarios)
+    from tax_modeler.credits.eitc import calculate_eitc
+    from tax_modeler.credits.ctc import calculate_ctc
+    eitc_amounts = []
+    ctc_refundable = []
+    ctc_total = []
+    for i in range(n):
+        unit = {
+            "filing_status": filing_statuses[i],
+            "income": float(incomes[i]),
+            "earned_income": float(earned_income[i]),
+            "investment_income": float(investment_income[i]),
+            "dependents_details": dependents_list[i],
+            "dependents": dependents_list[i],
+            "num_dependents": int(num_children[i]),
+        }
+        eitc_res = calculate_eitc(unit)
+        ctc_res = calculate_ctc(unit)
+        eitc_amounts.append(eitc_res["eitc_amount"])
+        ctc_refundable.append(ctc_res["ctc_refundable"])
+        ctc_total.append(ctc_res["ctc_total"])
+
     df = pd.DataFrame({
         "income": incomes,
         "earned_income": earned_income,
         "investment_income": investment_income,
         "filing_status": filing_statuses,
         "num_dependents": num_children,
+        "num_children": num_children,
         "dependents_details": dependents_list,
         "weight": weights,
         "num_people": num_people.astype(int),
+        "eitc_amount": eitc_amounts,
+        "ctc_refundable": ctc_refundable,
+        "ctc_total": ctc_total,
     })
     return df
 
@@ -345,7 +376,8 @@ def _compute_impact_with_fallback(df: pd.DataFrame, year: int) -> tuple:
     try:
         from tax_modeler.poverty.impact import compute_poverty_impact_with_se
         impact_df = compute_poverty_impact_with_se(df, year=year)
-        baseline_rate = float(impact_df["pct_poor_baseline"].iloc[0]) if len(impact_df) > 0 else 0.0
+        # pct_poor_baseline is a fraction (0–1); convert to percentage for display
+        baseline_rate = float(impact_df["pct_poor_baseline"].iloc[0]) * 100 if len(impact_df) > 0 else 0.0
         total_pop = int((df["weight"] * df["num_people"]).sum())
         return impact_df, baseline_rate, total_pop
     except ImportError:
