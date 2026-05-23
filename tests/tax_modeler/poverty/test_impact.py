@@ -250,13 +250,19 @@ def test_hi_ctc_650_zero_when_no_children():
     assert s["persons_lifted_hi_ctc_650"] == 0.0
 
 
-def test_hi_ctc_per_child_sweeps_monotone():
-    """Lift count should grow with credit size."""
+def test_hi_ctc_dollar_scenarios_monotone():
+    """Across the named hi_ctc_<NNN> scenarios, lift count grows with the dollar amount.
+
+    The fixture mirrors ``test_hi_ctc_650_increases_lift`` (kids-heavy
+    low-income HoH filers with EITC + refundable CTC already attached)
+    so units start near the SPM poverty threshold — small per-kid
+    credit increments can move some across the line.
+    """
     rng = np.random.default_rng(13)
     rows = []
-    for _ in range(60):
-        n_kids = int(rng.integers(1, 4))
-        income = float(rng.uniform(20_000, 38_000))
+    for _ in range(120):
+        n_kids = int(rng.integers(2, 5))
+        income = float(rng.uniform(15_000, 40_000))
         rows.append({
             "filing_status": "head_of_household",
             "num_dependents": n_kids,
@@ -265,20 +271,31 @@ def test_hi_ctc_per_child_sweeps_monotone():
             "earned_income": income,
             "income": income,
             "weight": 100.0,
+            "eitc_amount": float(rng.uniform(2_000, 5_000)),
+            "ctc_refundable": n_kids * 1_700.0,
+            "ctc_total": n_kids * 2_000.0,
+            "hi_eitc_amount": float(rng.uniform(800, 2_000)),
         })
     units = _make_units(rows)
-    lifts = []
-    for amt in (0.0, 650.0, 2_000.0):
-        s = compute_poverty_impact(
-            units, tax_year=2024, hi_ctc_per_child=amt
-        ).by_state.iloc[0]
-        lifts.append(s["persons_lifted_hi_ctc_650"])
-    assert lifts[0] == 0.0
-    assert lifts[1] <= lifts[2], (
-        f"$2000/child should lift >= $650/child; got {lifts[1]} vs {lifts[2]}"
-    )
-    # And at least one of them must strictly lift somebody.
-    assert lifts[2] > 0
+    s = compute_poverty_impact(units, tax_year=2024).by_state.iloc[0]
+    lifts = [s[f"persons_lifted_hi_ctc_{amt}"] for amt in (300, 650, 1000)]
+    # Strictly monotone non-decreasing.
+    assert lifts == sorted(lifts), f"non-monotone lifts: {lifts}"
+    # At least one must strictly lift somebody.
+    assert lifts[-1] > 0
+
+
+def test_hi_ctc_dynamic_scenario_parse():
+    """Ad-hoc dollar amounts via ``hi_ctc_<NNN>`` scenario name (e.g., amendment analysis)."""
+    units = _kids_heavy_low_income_units(seed=17)
+    # Custom dollar amount not in the default set.
+    r = compute_poverty_impact(units, tax_year=2024, scenarios=("hi_ctc_500",))
+    s = r.by_state.iloc[0]
+    assert "persons_lifted_hi_ctc_500" in s.index
+    # And a non-numeric suffix should raise ValueError via the unknown-scenario branch.
+    import pytest
+    with pytest.raises(ValueError, match="unknown scenario"):
+        compute_poverty_impact(units, tax_year=2024, scenarios=("hi_ctc_abc",))
 
 
 def test_result_dataclass_shape():

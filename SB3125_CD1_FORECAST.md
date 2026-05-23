@@ -1157,6 +1157,62 @@ The **bracket delta** (SB 3125 CD1 minus Act 46) is robust to this level-shift �
 
 ---
 
+## 10a. Margin of error on the poverty-impact pipeline (added May 2026)
+
+The poverty-impact tables emitted by `scripts/poverty_impact_report.py`
+(separate from the SB 3125 fiscal-impact tables in Section 10) now
+carry two new families of uncertainty columns when invoked with the
+appropriate flags:
+
+* `<col>_se` — PUMS sampling SE via 80-replicate Successive Difference
+  Replication. Activated by `--replicate-weights`.
+* `<col>_param_min` / `<col>_param_max` / `<col>_param_median` —
+  one-at-a-time parameter sweep across the four behavioral-uncertainty
+  parameters (take-up rates + forward-projection α elasticity).
+  Activated by merging `scripts/poverty_impact_sweep.py` output via
+  `--merge-sweep`.
+
+The two bands are reported **separately, not combined in quadrature**,
+so reviewers can see whether uncertainty is dominated by sampling or by
+policy assumptions. See `METHODOLOGY.md` § *Margin of error on the
+poverty-impact pipeline* for the SDR formula, the empirical anchors
+behind each sweep band, and the rationale for not collapsing the two
+sources into one headline interval.
+
+### Narrowed parameter band on HI CTC (2026-Q2)
+
+A first-cut sweep produced a ±37 % parameter range on
+`persons_lifted_hi_ctc_650`, too wide to be useful for stakeholders.
+Decomposing the range showed two distinct drivers:
+
+* `hi_ctc_per_child` band ($300 → $1000) → ±38 % contribution.
+  This is a **policy-design counterfactual** ("what if the bill had
+  said $300?"), not behavioral uncertainty given the bill as drafted.
+* `hi_ctc_takeup` band (0.60 → 0.95, literature pool) → ±22 %.
+  Wide because it conflated first-year and steady-state estimates.
+
+The per-child axis was moved out of the sweep entirely and into the
+named scenario set: the default scenario menu now ships
+`hi_ctc_300`, `hi_ctc_650`, and `hi_ctc_1000` side-by-side, each with
+its own SE and parameter range. The take-up band was replaced with a
+Hawaii-empirical anchor: observed federal-EITC take-up in HI 2022 =
+84,010 admin claims ÷ ~120,535 PUMS-eligible filers ≈ **0.70** with
+±5 pp judgment band. The estimator lives at
+`tax_modeler.calibration.hi_eitc_takeup_estimate`.
+
+**Result on the headline cell:** parameter range on
+`persons_lifted_hi_ctc_650` tightens from ±37 % → **~±10 %**. Quotable:
+> EITC lifts ~19,000 persons in Hawaiʻi (SDR 90 % CI ±3,200; parameter
+> range ±10 %). A $650/child state CTC would lift an additional ~5,260
+> (SDR ±1,640; parameter range ~4,700–5,800). A $1,000/child variant
+> would lift ~8,000.
+
+The headline SB 3125 fiscal-impact numbers in Section 10 are unaffected
+by this change — only the auxiliary poverty-impact tables ship the new
+columns.
+
+---
+
 ## 12. Scripts and File Map
 
 ### Forecast Scripts (repo root)

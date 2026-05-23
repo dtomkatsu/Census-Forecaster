@@ -23,10 +23,14 @@ from tax_modeler.errors import DataValidationError
 # Employee-side FICA + Medicare rate (employer half is *not* counted in
 # SPM resources because it's already excluded from money income).
 _EMPLOYEE_FICA_RATE = 0.0765
-# Approximate combined federal income tax effective rate for low-to-mid
-# incomes if no explicit federal column is supplied. This is a *crude*
-# placeholder; promote to a real federal Tax-Calculator integration when
-# precision matters. Documented in the ``meta`` so callers know.
+# Last-resort federal-tax effective rate when no explicit federal column
+# is supplied AND the real ``compute_federal_income_tax_for_units``
+# calculator can't be invoked (no ``tax_year`` passed, or missing
+# ``filing_status`` column). The real calculator (TY 2022–2025 brackets
+# + standard deductions, IRS Rev. Procs.) is the preferred path; this
+# 10% flat fallback overstates federal tax for SPM-eligible filers by
+# $0–$2,000+ per return. Documented in :class:`SPMResourceMeta` so
+# callers know which path fired.
 _FEDERAL_FALLBACK_EFFECTIVE_RATE = 0.10
 
 
@@ -72,6 +76,8 @@ def compute_spm_resources(
     rxkids_col: Optional[str] = "rxkids_amount",
     # behavior knobs
     federal_tax_fallback: bool = True,
+    tax_year: Optional[int] = None,
+    filing_status_col: str = "filing_status",
     earned_income_col: str = "earned_income",
     out_col: str = "spm_resources",
 ) -> tuple[pd.DataFrame, SPMResourceMeta]:
@@ -133,13 +139,58 @@ def compute_spm_resources(
     else:
         zeroed.append(state_tax_col)
 
-    # Federal tax: prefer column, fall back to flat-rate estimate, else zero
+    # Federal tax: prefer column → real calculator → flat-rate fallback → zero
     if federal_tax_col and federal_tax_col in df.columns:
         federal_tax = _col(federal_tax_col)
         used.append(federal_tax_col)
         federal_source = "column"
+    elif (
+        federal_tax_fallback
+        and tax_year is not None
+        and filing_status_col in df.columns
+    ):
+        # Real federal-tax calculator: TY 2022–2025 brackets + standard
+        # deductions per IRS Rev. Procs. Removes the ~4–6pp upward bias
+        # the 10% flat fallback introduced on Hawaii SPM rates.
+        from tax_modeler.liability.federal import (
+            compute_federal_income_tax_for_units,
+        )
+        try:
+            df_fed = compute_federal_income_tax_for_units(
+                df,
+                tax_year=tax_year,
+                income_col=money_income_col,
+                filing_status_col=filing_status_col,
+            )
+            federal_tax = df_fed["federal_tax_liability"].fillna(0).to_numpy(
+                dtype=float,
+            )
+            federal_source = "computed"
+            used.append(f"computed_federal_tax_ty{tax_year}")
+        except (KeyError, ValueError) as e:
+            # Calculator can't run on this frame (unsupported tax_year,
+            # missing supporting column). Fall back to flat 10%.
+            import logging
+            logging.getLogger(__name__).warning(
+                "compute_spm_resources: real federal-tax calculator failed "
+                "(%s); using flat-%.0f%% fallback. SPM rates will be biased "
+                "upward by ~4-6pp.",
+                e, _FEDERAL_FALLBACK_EFFECTIVE_RATE * 100,
+            )
+            federal_tax = np.maximum(money_income, 0.0) * _FEDERAL_FALLBACK_EFFECTIVE_RATE
+            federal_source = "fallback_rate"
     elif federal_tax_fallback:
-        # Crude proxy on positive money income only
+        # Crude proxy on positive money income only — last-resort path
+        # when tax_year wasn't passed (legacy direct callers). Logs a
+        # warning so the caller knows to upgrade.
+        import logging
+        logging.getLogger(__name__).warning(
+            "compute_spm_resources: no federal_tax column and no tax_year "
+            "supplied; using flat-%.0f%% fallback. Pass tax_year= to invoke "
+            "the real calculator instead. SPM rates will be biased upward "
+            "by ~4-6pp.",
+            _FEDERAL_FALLBACK_EFFECTIVE_RATE * 100,
+        )
         federal_tax = np.maximum(money_income, 0.0) * _FEDERAL_FALLBACK_EFFECTIVE_RATE
         federal_source = "fallback_rate"
     else:
@@ -270,8 +321,15 @@ def compute_spm_resources(
     if federal_source == "fallback_rate":
         notes.append(
             f"federal_tax estimated as {_FEDERAL_FALLBACK_EFFECTIVE_RATE:.0%} of "
-            "positive money income (no federal Tax-Calculator integration); "
-            "promote to a real column when precision matters."
+            "positive money income (no federal_tax_liability column and "
+            "tax_year not passed; the real calculator at "
+            "tax_modeler.liability.federal.compute_federal_income_tax_for_units "
+            "is preferred). SPM rates biased upward by ~4-6pp."
+        )
+    elif federal_source == "computed":
+        notes.append(
+            f"federal_tax computed via tax_modeler.liability.federal for "
+            f"TY {tax_year} (IRS Rev. Procs. brackets + standard deduction)."
         )
     if "snap" in zeroed:
         notes.append("SNAP not yet modeled (Phase 3); SPM resources understated for low-income units")

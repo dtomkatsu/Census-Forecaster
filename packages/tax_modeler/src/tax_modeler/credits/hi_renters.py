@@ -20,6 +20,38 @@ The smoothed approach is standard in microsimulation aggregate
 analysis — we lose nothing for fiscal-impact work, and the Reform DSL
 remains deterministic.
 
+Empirical anchor for ``takeup_pct``
+-----------------------------------
+
+The 0.30 default is an unanchored placeholder. DOTAX REEC historical
+data (``data/raw/dotax_reec_historical.csv``) does not break out the
+renters credit separately — the published series aggregates "personal
+credits" without a per-program decomposition. No bundled HI DHS or
+DOTAX caseload for the renters credit was found in the codebase.
+
+Impact on poverty-impact pipeline: **none currently.** The renters
+credit is invoked only in the revenue-forecast pipeline; the column
+``hi_renters_amount`` is not populated upstream of
+``compute_spm_resources`` in the poverty-impact report. The SPM
+formula includes it as a positive resource if present on the frame,
+but the report's pipeline (see ``scripts/poverty_impact_report.py``)
+does not call ``compute_hi_renters_for_units``. Front 1.5 of the
+methodology sprint flagged this; resolving it would require adding
+``hi_renters_amount`` to the poverty-impact frame and then anchoring
+the take-up rate empirically.
+
+TODO — empirical take-up anchor (deferred to a separate sprint):
+
+  1. Add an HI Renters Credit row to
+     ``data/admin_caseload/hawaii_caseload.csv`` from a DOTAX SOI
+     pull (Schedule X line-item filings if separately reported, else
+     DOTAX REEC Renters-Credit subcategory if exposed).
+  2. Add ``hi_renters_amount`` to the poverty-impact pipeline at
+     ``scripts/poverty_impact_report.py`` ahead of
+     ``compute_spm_resources``.
+  3. Compute observed/eligible ratio via the same
+     ``estimate_hi_eitc_takeup`` pattern.
+
 Reform DSL (``Reform.benefit_overrides["hi_renters"]``):
 
   * ``takeup_pct``           share of eligible filers receiving (default 0.30)

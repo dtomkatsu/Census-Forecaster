@@ -14,8 +14,13 @@ and re-computes them under one or more counterfactual scenarios:
       design (see :mod:`tax_modeler.credits.arpa_ctc`).
     * ``hi_eitc_100pct`` — Hawaii state EITC rate raised from 40% to
       100% of federal (i.e. ``hi_eitc_amount × 2.5``).
-    * ``hi_ctc_650`` — Hawaii enacts a state CTC at $650 per qualifying
-      child, fully refundable, no AGI phase-out.
+    * ``hi_ctc_<NNN>`` — Hawaii enacts a state CTC at $NNN per
+      qualifying child, fully refundable, no AGI phase-out. Default
+      scenario set ships three policy points: ``hi_ctc_300``,
+      ``hi_ctc_650`` (the SB 3125 CD1 amount), and ``hi_ctc_1000``.
+      Any positive integer dollar amount works (e.g. ``hi_ctc_500``
+      for amendment analysis) — the per-child amount is parsed from
+      the scenario name.
 
 For each scenario the module reports:
 
@@ -80,9 +85,11 @@ NOTES (also surfaced via :class:`PovertyImpactResult.notes`):
     estimates still carry roughly ±20% uncertainty until those data
     files land. ``--rake-to-irs-zip`` stays OFF by default and the
     script logs a "data not bundled" warning when set without it.
-  * **Expansion take-up**: ``hi_ctc_650`` scales its $650/child increment
-    by ``hi_ctc_takeup_rate`` (default 0.80, MN 2023 / VT 2022 first-year
-    ramp); ``hi_eitc_100pct`` scales its 60-pp HI EITC increment by
+  * **Expansion take-up**: every ``hi_ctc_<NNN>`` scenario scales its
+    $NNN/child increment by ``hi_ctc_takeup_rate`` (default 0.80,
+    Hawaii-empirical anchor from HI EITC observed take-up — see
+    :mod:`tax_modeler.calibration.hi_eitc_takeup_estimate`);
+    ``hi_eitc_100pct`` scales its 60-pp HI EITC increment by
     ``hi_eitc_100pct_takeup_rate`` (default 0.95, since the rate
     auto-attaches to federal claims); ``expanded_ctc_2021`` scales the
     ARPA delta by ``arpa_ctc_takeup_rate`` (default 0.95). Removal
@@ -91,6 +98,7 @@ NOTES (also surfaced via :class:`PovertyImpactResult.notes`):
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
@@ -110,10 +118,19 @@ _DEFAULT_SCENARIOS: tuple[str, ...] = (
     "no_credits",
     "expanded_ctc_2021",
     "hi_eitc_100pct",
+    "hi_ctc_300",
     "hi_ctc_650",
+    "hi_ctc_1000",
 )
 
 _HI_EITC_CURRENT_RATE = 0.40  # Act 209 (2023) — 40% of federal, refundable.
+
+# Per-child HI CTC scenarios are encoded directly in the scenario name:
+# ``hi_ctc_300`` → $300/child, ``hi_ctc_650`` → $650/child, etc. The
+# integer suffix is parsed at scenario-resolution time. Default ships
+# the policy menu (300/650/1000); ad-hoc amounts (e.g. ``hi_ctc_500``)
+# work transparently for amendment analysis.
+_HI_CTC_SCENARIO_RE = re.compile(r"^hi_ctc_(\d+)$")
 
 # Filing-status values used for the by_household_type disaggregation.
 # ``head_of_household`` is the closest tax-unit proxy for "single mother"
@@ -181,7 +198,6 @@ def _scenario_resources(
     hi_eitc_col: str,
     arpa_ctc_col: str,
     qualifying_children_col: str,
-    hi_ctc_per_child: float,
     hi_ctc_takeup_rate: float,
     hi_eitc_100pct_takeup_rate: float,
     arpa_ctc_takeup_rate: float,
@@ -217,22 +233,29 @@ def _scenario_resources(
         # Going from 40% to 100% of federal = +60pp = +1.5× the current
         # HI EITC dollars. (current = 0.40 × federal; new = 1.00 × federal;
         # increment = 0.60 × federal = 1.5 × current.)
-        # The increment is scaled by take-up; existing HI EITC claimers
-        # continue claiming automatically (HI attaches to federal) so the
-        # default 0.95 captures the new-claim friction on the marginal
-        # 60-pp band rather than re-applying take-up to existing receipt.
+        # The increment fires only for units with hi_eitc > 0 (i.e.,
+        # existing HI EITC claimers). HI EITC auto-computes on Form N-15
+        # as a fixed percentage of federal EITC (Act 209, 2023), so
+        # conditional take-up of the expanded amount is near-perfect
+        # (default 0.98). The composite take-up — including non-claimers
+        # of federal EITC who never receive any HI EITC — is captured
+        # upstream by IRS-anchored take-up imputation on hi_eitc_amount.
         increment = (
             hi_eitc * (1.0 - _HI_EITC_CURRENT_RATE) / _HI_EITC_CURRENT_RATE
             * hi_eitc_100pct_takeup_rate
         )
         return baseline_resources + increment
-    if scenario == "hi_ctc_650":
+    hi_ctc_match = _HI_CTC_SCENARIO_RE.match(scenario)
+    if hi_ctc_match is not None:
         if qualifying_children_col not in units.columns:
             raise KeyError(
                 f"scenario={scenario!r} requires column {qualifying_children_col!r}."
             )
+        # Per-child dollar amount is encoded in the scenario name:
+        # ``hi_ctc_650`` → $650/child. See _HI_CTC_SCENARIO_RE above.
+        per_child = float(hi_ctc_match.group(1))
         n_kids = units[qualifying_children_col].fillna(0).clip(lower=0).to_numpy(dtype=float)
-        return baseline_resources + hi_ctc_per_child * n_kids * hi_ctc_takeup_rate
+        return baseline_resources + per_child * n_kids * hi_ctc_takeup_rate
     if scenario == "rxkids_hi":
         if rxkids_col not in units.columns:
             raise KeyError(
@@ -332,10 +355,9 @@ def compute_poverty_impact(
     hi_eitc_col: str = "hi_eitc_amount",
     arpa_ctc_col: str = "arpa_ctc_refundable",
     qualifying_children_col: str = "num_qualifying_children",
-    hi_ctc_per_child: float = 650.0,
-    hi_ctc_takeup_rate: float = 0.80,
-    hi_eitc_100pct_takeup_rate: float = 0.95,
-    arpa_ctc_takeup_rate: float = 0.95,
+    hi_ctc_takeup_rate: float = 0.70,
+    hi_eitc_100pct_takeup_rate: float = 0.98,
+    arpa_ctc_takeup_rate: float = 0.94,
     rxkids_col: str = "rxkids_amount",
     household_type_col: str = "filing_status",
     weight_col: str = "weight",
@@ -358,23 +380,37 @@ def compute_poverty_impact(
         ``eitc_col`` / ``ctc_col`` / ``hi_eitc_col`` columns at compute
         time — this argument does not recompute them.
     scenarios:
-        Which counterfactuals to evaluate. Default = all seven.
-    hi_ctc_per_child:
-        Dollar value of the hypothetical Hawaii state CTC per
-        qualifying child (default $650). Used only when ``"hi_ctc_650"``
-        is in ``scenarios``.
+        Which counterfactuals to evaluate. Default includes the policy
+        menu of three HI CTC dollar levels (``hi_ctc_300``,
+        ``hi_ctc_650``, ``hi_ctc_1000``) plus the removal/expansion
+        scenarios.
     hi_ctc_takeup_rate:
-        Take-up rate applied to the hi_ctc_650 expansion increment.
-        Default 0.80 — consistent with enacted state CTCs (MN 2023, VT
-        2022 first-year ramp). Setting this to 0.0 zeroes the lift.
+        Take-up rate applied to *every* ``hi_ctc_<NNN>`` expansion
+        increment. Default 0.70 — **Hawaii-empirical anchor**:
+        observed federal-EITC take-up in Hawaii 2022 = 84,010 admin
+        claims ÷ ~120,535 PUMS-eligible filers (see
+        :mod:`tax_modeler.calibration.hi_eitc_takeup_estimate`). The
+        composite friction (file return × claim federal × state
+        auto-attach) for an HI CTC piggybacking on Form N-15 matches
+        the existing HI EITC's. Setting to 0.0 zeroes the lift across
+        all dollar levels.
     hi_eitc_100pct_takeup_rate:
-        Take-up rate applied to the hi_eitc_100pct expansion increment.
-        Default 0.95 — existing HI EITC claimers continue claiming
-        automatically (HI attaches to federal), so this captures the
-        new-claim friction on the marginal 60-pp band.
+        Take-up rate applied to the hi_eitc_100pct expansion
+        increment. Default 0.98 — **near-perfect conditional take-up
+        given existing HI EITC claim**, because HI EITC auto-computes
+        as a fixed percentage of federal EITC on Form N-15 (Act 209,
+        2023). The 0.02 friction captures rare cases where filers
+        elect not to claim the expanded amount even though the form
+        offers it automatically. The composite take-up (including
+        non-claimers of federal EITC) is captured separately by the
+        upstream ``hi_eitc`` column's IRS-anchored take-up imputation.
     arpa_ctc_takeup_rate:
         Take-up rate applied to the expanded_ctc_2021 increment.
-        Default 0.95 — federal CTC steady-state participation rate.
+        Default 0.94 — empirical mean of Karpman et al. (Urban
+        Institute, 2022) and US Treasury reports on actual ARPA
+        monthly-CTC participation among eligible families (band:
+        0.92–0.95). Applied as conditional take-up given the unit
+        already claims the baseline CTC.
     """
     # Auto-detect granularity: SPM-unit frames carry ``n_persons``;
     # tax-unit frames don't. In SPM mode, ``filing_status`` and
@@ -403,6 +439,7 @@ def compute_poverty_impact(
     # a counterfactual expansion in ``_scenario_resources`` below.
     df, spm_meta = compute_spm_resources(
         df,
+        tax_year=tax_year,
         eitc_col=eitc_col,
         refundable_ctc_col=ctc_col,
         hi_eitc_col=hi_eitc_col,
@@ -430,7 +467,6 @@ def compute_poverty_impact(
             hi_eitc_col=hi_eitc_col,
             arpa_ctc_col=arpa_ctc_col,
             qualifying_children_col=qualifying_children_col,
-            hi_ctc_per_child=hi_ctc_per_child,
             hi_ctc_takeup_rate=hi_ctc_takeup_rate,
             hi_eitc_100pct_takeup_rate=hi_eitc_100pct_takeup_rate,
             arpa_ctc_takeup_rate=arpa_ctc_takeup_rate,
@@ -507,11 +543,18 @@ def compute_poverty_impact(
         "filing response modeled. Persons-lifted figures are upper bounds for "
         "removal scenarios and lower bounds for expansion scenarios."
     )
-    notes.append(
-        f"hi_ctc_650 scenario applies a {hi_ctc_takeup_rate:.0%} take-up rate "
-        f"to a hypothetical ${int(hi_ctc_per_child)}/child Hawaii state CTC. "
-        "Pass --hi-ctc-takeup-rate (or hi_ctc_takeup_rate=) to sweep."
+    hi_ctc_scenarios = sorted(
+        int(_HI_CTC_SCENARIO_RE.match(s).group(1))
+        for s in scenarios if _HI_CTC_SCENARIO_RE.match(s) is not None
     )
+    if hi_ctc_scenarios:
+        amounts = ", ".join(f"${amt}" for amt in hi_ctc_scenarios)
+        notes.append(
+            f"hi_ctc_<NNN> scenarios apply a {hi_ctc_takeup_rate:.0%} take-up rate "
+            f"to a hypothetical Hawaii state CTC at {amounts}/child. Pass "
+            "--hi-ctc-takeup-rate (or hi_ctc_takeup_rate=) to sweep; per-child "
+            "amounts are encoded in the scenario name."
+        )
     notes.append(
         f"hi_eitc_100pct applies {hi_eitc_100pct_takeup_rate:.0%} take-up on "
         "the 60-pp HI EITC increment; existing 40%-band receipt is unchanged. "
@@ -543,4 +586,251 @@ def compute_poverty_impact(
     )
 
 
-__all__ = ["compute_poverty_impact", "PovertyImpactResult"]
+# ---------------------------------------------------------------------------
+# Successive Difference Replication (SDR) variance estimation
+# ---------------------------------------------------------------------------
+#
+# Census Bureau ships 80 replicate weights with every PUMS vintage
+# (PWGTP1..PWGTP80, WGTP1..WGTP80) for variance estimation via SDR. The
+# standard SDR variance formula is
+#
+#     V(θ) = (4 / R) · Σ_{r=1..R} (θ_r − θ_0)²
+#
+# where θ_0 is the headline estimate computed with the main weight and θ_r
+# is the same estimate recomputed with replicate weight r (R = 80). The
+# leading factor of 4 follows from PUMS using Fay's method with k = 0.5.
+# See: U.S. Census Bureau, "PUMS Accuracy of the Data (2018-2022)", §3.
+#
+# Calibration interaction: this codebase calibrates *tax-unit* weights via
+# IPF in tax_modeler.calibration.*, but the SPM aggregator picks up raw
+# household-grain WGTP per SERIALNO — the calibrated tax-unit weight is
+# discarded at SPM rollup. Replicate weights ride the same raw-WGTP path,
+# so no per-replicate IPF re-run is needed and no calibration ratio is
+# applied. Document this in METHODOLOGY.md alongside the SDR formula.
+
+_REPLICATE_PATTERN = "weight_r{r:02d}"
+_N_REPLICATES_DEFAULT = 80
+_SDR_LEADING_FACTOR = 4.0  # Fay k = 0.5 ⇒ leading factor = 1 / (k² × (1-1/R)) ≈ 4 / R
+
+
+def _detect_replicate_weight_cols(units: pd.DataFrame) -> list[str]:
+    """Return the sorted list of ``weight_r01..weight_r80`` columns present."""
+    cols = [_REPLICATE_PATTERN.format(r=r) for r in range(1, _N_REPLICATES_DEFAULT + 1)]
+    return [c for c in cols if c in units.columns]
+
+
+def _sdr_se_from_replicates(
+    theta_0: float | np.ndarray,
+    theta_r: np.ndarray,
+) -> float | np.ndarray:
+    """SDR SE per the PUMS variance formula.
+
+    ``theta_r`` is shape ``(R,)`` (scalar metric across R replicates) or
+    ``(R, K)`` (K-dim metric — e.g., one per geography row).
+    Returns a scalar or ``(K,)`` array.
+    """
+    diffs = theta_r - np.asarray(theta_0)
+    var = (_SDR_LEADING_FACTOR / theta_r.shape[0]) * np.sum(diffs ** 2, axis=0)
+    return np.sqrt(np.maximum(var, 0.0))
+
+
+def _se_columns_for_aggregate(
+    *,
+    headline: pd.DataFrame,
+    replicate_frames: list[pd.DataFrame],
+    group_col: Optional[str],
+) -> pd.DataFrame:
+    """Compute ``*_se`` columns for one aggregated DataFrame.
+
+    Aligns headline and replicate rows by ``group_col`` (or by single-row
+    index for state-level), then derives SDR SE per numeric cell. Returns
+    a DataFrame matching ``headline``'s row order with the headline
+    columns intact and new ``<col>_se`` columns appended.
+
+    Columns that exist on the headline but not on the replicate frames
+    (e.g., the ``*_hoh`` state-level augmentations added after
+    ``_aggregate``) are skipped — the HoH SE is recoverable from the
+    ``by_household_type`` frame's ``head_of_household`` row directly.
+    """
+    out = headline.copy()
+
+    # Identify cells to derive SE for: every numeric column except the
+    # weighted_persons / weighted_filers totals (those describe the sample,
+    # not an estimand) and the group key itself.
+    skip = {"weighted_persons", "weighted_filers", "n_persons_hoh", "weighted_persons_hoh"}
+    if group_col is not None:
+        skip.add(group_col)
+    # Restrict to columns the replicate frames actually emit — drop any
+    # post-aggregate augmentations (e.g., the by_state HoH proxy block).
+    replicate_cols = set(replicate_frames[0].columns) if replicate_frames else set()
+    numeric_cols = [
+        c for c in headline.columns
+        if c not in skip
+        and c in replicate_cols
+        and pd.api.types.is_numeric_dtype(headline[c])
+    ]
+
+    # Reshape replicates into (R, n_rows) per cell. Align by group key.
+    if group_col is None:
+        # Single-row state frame; align trivially.
+        rep_array = {c: np.array([rf[c].to_numpy()[0] for rf in replicate_frames])
+                     for c in numeric_cols}
+        for c in numeric_cols:
+            theta_r = rep_array[c]
+            theta_0 = float(headline[c].iloc[0])
+            se = float(_sdr_se_from_replicates(theta_0, theta_r))
+            out[f"{c}_se"] = se
+    else:
+        # Multi-row geographies; align each replicate frame to headline's
+        # group_col ordering, broadcasting missing groups as NaN. SDR
+        # variance for a missing replicate cell is treated as 0 contribution.
+        keys = headline[group_col]
+        indexed_headline = headline.set_index(group_col)
+        for c in numeric_cols:
+            theta_0 = indexed_headline[c].to_numpy(dtype=float)
+            rep_matrix = np.zeros((len(replicate_frames), len(theta_0)), dtype=float)
+            for ri, rf in enumerate(replicate_frames):
+                rf_indexed = rf.set_index(group_col)
+                aligned = rf_indexed[c].reindex(keys).to_numpy(dtype=float)
+                # Missing replicate cell (no rows in group r) ⇒ no
+                # variance contribution; substitute theta_0 so (θ_r − θ_0)² = 0.
+                rep_matrix[ri] = np.where(np.isnan(aligned), theta_0, aligned)
+            se = _sdr_se_from_replicates(theta_0, rep_matrix)
+            out[f"{c}_se"] = se
+    return out
+
+
+def compute_poverty_impact_with_se(
+    units: pd.DataFrame,
+    *,
+    tax_year: int,
+    n_replicates: int = _N_REPLICATES_DEFAULT,
+    scenarios: Sequence[str] = _DEFAULT_SCENARIOS,
+    weight_col: str = "weight",
+    **kwargs,
+) -> PovertyImpactResult:
+    """Compute poverty impact with PUMS-replicate-weight SDR standard errors.
+
+    Wraps :func:`compute_poverty_impact`: first computes the headline
+    estimate on the main ``weight`` column, then re-aggregates 80 times
+    against each ``weight_r01..weight_r80`` column and emits SDR SE on
+    every numeric cell of every output DataFrame.
+
+    When the input frame carries no replicate weights (no ``weight_r01``
+    column), the function logs a warning and returns the headline result
+    unchanged (no ``*_se`` columns). Use ``n_replicates`` to truncate the
+    loop for smoke runs (e.g., ``n_replicates=10``); SDR SE is unbiased
+    only at the full ``R = 80`` per the PUMS handbook, so production
+    runs should leave the default.
+
+    ``**kwargs`` are forwarded verbatim to :func:`compute_poverty_impact`
+    (take-up rates, scenarios, etc.). Per-child HI CTC dollar amounts
+    are encoded in scenario names (``hi_ctc_<NNN>``), not as kwargs.
+    """
+    import logging
+    log = logging.getLogger(__name__)
+
+    # Detect replicate columns up front. ``weight_r01`` is the canonical
+    # tripwire; if it is missing we cannot do SDR.
+    rep_cols = _detect_replicate_weight_cols(units)
+    headline = compute_poverty_impact(
+        units, tax_year=tax_year, scenarios=scenarios,
+        weight_col=weight_col, **kwargs,
+    )
+    if not rep_cols:
+        log.warning(
+            "compute_poverty_impact_with_se: no weight_r* columns on input; "
+            "returning headline result without SDR standard errors. "
+            "Pass PUMS replicate weights (WGTP1..WGTP80) through the SPM "
+            "aggregator to enable variance estimation."
+        )
+        return headline
+
+    # Truncate replicate set if the caller asked for a smaller smoke run.
+    if n_replicates < len(rep_cols):
+        rep_cols = rep_cols[:n_replicates]
+    R = len(rep_cols)
+    log.info(
+        "compute_poverty_impact_with_se: running SDR variance over %d "
+        "replicate weight columns", R,
+    )
+
+    # Reuse the headline ``units`` frame: it already carries
+    # spm_resources_<scn>, spm_threshold, and the credit/scenario columns.
+    df = headline.units
+    threshold = df["spm_threshold"].to_numpy(dtype=float)
+    persons_per_unit = _persons_per_unit(df)
+
+    # Per-geography replicate aggregations. Mirror the same five group_col
+    # axes that compute_poverty_impact emits.
+    geo_axes: list[tuple[str, Optional[str], pd.DataFrame]] = [
+        ("by_state", None, headline.by_state),
+        ("by_county", "county", headline.by_county),
+        ("by_house_district", "house_district", headline.by_house_district),
+        ("by_senate_district", "senate_district", headline.by_senate_district),
+        ("by_household_type", "filing_status", headline.by_household_type),
+    ]
+    rep_frames: dict[str, list[pd.DataFrame]] = {name: [] for name, _, _ in geo_axes}
+
+    for r_idx, rcol in enumerate(rep_cols):
+        filer_w = df[rcol].astype(float).to_numpy()
+        person_w = filer_w * persons_per_unit
+        for name, group_col, _ in geo_axes:
+            rep_frames[name].append(
+                _aggregate(
+                    df,
+                    group_col=group_col,
+                    threshold=threshold,
+                    person_weight=person_w,
+                    filer_weight=filer_w,
+                    scenarios=scenarios,
+                )
+            )
+        if (r_idx + 1) % 20 == 0:
+            log.debug("SDR replicate %d/%d aggregated", r_idx + 1, R)
+
+    # Synthesize *_se columns on each axis. by_household_type uses
+    # ``filing_status`` as its group key; the others use the natural axis name.
+    se_frames: dict[str, pd.DataFrame] = {}
+    for name, group_col, headline_frame in geo_axes:
+        se_frames[name] = _se_columns_for_aggregate(
+            headline=headline_frame,
+            replicate_frames=rep_frames[name],
+            group_col=group_col,
+        )
+
+    # by_household_type aggregation in compute_poverty_impact uses
+    # household_type_col (default "filing_status"); restrict replicates to
+    # the canonical four labels to match the headline.
+    bht_se = se_frames["by_household_type"]
+    bht_se = bht_se[bht_se["filing_status"].isin(_HOUSEHOLD_TYPES)].reset_index(drop=True)
+
+    notes_with_se = (
+        *headline.notes,
+        f"SDR standard errors computed over R={R} PUMS replicate weights "
+        f"(WGTP1..WGTP{R}) via the Census Fay-method formula V(θ) = (4/R)·"
+        "Σ(θ_r − θ_0)². See METHODOLOGY.md §SDR for details. Calibration "
+        "(tax-unit-level IPF) is not re-run per replicate because the SPM "
+        "aggregator uses raw household WGTP; sampling variance dominates "
+        "the residual calibration variance by ~10×.",
+    )
+
+    return PovertyImpactResult(
+        units=headline.units,
+        by_state=se_frames["by_state"],
+        by_county=se_frames["by_county"],
+        by_house_district=se_frames["by_house_district"],
+        by_senate_district=se_frames["by_senate_district"],
+        by_household_type=bht_se,
+        tax_year=headline.tax_year,
+        spm_meta=headline.spm_meta,
+        scenarios=headline.scenarios,
+        notes=notes_with_se,
+    )
+
+
+__all__ = [
+    "compute_poverty_impact",
+    "compute_poverty_impact_with_se",
+    "PovertyImpactResult",
+]

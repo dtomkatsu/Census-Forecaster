@@ -22,6 +22,41 @@ If poverty_rate_factor < 1 (poverty decreased): EITC amounts shrink.
 correlated with B19013 and noisier, so a half-elasticity is conservative and
 avoids over-counting the distributional signal that B19013 partially captures.
 
+Empirical calibration status
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The 0.5 default is currently a literature half-elasticity citation
+(consistent with the half-elasticity convention used in similar
+microsimulation projects: Tax Policy Center model, ITEP state model).
+It has **not** been backtested against Hawaii-specific historical data.
+
+TODO — empirical calibration (deferred to a separate sprint):
+
+  Backtest specification:
+    1. Pull historical ACS 5-year S1701 (county-level poverty rate) and
+       B19013 (county median household income) for Hawaii counties
+       2014→2022 via ``census_forecaster.acs.client.fetch_acs_5yr``.
+    2. Pull IRS SOI EITC by Hawaii state-level (ZIP=00000 row) for the
+       same years from ``data/raw/dotax_*`` or fetch from IRS SOI portal.
+    3. For each year-pair (y, y+1), compute:
+         B19013_factor   = B19013[y+1] / B19013[y]   (per county)
+         poverty_factor  = S1701[y+1]  / S1701[y]    (per county)
+         observed_eitc_change_factor = EITC[y+1] / EITC[y]  (state-level)
+    4. Run a constrained regression:
+         observed_eitc_change_factor ≈
+             B19013_factor_weighted_average × (poverty_factor_weighted_average) ** α
+       where the weighted averages are population-weighted across counties.
+    5. Fit α by minimizing the residual sum of squares across year-pairs.
+       Expected band: 0.3–0.7.
+
+  Acceptance: replace the literature default with the fitted α, store the
+  fit's RMSE in the docstring, and add a regression test in
+  ``tests/tax_modeler/adjustments/test_eitc_poverty_scaling.py``.
+
+  Why deferred: requires live Census API access + a multi-year IRS SOI
+  panel build. Cross-package (tax_modeler ↔ census_forecaster) data
+  pipeline. Estimated effort: 4-6 hours.
+
 The Hawaii low-income tax credit (``hi_low_income_credit``) is also scaled by
 the same factor, since it specifically targets filers below a poverty threshold.
 ``hi_tax_liability`` is updated consistently to preserve the post-credit total.
