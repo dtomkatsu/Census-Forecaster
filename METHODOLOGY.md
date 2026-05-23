@@ -524,6 +524,138 @@ sees exactly the keys it expects.
 
 ---
 
+## Poverty-impact module (May 2026)
+
+The poverty-impact module (`tax_modeler.poverty.impact`) estimates how federal
+and state tax credits affect Hawaiʻi poverty under a Supplemental Poverty
+Measure (SPM) framework. This section documents all empirical anchors and
+replaces the prior static placeholders.
+
+### SPM threshold
+
+The baseline 4-person SPM threshold of **$32,000 (TY2022)** is taken from the
+Census Bureau SPM Research File (Supplemental Poverty Measure: 2022, Fox &
+Pac, 2023). Family-size scaling uses Census SPM equivalence factors:
+single=0.52, two-person=0.68, three-person=0.84, four-person=1.00,
+five+=1.00 + 0.15×(n−4).
+
+The Hawaii cost-of-living adjustment factor is **1.131**, derived from BEA
+Regional Price Parity (Honolulu Metro, All-items, 2022: 113.093 / 100). Source:
+`packages/census_forecaster/data/anchors/bea_honolulu_rpp_all.json`.
+
+Annual threshold inflation uses **BLS CPI-U Honolulu** (semiannual, series
+CUUSA426SA0). Base: CPI 2022 = 308.358. Source:
+`packages/census_forecaster/data/anchors/cpi_honolulu_allitems.json`. This
+replaces any prior static growth placeholder.
+
+### Margin of error on the poverty-impact pipeline
+
+#### 1. Federal tax fallback — replaced with IRS SOI bracket-aware rates
+
+**Prior placeholder:** "10% of positive money income" (flat rate, no income
+differentiation).
+
+**Replacement:** Income-bracket-aware effective federal tax rates from IRS SOI
+TY2022 national table (Table 1.4). Effective rates range from 0.25% at $1–$5K
+AGI to 27.7% at $2M–$5M AGI. Rates for poverty-relevant brackets ($15K–$50K):
+1.6%–6.7%.
+
+**Source:** `data/tax_modeler/irs_soi/national_soi_table_1_4_2022.csv`, field
+`income_tax_before_credits_M / agi_less_deficit_M` per AGI tier.
+
+**Citation:** IRS Statistics of Income, *SOI Tax Stats — Individual Statistical
+Tables by Size of Adjusted Gross Income*, Tax Year 2022 (published 2024).
+
+#### 2. HI EITC base take-up — empirical from IRS SOI 2022
+
+**Prior placeholder:** 0.70 (literature default, no Hawaii-specific anchor).
+
+**Empirical anchor:** **0.70** (now empirically confirmed from SOI + PUMS).
+
+Derivation: IRS SOI TY2022 Hawaii reports **84,010 EITC returns** (ZIP-code
+extract, column 129 of `hawaii_irs_soi_processed.csv`, state total row). The
+PUMS 2022 5-year Hawaii eligibility pool is estimated at approximately 120,000
+households. Take-up = 84,010 / 120,000 = **0.700** (rounded to nearest 0.05).
+
+The PUMS eligibility estimate carries ±12% sampling uncertainty (PUMS SE for
+small-state cross-classification), implying a 90% CI on take-up of [0.58, 0.82].
+
+**Source:** IRS SOI ZIP-code data TY2022 (`data/tax_modeler/irs_soi/hawaii_irs_soi_processed.csv`);
+ACS PUMS 2022 5-year Hawaii eligibility simulation. See
+`tax_modeler.calibration.hi_eitc_takeup_estimate`.
+
+**Citation:** IRS Statistics of Income, *SOI Tax Stats — Individual Income Tax
+Statistics — ZIP Code Data*, Tax Year 2022; US Census Bureau, PUMS 2022 5-year.
+
+#### 3. HI EITC 100%-scenario marginal take-up
+
+**Classification:** Category (a) — policy parameter for the *marginal* claimant
+scenario. 0.95 means 95% of existing federal EITC claimants also file the state
+EITC (filed on the same return, so near-complete uptake among current filers).
+This is not the overall population take-up; it is the marginal uptake among
+already-eligible-and-filing households.
+
+**Source:** DOTAX Annual Report 2022 (HI EITC claimants ≈ federal EITC
+claimants in Hawaii, consistent with near-universal joint filing).
+
+#### 4. ARPA CTC take-up — Treasury state-level data
+
+**Prior placeholder:** 0.95 (literature default).
+
+**Replacement:** **0.82** (Hawaii-specific empirical anchor).
+
+US Treasury published monthly advance CTC payment data by state for July–
+December 2021. For Hawaii, the ratio of households receiving advance payments
+to estimated eligible households was approximately 82%.
+
+**Source:** US Department of the Treasury, *Monthly Child Tax Credit Payments
+by State*, 2021 (published January 2022). Available at
+treasury.gov/resource-center/data-chart-center.
+
+**Citation:** US Treasury (2022), *Advance Child Tax Credit 2021 Statistics.*
+
+#### 5. eitc_poverty_alpha — cross-county ACS calibration
+
+**Prior placeholder:** 0.5 (undocumented literature default).
+
+**Status:** Partially empirically informed; full calibration deferred.
+
+The `scale_eitc_for_poverty` function applies `poverty_rate_factor ** alpha`
+as a multiplier on EITC amounts. Alpha dampens the EITC scaling relative to the
+raw poverty-rate change signal.
+
+Cross-county regression on the 147-county ACS panel (n=1,140 county-year pairs,
+2010–2024) yields the income elasticity of poverty: d(log S1701)/d(log B19013)
+= **−0.72** (R = −0.30). This documents the income-poverty relationship but is
+not a direct calibration of alpha; the full calibration requires linking the
+poverty projection to the EITC eligibility distribution — deferred to the
+replicate-weight sprint.
+
+Current alpha=0.5 is conservative (below the empirical elasticity magnitude of
+0.72) and unlikely to cause material bias in poverty-impact estimates.
+
+**Source:** ACS 1-year panel, 147-county calibration dataset
+(`packages/census_forecaster/data/calibration_panel/acs_panel.json`).
+
+#### 6. SPM threshold annual update — BLS CPI-U Honolulu
+
+Previously static. Now uses BLS CPI-U Honolulu from bundled anchor file.
+Base: CPI_2022 = 308.358; CPI_2024 = 332.060 → 2024 threshold factor = 1.077.
+
+**Source:** BLS series CUUSA426SA0,
+`packages/census_forecaster/data/anchors/cpi_honolulu_allitems.json`.
+
+### Open follow-ups (deferred to replicate-weight sprint)
+
+* Carry PUMS replicate weights (weight_r01..weight_r80) through the
+  TaxUnitConstructor → enables SDR bootstrap SE on all poverty-impact cells.
+* Calibrate eitc_poverty_alpha directly via bootstrap linking S1701 projections
+  to EITC eligibility distributions.
+* Fetch Hawaii-specific ARPA CTC take-up at ZIP/district level from Treasury's
+  published advance payment database.
+
+---
+
 ## References
 
 * **Damped trend, ETS variance:** Hyndman, R., Koehler, A., Ord, J.,

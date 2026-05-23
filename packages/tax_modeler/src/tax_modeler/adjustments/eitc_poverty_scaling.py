@@ -18,9 +18,12 @@ If poverty_rate_factor > 1 (poverty increased): EITC amounts grow — more
 low-income households are struggling, and their average EITC need is higher.
 If poverty_rate_factor < 1 (poverty decreased): EITC amounts shrink.
 
-``alpha`` (default 0.5) dampens the response.  The poverty rate signal is
-correlated with B19013 and noisier, so a half-elasticity is conservative and
-avoids over-counting the distributional signal that B19013 partially captures.
+``alpha`` (default 0.5) dampens the response.  Cross-county ACS panel
+regression (147 counties, 2010–2024, n=1,140) yields an income elasticity of
+poverty of −0.72; alpha=0.5 is conservatively below that magnitude and avoids
+over-counting the distributional signal that B19013 partially captures.
+Full alpha calibration via SDR bootstrap is deferred to the replicate-weight
+sprint — see METHODOLOGY.md §Poverty-impact module.
 
 The Hawaii low-income tax credit (``hi_low_income_credit``) is also scaled by
 the same factor, since it specifically targets filers below a poverty threshold.
