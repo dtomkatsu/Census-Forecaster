@@ -228,3 +228,98 @@ class TestTaxUnitConstructor:
         assert tax_unit is not None
         assert tax_unit['filing_status'] in ['single', 'head_of_household']  # Could be either
         assert tax_unit['filer_id'] == '3_single_3_1'  # New format includes filing status
+
+
+class TestReplicateWeightPropagation:
+    """``include_replicate_weights`` flag carries WGTP1..WGTP80 / PWGTP1..PWGTP80
+    through to the tax-unit frame as ``weight_r01..weight_r80``.
+
+    Required by the SDR variance machinery downstream:
+      * ``compute_poverty_impact_with_se`` emits *_se columns by re-aggregating
+        under each replicate weight.
+      * ``estimate_hi_eitc_takeup`` bootstraps τ_HI_EITC's SE from the same
+        per-replicate weights.
+
+    Without this propagation, both fall back to no-variance / judgment bands.
+    """
+
+    @staticmethod
+    def _fixture_with_replicates():
+        """Tiny 2-household fixture with WGTP1..WGTP80 and PWGTP1..PWGTP80 set."""
+        hh = pd.DataFrame({
+            'SERIALNO': ['001', '002'],
+            'WGTP': [100.0, 50.0],
+            'HINCP': [30000.0, 60000.0],
+            'PUMA': [301, 302],
+            'TYPEHUGQ': [1, 1],
+            'TEN': [1, 3],
+            **{f'WGTP{r}': [100.0 + r, 50.0 + r] for r in range(1, 81)},
+        })
+        per = pd.DataFrame({
+            'SERIALNO': ['001', '002'],
+            'SPORDER': [1, 1],
+            'AGEP': [35, 35],
+            'PWGTP': [100.0, 50.0],
+            'PINCP': [30000.0, 60000.0],
+            'WAGP': [30000.0, 60000.0],
+            'SCHL': [16, 16],
+            'MAR': [5, 5],
+            'RELSHIPP': [20, 20],
+            'SEX': [1, 2],
+            'CIT': [1, 1],
+            'SEMP': [0, 0],
+            'ADJINC': [1.0, 1.0],
+            **{f'PWGTP{r}': [100.0 + r, 50.0 + r] for r in range(1, 81)},
+        })
+        return per, hh
+
+    def test_flag_default_on_propagates_80_replicates(self):
+        per, hh = self._fixture_with_replicates()
+        ctor = TaxUnitConstructor(per, hh, num_processes=1, progress_bar=False,
+                                  use_soi_calibration=False)
+        units = ctor.create_rule_based_units(parallel=False)
+        rep_cols = sorted(c for c in units.columns if c.startswith('weight_r'))
+        assert len(rep_cols) == 80, f"expected 80 weight_r columns, got {len(rep_cols)}"
+        # First and last canonical names
+        assert rep_cols[0] == 'weight_r01'
+        assert rep_cols[-1] == 'weight_r80'
+
+    def test_replicates_match_hybrid_weight_formula_single(self):
+        """Single filer: weight_r<R> = PWGTP<R> * single_calibration_factor (0.85)."""
+        per, hh = self._fixture_with_replicates()
+        ctor = TaxUnitConstructor(per, hh, num_processes=1, progress_bar=False,
+                                  use_soi_calibration=False)
+        units = ctor.create_rule_based_units(parallel=False)
+        # Row 0: PWGTP=100, PWGTPr = 100+r, single ⇒ weight × 0.85
+        row = units.iloc[0]
+        assert row['filing_status'] == 'single', f"expected single, got {row['filing_status']}"
+        # Main weight: 100 * 0.85 = 85
+        # rtol=1e-5 because the constructor stores weights as float32 internally.
+        np.testing.assert_allclose(row['weight'], 85.0, rtol=1e-5)
+        # weight_r01: 101 * 0.85 = 85.85
+        np.testing.assert_allclose(row['weight_r01'], 85.85, rtol=1e-5)
+        # weight_r80: 180 * 0.85 = 153.0
+        np.testing.assert_allclose(row['weight_r80'], 153.0, rtol=1e-5)
+
+    def test_flag_off_suppresses_replicates(self):
+        per, hh = self._fixture_with_replicates()
+        ctor = TaxUnitConstructor(per, hh, num_processes=1, progress_bar=False,
+                                  use_soi_calibration=False,
+                                  include_replicate_weights=False)
+        units = ctor.create_rule_based_units(parallel=False)
+        rep_cols = [c for c in units.columns if c.startswith('weight_r')]
+        assert rep_cols == [], f"expected no weight_r columns, got {rep_cols}"
+
+    def test_missing_replicate_inputs_noop_gracefully(self):
+        """No WGTPr/PWGTPr columns on input ⇒ no weight_r columns on output."""
+        per, hh = self._fixture_with_replicates()
+        # Drop all WGTPr and PWGTPr columns
+        hh_bare = hh.drop(columns=[c for c in hh.columns if c.startswith('WGTP') and c != 'WGTP'])
+        per_bare = per.drop(columns=[c for c in per.columns if c.startswith('PWGTP') and c != 'PWGTP'])
+        ctor = TaxUnitConstructor(per_bare, hh_bare, num_processes=1, progress_bar=False,
+                                  use_soi_calibration=False)
+        assert ctor._wgtp_replicate_cols == []
+        assert ctor._pwgtp_replicate_cols == []
+        units = ctor.create_rule_based_units(parallel=False)
+        rep_cols = [c for c in units.columns if c.startswith('weight_r')]
+        assert rep_cols == []
