@@ -21,6 +21,11 @@ from .soi_calibration import SOICalibrator
 from .admin_caseload import AdminCaseload, CaseloadTarget
 from .takeup_imputation import calibrate_benefits, impute_takeup
 from .hi_eitc_takeup_estimate import TakeupEstimate, estimate_hi_eitc_takeup
+from .eitc_alpha_calibration import (
+    AlphaCalibration,
+    calibrate_eitc_poverty_alpha,
+    write_calibration_artifact,
+)
 from .donor_match import (
     DonorMatcher,
     impute_childcare_expense,
@@ -62,6 +67,10 @@ __all__ = [
     # 2026-Q2: Hawaii-empirical HI EITC take-up anchor (HI CTC sweep prior)
     'TakeupEstimate',
     'estimate_hi_eitc_takeup',
+    # 2026-Q2: Empirical α calibration for scale_eitc_for_poverty
+    'AlphaCalibration',
+    'calibrate_eitc_poverty_alpha',
+    'write_calibration_artifact',
     # Phase 8: donor-matching imputation (CPS-ASEC → ACS)
     'DonorMatcher',
     'impute_moop',

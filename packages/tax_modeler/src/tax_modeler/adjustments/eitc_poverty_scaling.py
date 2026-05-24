@@ -25,37 +25,37 @@ avoids over-counting the distributional signal that B19013 partially captures.
 Empirical calibration status
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The 0.5 default is currently a literature half-elasticity citation
-(consistent with the half-elasticity convention used in similar
-microsimulation projects: Tax Policy Center model, ITEP state model).
-It has **not** been backtested against Hawaii-specific historical data.
+The 0.5 default is a literature half-elasticity (consistent with Tax
+Policy Center and ITEP state-model conventions). An empirical fit was
+attempted in 2026-Q2 using a 5-year Hawaii panel:
 
-TODO — empirical calibration (deferred to a separate sprint):
+  * **Data**: IRS SOI Historic Table 2 Hawaii EITC return counts for
+    TY 2015–2022 (bundled at ``data/external/irs_soi_hi_eitc_panel.csv``);
+    ACS 1-year B19013 median household income and S1701 poverty rate
+    for Honolulu County (GEOID 15003) as the state proxy.
+  * **Method**: see
+    :mod:`tax_modeler.calibration.eitc_alpha_calibration`. OLS in log-
+    space, no intercept (B19013 factor is the model's headline anchor).
+  * **Result**: α ≈ 0.71, RMSE 0.03 (in log-EITC-growth units), but
+    **n=2 year-pairs only** after excluding 2019→20 (COVID), 2020→21
+    (ARPA expansion), and 2021→22 (ARPA expiration). Per-pair α swings
+    widely (-0.43 to 1.01), so the OLS fit is statistically unidentified.
 
-  Backtest specification:
-    1. Pull historical ACS 5-year S1701 (county-level poverty rate) and
-       B19013 (county median household income) for Hawaii counties
-       2014→2022 via ``census_forecaster.acs.client.fetch_acs_5yr``.
-    2. Pull IRS SOI EITC by Hawaii state-level (ZIP=00000 row) for the
-       same years from ``data/raw/dotax_*`` or fetch from IRS SOI portal.
-    3. For each year-pair (y, y+1), compute:
-         B19013_factor   = B19013[y+1] / B19013[y]   (per county)
-         poverty_factor  = S1701[y+1]  / S1701[y]    (per county)
-         observed_eitc_change_factor = EITC[y+1] / EITC[y]  (state-level)
-    4. Run a constrained regression:
-         observed_eitc_change_factor ≈
-             B19013_factor_weighted_average × (poverty_factor_weighted_average) ** α
-       where the weighted averages are population-weighted across counties.
-    5. Fit α by minimizing the residual sum of squares across year-pairs.
-       Expected band: 0.3–0.7.
+**Decision: keep 0.5 as the production default** until a longer
+COVID-free / ARPA-free panel becomes available. The 0.71 empirical
+point estimate is within the existing 0.3 / 0.5 / 0.7 sweep band, so
+the sweep already brackets the empirical range. The calibration module
+is shipped as infrastructure — re-run after IRS publishes TY 2023 or
+when pre-2018 IRS files become accessible to extend the panel and
+restore statistical power.
 
-  Acceptance: replace the literature default with the fitted α, store the
-  fit's RMSE in the docstring, and add a regression test in
-  ``tests/tax_modeler/adjustments/test_eitc_poverty_scaling.py``.
+Refresh recipe::
 
-  Why deferred: requires live Census API access + a multi-year IRS SOI
-  panel build. Cross-package (tax_modeler ↔ census_forecaster) data
-  pipeline. Estimated effort: 4-6 hours.
+    python -m tax_modeler.scripts.fetch_irs_soi_historic_table2 \
+        --years 2015-2023
+    python -c "from tax_modeler.calibration.eitc_alpha_calibration \
+        import calibrate_eitc_poverty_alpha, write_calibration_artifact; \
+        write_calibration_artifact(calibrate_eitc_poverty_alpha())"
 
 The Hawaii low-income tax credit (``hi_low_income_credit``) is also scaled by
 the same factor, since it specifically targets filers below a poverty threshold.

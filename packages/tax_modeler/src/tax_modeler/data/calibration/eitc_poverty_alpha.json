@@ -1,0 +1,35 @@
+{
+  "alpha": 0.7135567381037966,
+  "rmse": 0.03409735666504017,
+  "n_year_pairs": 2,
+  "year_pairs": [
+    [
+      2017,
+      2018
+    ],
+    [
+      2018,
+      2019
+    ]
+  ],
+  "residuals": [
+    -0.021882841702652124,
+    -0.042969764976115335
+  ],
+  "geoid_used": "15003",
+  "vintage": "1y",
+  "irs_panel_years": [
+    2015,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022
+  ],
+  "notes": [
+    "OLS log-space fit, no intercept (B19013 factor is the anchor). n_year_pairs=2; excluded_pairs=[(2019, 2020), (2020, 2021), (2021, 2022)].",
+    "ARPA 2021 pair excluded by default \u2014 the one-time Rescue Plan EITC expansion (TY 2021 only) dominates the signal and biases \u03b1 toward zero if included.",
+    "Geography: GEOID 15003 (Honolulu County) as Hawaii state proxy. ACS vintage: 1y."
+  ]
+}

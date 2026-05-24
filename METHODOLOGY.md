@@ -813,7 +813,7 @@ the codebase but are empirically uncertain:
 | `hi_ctc_takeup_rate` | 0.70 | 0.65 / 0.70 / 0.75 | **Hawaii-empirical**: federal-EITC take-up in HI 2022 = 84,010 admin claims / 120,535 PUMS-eligible filers ≈ 0.697 (±5pp judgment band). See `tax_modeler.calibration.hi_eitc_takeup_estimate` for the SDR-bootstrap variant. |
 | `hi_eitc_100pct_takeup_rate` | 0.98 | 0.95 / 0.98 / 1.00 | **Conditional take-up given existing HI EITC claim**. HI EITC auto-computes as fixed percentage of federal on Form N-15 (Act 209, 2023); conditional rate is near-perfect (0.02 captures rare elect-out cases). Composite friction (non-claimers of federal EITC) is upstream in `hi_eitc_amount`. |
 | `arpa_ctc_takeup_rate` | 0.94 | 0.92 / 0.94 / 0.95 | **Empirical mean** of Karpman et al. (Urban Institute, 2022) and US Treasury reports on actual ARPA monthly-CTC participation among eligible families. Band: 0.92–0.95. |
-| `eitc_poverty_alpha` | 0.5 | 0.3 / 0.5 / 0.7 | Half-elasticity ±40 % (S1701 ↔ B19013 correlation). **Empirical calibration deferred**: a TODO in `adjustments/eitc_poverty_scaling.py` specifies the backtest spec (ACS 5-year S1701 ÷ B19013 ratio, county-year panel 2014→2022, regress observed EITC growth against B19013 × poverty^α). Cross-package data pipeline; estimated 4-6 hours. |
+| `eitc_poverty_alpha` | 0.5 | 0.3 / 0.5 / 0.7 | Half-elasticity convention from Tax Policy Center / ITEP state models. **Empirical fit attempted (2026-Q2)**: 5-year Hawaii panel (IRS SOI Historic Table 2 TY 2015–2022 + ACS 1-year Honolulu B19013/S1701) yielded α ≈ 0.71 with RMSE 0.03, but n=2 year-pairs after excluding 2019→20 (COVID), 2020→21 (ARPA up), 2021→22 (ARPA expiration). Per-pair α swings −0.43 to 1.01, so the OLS fit is statistically unidentified. Keep 0.5 as production default; 0.71 lies inside the 0.3/0.5/0.7 sweep band so the existing band brackets the empirical range. Module shipped as infrastructure at `tax_modeler.calibration.eitc_alpha_calibration` — re-run after IRS publishes TY 2023 or when pre-2015 IRS files become accessible. |
 
 The per-child HI CTC dollar amount (formerly a swept parameter at
 $300 / $650 / $1000) is no longer in the sweep — it is a
@@ -911,11 +911,22 @@ fired (`"column" | "computed" | "fallback_rate" | "zero"`).
   populated upstream of `compute_spm_resources` in the report);
   affects only revenue-forecast outputs. TODO to anchor empirically
   is in the credit module's docstring.
-* **Replicate-weight propagation through tax-unit constructor** —
-  `weight_r01..weight_r80` survive on `persons` and the SPM
-  aggregator but get dropped at tax-unit construction. Forces
-  `τ_HI_EITC` to fall back to a judgment band instead of the SDR
-  bootstrap. Deferred to its own sprint (wide blast radius).
+* **Replicate-weight propagation through tax-unit constructor**
+  (2026-Q2 closed) — `weight_r01..weight_r80` now ride from PUMS
+  households → persons → tax units → SPM aggregator via the
+  `include_replicate_weights: bool = True` flag on
+  `TaxUnitConstructor`. Each replicate inherits the same hybrid-weight
+  + per-filing-status calibration formula as the main `weight` column.
+  This unlocks the SDR bootstrap on `τ_HI_EITC` at the tax-unit level
+  (the `estimate_hi_eitc_takeup` function now returns a real SE
+  instead of the 2-replicate judgment band when run post-constructor).
+* **HI Renters Credit** (2026-Q2 wired) — `_apply_hi_renters` now runs
+  in `scripts/poverty_impact_report.py` after `_apply_hi_eitc`, so
+  `hi_renters_amount` flows into `compute_spm_resources` as a positive
+  SPM resource. On real Hawaii PUMS 2024, ~15K tax units qualify with
+  aggregate disbursement ~$10.7M; SPM rate shifts by <0.1 pp. The
+  underlying take-up rate stays at the 0.30 placeholder pending a
+  DOTAX caseload pull (documented TODO in `credits/hi_renters.py`).
 * **District-level uncertainty** — within-PUMA HD/SD assignment
   is a deterministic SERIALNO hash. The `--rake-to-irs-zip`
   flag is wired but the supporting IRS SOI ZIP + crosswalk data
