@@ -447,6 +447,7 @@ def _print_summary(*, tax_year: int, by_state: pd.DataFrame, scenarios: tuple[st
         "no_credits":        "Persons lifted by ALL three credits (joint)",
         "expanded_ctc_2021": "Additional lift if ARPA-style CTC restored",
         "hi_eitc_100pct":    "Additional lift if HI EITC → 100% of federal",
+        "hi_eitc_revert_20": "Additional poverty if HI EITC reverts to 20% of federal",
         "hi_ctc_650":        "Additional lift if HI enacts $650/child CTC",
         "rxkids_hi":         "Additional lift if HI enacts RxKids cash program",
     }
@@ -464,7 +465,12 @@ def _print_summary(*, tax_year: int, by_state: pd.DataFrame, scenarios: tuple[st
         col = f"gap_closed_{scn}_$"
         if col not in s.index:
             continue
-        label = label_map.get(scn, scn).replace("Persons lifted by", "Gap closed by").replace("Additional lift", "Additional gap closed")
+        label = (
+            label_map.get(scn, scn)
+            .replace("Persons lifted by", "Gap closed by")
+            .replace("Additional lift", "Additional gap closed")
+            .replace("Additional poverty", "Additional poverty gap")
+        )
         sign = "+" if not scn.startswith("no_") else ""
         print(f"  {label:<48} : {sign}${s[col] / 1e6:>13,.1f}M")
     print()

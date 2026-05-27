@@ -959,3 +959,111 @@ def test_compute_poverty_impact_tax_unit_mode_unchanged():
     state = result.by_state.iloc[0]
     # MFJ + 2 deps → n_adults=2, n_children=2 → 4 persons; weighted = 400
     assert state["weighted_persons"] == pytest.approx(400.0)
+
+
+# ---------------------------------------------------------------------------
+# hi_eitc_revert_20 + hi_eitc_revert_20_behavioral scenarios
+# ---------------------------------------------------------------------------
+
+
+def test_hi_eitc_revert_20_subtracts_half_of_hi_eitc():
+    units = _make_units([{
+        "filing_status": "head_of_household",
+        "num_dependents": 2,
+        "total_cash_income": 25_000.0,
+        "earned_income": 25_000.0,
+        "income": 25_000.0,
+        "hi_eitc_amount": 1_600.0,
+        "eitc_amount": 4_000.0,
+    }])
+    result = compute_poverty_impact(
+        units, tax_year=2024, scenarios=("hi_eitc_revert_20",),
+    )
+    u = result.units.iloc[0]
+    expected_post = u["spm_resources"] - 0.5 * 1_600.0
+    assert u["spm_resources_hi_eitc_revert_20"] == pytest.approx(expected_post)
+
+
+def test_hi_eitc_revert_20_behavioral_adds_loss_column():
+    units = _make_units([{
+        "filing_status": "head_of_household",
+        "num_dependents": 2,
+        "total_cash_income": 25_000.0,
+        "earned_income": 25_000.0,
+        "income": 25_000.0,
+        "hi_eitc_amount": 1_600.0,
+        "eitc_amount": 4_000.0,
+        "lfp_behavioral_resource_loss": 500.0,  # precomputed
+    }])
+    result = compute_poverty_impact(
+        units, tax_year=2024,
+        scenarios=("hi_eitc_revert_20", "hi_eitc_revert_20_behavioral"),
+    )
+    u = result.units.iloc[0]
+    expected_static = u["spm_resources"] - 0.5 * 1_600.0
+    expected_behavioral = expected_static - 500.0
+    assert u["spm_resources_hi_eitc_revert_20"] == pytest.approx(expected_static)
+    assert u["spm_resources_hi_eitc_revert_20_behavioral"] == pytest.approx(expected_behavioral)
+
+
+def test_hi_eitc_revert_20_behavioral_graceful_without_loss_column():
+    """Missing loss column behaves identically to the static scenario."""
+    units = _make_units([{
+        "filing_status": "head_of_household",
+        "num_dependents": 2,
+        "total_cash_income": 25_000.0,
+        "earned_income": 25_000.0,
+        "income": 25_000.0,
+        "hi_eitc_amount": 1_600.0,
+        "eitc_amount": 4_000.0,
+    }])
+    result = compute_poverty_impact(
+        units, tax_year=2024,
+        scenarios=("hi_eitc_revert_20", "hi_eitc_revert_20_behavioral"),
+    )
+    u = result.units.iloc[0]
+    assert u["spm_resources_hi_eitc_revert_20"] == pytest.approx(
+        u["spm_resources_hi_eitc_revert_20_behavioral"]
+    )
+
+
+def test_hi_eitc_revert_20_behavioral_is_removal_like():
+    """Behavioral scenario should report persons-lifted with the removal-sign
+    convention (positive = more poor under scenario)."""
+    # Construct a unit that crosses the SPM threshold under the behavioral cut.
+    units = _make_units([{
+        "filing_status": "head_of_household",
+        "num_dependents": 2,
+        "total_cash_income": 30_000.0,
+        "earned_income": 30_000.0,
+        "income": 30_000.0,
+        "hi_eitc_amount": 2_000.0,
+        "eitc_amount": 5_000.0,
+        "weight": 100.0,
+        "lfp_behavioral_resource_loss": 8_000.0,  # large enough to push below threshold
+    }])
+    result = compute_poverty_impact(
+        units, tax_year=2024,
+        scenarios=("hi_eitc_revert_20_behavioral",),
+    )
+    state = result.by_state.iloc[0]
+    # Positive persons_lifted means counterfactual poorer (correct sign for removal-shaped).
+    assert state["persons_lifted_hi_eitc_revert_20_behavioral"] >= 0
+
+
+def test_module_notes_mention_behavioral_when_in_scenarios():
+    units = _make_units([{
+        "filing_status": "head_of_household",
+        "num_dependents": 2,
+        "earned_income": 25_000.0,
+        "income": 25_000.0,
+        "hi_eitc_amount": 1_600.0,
+        "eitc_amount": 4_000.0,
+    }])
+    result = compute_poverty_impact(
+        units, tax_year=2024,
+        scenarios=("hi_eitc_revert_20_behavioral",),
+    )
+    notes_text = " ".join(result.notes)
+    assert "hi_eitc_revert_20_behavioral" in notes_text
+    assert "Meyer-Rosenbaum" in notes_text or "LFP" in notes_text
