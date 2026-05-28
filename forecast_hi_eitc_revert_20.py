@@ -79,6 +79,29 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                    default=True,
                    help="Skip the LFP behavioral scenario; run only the static "
                         "counterfactual.")
+    p.add_argument("--no-calibrate-hi-eitc-takeup",
+                   dest="calibrate_hi_eitc_takeup", action="store_false",
+                   default=True,
+                   help="Skip HI EITC take-up calibration (DOTAX/IRS-anchored). "
+                        "Default ON: drops smallest-credit eligibles until the "
+                        "weighted claimer count matches the hawaii_caseload.csv "
+                        "anchor for hi_eitc.")
+    p.add_argument("--no-snap-offset", dest="snap_offset", action="store_false",
+                   default=True,
+                   help="Skip the SNAP cascading offset to the LFP exit channel "
+                        "(1B). Default ON: recomputes SNAP on the counterfactual "
+                        "frame where affected filers have earned_income=0, "
+                        "subtracts the SNAP gain from the LFP resource loss.")
+    p.add_argument("--intensive-elasticity-phase-in", type=float, default=0.15,
+                   help="Hours elasticity for HoH filers in the EITC phase-in "
+                        "region (1C). Default 0.15 (Eissa-Hoynes 2004 midpoint; "
+                        "literature range 0.10-0.30). Set 0 to disable.")
+    p.add_argument("--bootstrap-replicates", type=int, default=250,
+                   help="Number of bootstrap replicates for the 90%% CI on "
+                        "persons-newly-poor and children-newly-poor (1D). "
+                        "Default 250. Set 0 to skip the bootstrap.")
+    p.add_argument("--bootstrap-seed", type=int, default=42,
+                   help="Seed for the bootstrap resampler. Default 42.")
     p.add_argument("-v", "--verbose", action="store_true")
     return p.parse_args(argv)
 
@@ -138,6 +161,72 @@ def _children_newly_poor(
     return float((n_kids[newly_poor] * w[newly_poor]).sum())
 
 
+def _bootstrap_persons_newly_poor(
+    units: pd.DataFrame,
+    scenarios: list,
+    *,
+    n_replicates: int = 250,
+    seed: int = 42,
+) -> dict:
+    """Weighted bootstrap CI for persons-newly-poor and children-newly-poor.
+
+    Resamples SPM units with replacement (probability proportional to
+    ``weight``). For each replicate, the persons-newly-poor count is the
+    sum over sampled rows of ``n_persons × is_newly_poor`` (×1 weight,
+    because the sample is already weight-proportional). Similarly for
+    children-newly-poor using ``n_children``.
+
+    Returns {scenario: {'persons': {'p5','p50','p95'},
+                        'children': {'p5','p50','p95'}}}.
+    """
+    if n_replicates <= 0:
+        return {}
+
+    rng = np.random.default_rng(seed)
+    thr = units["spm_threshold"].to_numpy(dtype=float)
+    base_poor = units["spm_resources"].to_numpy(dtype=float) < thr
+    n_persons = units["n_persons"].fillna(0).to_numpy(dtype=float)
+    n_children = units["n_children"].fillna(0).to_numpy(dtype=float)
+    w = units["weight"].astype(float).to_numpy()
+    w_sum = w.sum()
+    probs = w / w_sum
+    n_rows = len(units)
+
+    # Per-scenario binary newly-poor flag, precomputed once.
+    newly_poor_by_scn = {
+        scn: (units[f"spm_resources_{scn}"].to_numpy(dtype=float) < thr) & ~base_poor
+        for scn in scenarios
+    }
+
+    # Each replicate: sample n_rows indices with replacement weighted by probs;
+    # sum n_persons * newly_poor at the sampled indices, then rescale so the
+    # totals are on the original weight basis (multiply by w_sum / n_rows).
+    rescale = w_sum / n_rows
+    out: dict = {}
+    for scn, flag in newly_poor_by_scn.items():
+        persons_rep = np.empty(n_replicates)
+        children_rep = np.empty(n_replicates)
+        person_contrib = n_persons * flag
+        child_contrib = n_children * flag
+        for i in range(n_replicates):
+            idx = rng.choice(n_rows, size=n_rows, replace=True, p=probs)
+            persons_rep[i] = person_contrib[idx].sum() * rescale
+            children_rep[i] = child_contrib[idx].sum() * rescale
+        out[scn] = {
+            "persons": {
+                "p5": float(np.percentile(persons_rep, 5)),
+                "p50": float(np.percentile(persons_rep, 50)),
+                "p95": float(np.percentile(persons_rep, 95)),
+            },
+            "children": {
+                "p5": float(np.percentile(children_rep, 5)),
+                "p50": float(np.percentile(children_rep, 50)),
+                "p95": float(np.percentile(children_rep, 95)),
+            },
+        }
+    return out
+
+
 def main(argv: Optional[list] = None) -> int:
     args = _parse_args(argv)
     logging.basicConfig(
@@ -162,6 +251,33 @@ def main(argv: Optional[list] = None) -> int:
 
     units = pir._apply_credit_takeup(units, tax_year=args.tax_year)
     units = pir._apply_hi_eitc(units, tax_year=args.tax_year)
+
+    # 1A: HI EITC take-up calibration. Federal EITC was already calibrated
+    # to IRS SOI via the line above; this drops filers who claim federal
+    # but not state EITC, anchored to the DOTAX (or estimated 70%) target
+    # in packages/tax_modeler/.../data/admin_caseload/hawaii_caseload.csv.
+    hi_eitc_takeup_diag = None
+    if args.calibrate_hi_eitc_takeup:
+        w = units["weight"].astype(float).to_numpy()
+        hi_before = units["hi_eitc_amount"].fillna(0).to_numpy(dtype=float)
+        before_count = float(w[hi_before > 0].sum())
+        before_dollars_m = float((hi_before * w).sum() / 1e6)
+        units = pir._apply_credit_takeup(
+            units, tax_year=args.tax_year, programs=("hi_eitc",),
+        )
+        hi_after = units["hi_eitc_amount"].fillna(0).to_numpy(dtype=float)
+        w = units["weight"].astype(float).to_numpy()
+        after_count = float(w[hi_after > 0].sum())
+        after_dollars_m = float((hi_after * w).sum() / 1e6)
+        hi_eitc_takeup_diag = {
+            "before_count_weighted": before_count,
+            "after_count_weighted": after_count,
+            "before_dollars_$M": before_dollars_m,
+            "after_dollars_$M": after_dollars_m,
+            "dropped_pct": (1 - after_count / before_count) * 100 if before_count > 0 else 0.0,
+        }
+        LOG.info("HI EITC take-up calibration: %s", hi_eitc_takeup_diag)
+
     units = pir._apply_arpa_ctc(units)
     units = pir._apply_snap(units, tax_year=args.tax_year)
 
@@ -185,14 +301,38 @@ def main(argv: Optional[list] = None) -> int:
     # BEFORE aggregate_to_spm_units so the loss column gets summed into
     # the SPM-unit-grain frame via _SUM_COLS.
     lfp_diag = None
+    snap_offset_diag = None
+    intensive_diag = None
     if args.behavioral and args.lfp_elasticity > 0:
-        from tax_modeler.scenarios.eitc_labor_response import apply_hi_eitc_lfp_response
+        from tax_modeler.scenarios.eitc_labor_response import (
+            apply_hi_eitc_intensive_response,
+            apply_hi_eitc_lfp_response,
+            compute_snap_offset_for_lfp_exit,
+        )
         units, lfp_diag = apply_hi_eitc_lfp_response(
             units, elasticity=args.lfp_elasticity,
         )
         LOG.info("LFP behavioral response: %s", lfp_diag)
+        # 1B: SNAP cascading offset to the LFP exit channel.
+        if args.snap_offset:
+            units, snap_offset_diag = compute_snap_offset_for_lfp_exit(units)
+            LOG.info("SNAP offset: %s", snap_offset_diag)
+        else:
+            units["lfp_behavioral_snap_offset"] = 0.0
+        # 1C: Intensive-margin (hours) response for phase-in HoH workers.
+        if args.intensive_elasticity_phase_in > 0:
+            units, intensive_diag = apply_hi_eitc_intensive_response(
+                units,
+                elasticity_phase_in=args.intensive_elasticity_phase_in,
+                tax_year=args.tax_year,
+            )
+            LOG.info("Intensive-margin response: %s", intensive_diag)
+        else:
+            units["intensive_resource_loss"] = 0.0
     else:
         units["lfp_behavioral_resource_loss"] = 0.0
+        units["lfp_behavioral_snap_offset"] = 0.0
+        units["intensive_resource_loss"] = 0.0
 
     # Per-quintile tax change (on the tax-unit frame, before SPM rollup).
     quint = _quintile_breakdown(units)
@@ -273,26 +413,78 @@ def main(argv: Optional[list] = None) -> int:
         label = "static" if scn == "hi_eitc_revert_20" else "+ behavioral"
         lines.append(f"  {label:<32}            : {kids:>10,.0f}")
 
+    if hi_eitc_takeup_diag is not None:
+        lines.append("")
+        lines.append("HI EITC take-up calibration (1A):")
+        lines.append(f"  Pre-calibration claimers (weighted) : {hi_eitc_takeup_diag['before_count_weighted']:>10,.0f}")
+        lines.append(f"  Post-calibration claimers (weighted): {hi_eitc_takeup_diag['after_count_weighted']:>10,.0f}")
+        lines.append(f"  Pre-calibration HI EITC dollars     : ${hi_eitc_takeup_diag['before_dollars_$M']:>9,.1f}M")
+        lines.append(f"  Post-calibration HI EITC dollars    : ${hi_eitc_takeup_diag['after_dollars_$M']:>9,.1f}M")
+        lines.append(f"  Filers dropped (smallest credits)   : {hi_eitc_takeup_diag['dropped_pct']:>9,.1f}%")
+
     if lfp_diag is not None:
         lines.append("")
-        lines.append("LFP behavioral diagnostics:")
+        lines.append("LFP behavioral diagnostics (extensive margin, 1B/1C precursor):")
         lines.append(f"  Elasticity (η)                      : {lfp_diag['elasticity']:.2f}")
         lines.append(f"  Δlog(combined federal+HI EITC)      : {lfp_diag['delta_log_eitc']:>+7.4f}")
         lines.append(f"  Per-filer exit probability          : {lfp_diag['p_exit']:>7.4f}")
         lines.append(f"  Affected HoH filers (weighted)      : {lfp_diag['affected_filers_weighted']:>10,.0f}")
         lines.append(f"  Expected LFP exits (weighted)       : {lfp_diag['expected_lfp_exits_weighted']:>10,.0f}")
-        lines.append(f"  Aggregate resource loss             : ${lfp_diag['aggregate_resource_loss_$M']:>9,.2f}M")
+        lines.append(f"  Raw extensive resource loss         : ${lfp_diag['aggregate_resource_loss_$M']:>9,.2f}M")
+
+    if snap_offset_diag is not None:
+        lines.append("")
+        lines.append("SNAP cascading offset (1B):")
+        lines.append(f"  Aggregate SNAP gain (LFP exits)     : ${snap_offset_diag['aggregate_snap_offset_$M']:>9,.2f}M")
+        lines.append(f"  Avg SNAP gain per exit              : ${snap_offset_diag['avg_snap_gain_per_exit']:>9,.0f}/yr")
+
+    if intensive_diag is not None:
+        lines.append("")
+        lines.append("Intensive-margin (hours) response (1C):")
+        lines.append(f"  Elasticity (phase-in only)          : {intensive_diag['elasticity_phase_in']:.2f}")
+        lines.append(f"  Affected phase-in filers (weighted) : {intensive_diag['affected_filers_weighted']:>10,.0f}")
+        lines.append(f"  Avg |Δhours|                        : {intensive_diag['avg_abs_hours_change_pct']:>7.2f}%")
+        lines.append(f"  Aggregate intensive resource loss   : ${intensive_diag['aggregate_resource_loss_$M']:>9,.2f}M")
+
+    # Bootstrap 90% CI (1D).
+    if args.bootstrap_replicates > 0:
+        ci = _bootstrap_persons_newly_poor(
+            result.units, scenarios,
+            n_replicates=args.bootstrap_replicates, seed=args.bootstrap_seed,
+        )
+        if ci:
+            lines.append("")
+            lines.append(f"Bootstrap 90% CI ({args.bootstrap_replicates} replicates, seed={args.bootstrap_seed}):")
+            for scn in scenarios:
+                p = ci[scn]["persons"]
+                k = ci[scn]["children"]
+                lines.append(f"  {scn}:")
+                lines.append(f"    persons newly poor p5/p50/p95  : "
+                             f"{p['p5']:>8,.0f} / {p['p50']:>8,.0f} / {p['p95']:>8,.0f}")
+                lines.append(f"    children newly poor p5/p50/p95 : "
+                             f"{k['p5']:>8,.0f} / {k['p50']:>8,.0f} / {k['p95']:>8,.0f}")
 
     lines.append("")
     lines.append("Caveats:")
     lines.append("- TY 2025 federal EITC/CTC parameters used as TY 2028 proxy.")
     lines.append("- TCJA expiration (12/31/2025) not modeled. HI EITC ratio change is exact.")
+    if hi_eitc_takeup_diag is not None:
+        lines.append("- HI EITC take-up anchored to 70% of IRS SOI federal EITC count "
+                     "(estimated; replace with DOTAX Tax Credits Claimed when available).")
     if args.behavioral:
         lines.append(f"- LFP elasticity {args.lfp_elasticity} (Meyer-Rosenbaum 2001; range 0.3-0.7).")
         lines.append("- HoH scope includes single fathers (~10% of HoH per HI ACS S1101).")
         lines.append("- FICA + federal-tax savings linearly approximated using baseline values.")
         lines.append("- ±15% uncertainty band on behavioral persons-newly-poor from elasticity range.")
-    lines.append("- Static counterfactual otherwise: no intensive-margin / marriage / fertility response.")
+    if snap_offset_diag is not None:
+        lines.append("- SNAP offset (1B) approximates per-filer gain by zeroing all affected "
+                     "filers simultaneously; overstates offset slightly for multi-affected-filer HHs (rare).")
+    if intensive_diag is not None:
+        lines.append(f"- Intensive-margin response (1C) restricted to EITC phase-in workers, "
+                     f"ε={args.intensive_elasticity_phase_in} (Eissa-Hoynes 2004 midpoint).")
+    if args.bootstrap_replicates > 0:
+        lines.append(f"- Bootstrap CI (1D) captures PUMS sampling uncertainty only; elasticity uncertainty via --lfp-elasticity sweep.")
+    lines.append("- Other channels not modeled: marriage / fertility / take-up of other safety nets (TANF, UI).")
 
     summary = "\n".join(lines)
     (args.out / "summary.txt").write_text(summary + "\n")

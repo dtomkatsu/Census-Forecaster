@@ -227,20 +227,22 @@ def _scenario_resources(
         # lower rate (the credit still auto-attaches to federal EITC).
         return baseline_resources - 0.5 * hi_eitc
     if scenario == "hi_eitc_revert_20_behavioral":
-        # Static 50%-of-HI-EITC cut + extensive-margin LFP exit response
-        # for single-mother (HoH proxy) filers. The behavioral term is
-        # precomputed on the tax-unit frame by
-        # tax_modeler.scenarios.eitc_labor_response.apply_hi_eitc_lfp_response
-        # and propagates through SPM-unit aggregation via _SUM_COLS.
+        # Static 50%-of-HI-EITC cut + behavioral channels precomputed on
+        # the tax-unit frame and propagated through SPM-unit aggregation
+        # via _SUM_COLS. Channels:
+        #   - lfp_behavioral_resource_loss : extensive-margin LFP exit
+        #   - lfp_behavioral_snap_offset   : SNAP cascading offset to LFP
+        #   - intensive_resource_loss      : intensive-margin (hours) cut
+        # All three are produced by tax_modeler.scenarios.eitc_labor_response.
         static = 0.5 * hi_eitc
-        if "lfp_behavioral_resource_loss" in units.columns:
-            behavioral = (
-                units["lfp_behavioral_resource_loss"]
-                .fillna(0)
-                .to_numpy(dtype=float)
-            )
-        else:
-            behavioral = np.zeros_like(static)
+        def _col(name: str) -> np.ndarray:
+            if name in units.columns:
+                return units[name].fillna(0).to_numpy(dtype=float)
+            return np.zeros_like(static)
+        lfp_loss = _col("lfp_behavioral_resource_loss")
+        snap_offset = _col("lfp_behavioral_snap_offset")
+        intensive = _col("intensive_resource_loss")
+        behavioral = np.maximum(lfp_loss - snap_offset + intensive, 0.0)
         return baseline_resources - static - behavioral
     if scenario == "no_credits":
         return baseline_resources - (eitc + ctc + hi_eitc)

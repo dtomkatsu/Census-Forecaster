@@ -187,6 +187,61 @@ def eitc_parameters_for_year(tax_year: int) -> EITCParameters:
     return _EITC_PARAMS_BY_YEAR[tax_year]()
 
 
+def classify_eitc_region(
+    earned_income,
+    num_qualifying_children,
+    filing_status,
+    *,
+    tax_year: int,
+) -> np.ndarray:
+    """Classify each row's federal-EITC schedule region: phase_in / plateau / phase_out.
+
+    Vectorized over array-like inputs. Boundary convention: earnings
+    exactly equal to ``phase_in_ends`` or ``phaseout_start`` map to
+    ``"plateau"``; strict inequality is required to fall into
+    ``"phase_in"`` or ``"phase_out"``. Used by the intensive-margin
+    behavioral response in ``scenarios/eitc_labor_response.py`` to apply
+    a piecewise hours elasticity (phase-in workers respond most
+    strongly to EITC subsidy changes).
+
+    Parameters
+    ----------
+    earned_income, num_qualifying_children, filing_status
+        Array-like, all the same length. ``num_qualifying_children`` is
+        clamped to [0, 3] to match the EITC parameter schedule (3 = "3
+        or more"). ``filing_status`` strings are compared against
+        ``"married_filing_jointly"`` for the joint-vs-single phaseout
+        boundary.
+    tax_year
+        Used to look up the EITC parameter set; must be a supported
+        year per :func:`eitc_parameters_for_year`.
+
+    Returns
+    -------
+    np.ndarray of object dtype, values in {"phase_in", "plateau", "phase_out"}.
+    """
+    params = eitc_parameters_for_year(tax_year)
+    ei = np.asarray(earned_income, dtype=float)
+    n_kids = np.clip(np.asarray(num_qualifying_children, dtype=int), 0, 3)
+    is_joint = np.asarray(filing_status) == "married_filing_jointly"
+
+    phase_in_ends = np.array(
+        [params.by_children[k].phase_in_ends for k in n_kids], dtype=float
+    )
+    phaseout_start_single = np.array(
+        [params.by_children[k].phaseout_start_single for k in n_kids], dtype=float
+    )
+    phaseout_start_joint = np.array(
+        [params.by_children[k].phaseout_start_joint for k in n_kids], dtype=float
+    )
+    phaseout_start = np.where(is_joint, phaseout_start_joint, phaseout_start_single)
+
+    region = np.full(len(ei), "plateau", dtype=object)
+    region[ei < phase_in_ends] = "phase_in"
+    region[ei > phaseout_start] = "phase_out"
+    return region
+
+
 def calculate_eitc(tax_unit: Dict, tax_year: int = 2023) -> Dict[str, float]:
     """
     Calculate the EITC for a single tax unit.

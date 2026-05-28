@@ -237,6 +237,11 @@ def calibrate_benefits(
         "eitc": ("eitc_amount", "eitc_amount", False),
         "ctc":  ("ctc_total",   "ctc_total",   False),
         "actc": ("ctc_refundable", "ctc_refundable", False),
+        # State EITC: same rank-by-dollar-descending logic. HI EITC was
+        # non-refundable through TY 2022 and refundable starting TY 2023
+        # (Act 209, 2023); take-up anchor in hawaii_caseload.csv reflects
+        # the conservative end of state-EITC take-up literature.
+        "hi_eitc": ("hi_eitc_amount", "hi_eitc_amount", False),
     }
     for program in programs:
         if program not in program_cols:

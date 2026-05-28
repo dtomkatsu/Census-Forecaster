@@ -1051,6 +1051,58 @@ def test_hi_eitc_revert_20_behavioral_is_removal_like():
     assert state["persons_lifted_hi_eitc_revert_20_behavioral"] >= 0
 
 
+def test_hi_eitc_revert_20_behavioral_three_component_decomposition():
+    """Behavioral resources = baseline - 0.5*hi_eitc - max(lfp - snap_offset + intensive, 0)."""
+    units = _make_units([{
+        "filing_status": "head_of_household",
+        "num_dependents": 2,
+        "total_cash_income": 25_000.0,
+        "earned_income": 25_000.0,
+        "income": 25_000.0,
+        "hi_eitc_amount": 1_600.0,
+        "eitc_amount": 4_000.0,
+        "lfp_behavioral_resource_loss": 500.0,
+        "lfp_behavioral_snap_offset": 150.0,
+        "intensive_resource_loss": 80.0,
+    }])
+    result = compute_poverty_impact(
+        units, tax_year=2024,
+        scenarios=("hi_eitc_revert_20", "hi_eitc_revert_20_behavioral"),
+    )
+    u = result.units.iloc[0]
+    expected_static = u["spm_resources"] - 0.5 * 1_600.0
+    behavioral_term = max(500.0 - 150.0 + 80.0, 0.0)  # = 430
+    expected_behavioral = expected_static - behavioral_term
+    assert u["spm_resources_hi_eitc_revert_20"] == pytest.approx(expected_static)
+    assert u["spm_resources_hi_eitc_revert_20_behavioral"] == pytest.approx(expected_behavioral)
+
+
+def test_hi_eitc_revert_20_behavioral_clamps_negative_to_zero():
+    """If snap_offset > lfp + intensive, behavioral term clamps at 0 (no net loss
+    relative to static — counterintuitive edge case, defensive only)."""
+    units = _make_units([{
+        "filing_status": "head_of_household",
+        "num_dependents": 2,
+        "total_cash_income": 25_000.0,
+        "earned_income": 25_000.0,
+        "income": 25_000.0,
+        "hi_eitc_amount": 1_600.0,
+        "eitc_amount": 4_000.0,
+        "lfp_behavioral_resource_loss": 100.0,
+        "lfp_behavioral_snap_offset": 500.0,
+        "intensive_resource_loss": 0.0,
+    }])
+    result = compute_poverty_impact(
+        units, tax_year=2024,
+        scenarios=("hi_eitc_revert_20", "hi_eitc_revert_20_behavioral"),
+    )
+    u = result.units.iloc[0]
+    # Behavioral term clamped to 0 → behavioral == static.
+    assert u["spm_resources_hi_eitc_revert_20_behavioral"] == pytest.approx(
+        u["spm_resources_hi_eitc_revert_20"]
+    )
+
+
 def test_module_notes_mention_behavioral_when_in_scenarios():
     units = _make_units([{
         "filing_status": "head_of_household",

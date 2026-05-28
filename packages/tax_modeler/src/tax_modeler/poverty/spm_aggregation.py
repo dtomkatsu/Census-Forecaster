@@ -82,6 +82,8 @@ _SUM_COLS: tuple[str, ...] = (
     # tax_modeler.scenarios.eitc_labor_response). Summed so the LFP-exit
     # resource loss aggregates correctly across multi-tax-unit SPM units.
     "lfp_behavioral_resource_loss",
+    "lfp_behavioral_snap_offset",
+    "intensive_resource_loss",
     # Counts
     "num_dependents",
     "num_qualifying_children",

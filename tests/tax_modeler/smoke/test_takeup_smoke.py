@@ -268,6 +268,54 @@ def test_calibrate_benefits_eitc_ranks_descending_by_amount(taxed_units):
 
 
 # ---------------------------------------------------------------------------
+# HI EITC take-up calibration (Tier 1A — eitc_revert_20 forecast)
+# ---------------------------------------------------------------------------
+
+
+def test_admin_caseload_has_hi_eitc_anchor():
+    """Hawaii caseload table must include a hi_eitc anchor for the
+    1A take-up-calibration step in forecast_hi_eitc_revert_20.py.
+    """
+    cl = AdminCaseload.load()
+    hi = cl.target("hi_eitc", 2022)
+    assert hi.unit == "return"
+    assert 30_000 < hi.count < 100_000, (
+        f"hi_eitc count {hi.count} should be < federal EITC (~84k); "
+        "the anchor models state-EITC take-up gap relative to federal."
+    )
+    assert 20 < hi.annual_dollars_millions < 100
+
+
+def test_calibrate_benefits_supports_hi_eitc(taxed_units):
+    """calibrate_benefits zeros HI EITC for non-imputed units; preserves federal."""
+    if "eitc_amount" not in taxed_units.columns:
+        pytest.skip("taxed_units fixture missing eitc_amount column")
+
+    units = taxed_units.copy()
+    # Synthesize hi_eitc_amount = 0.40 × federal EITC.
+    units["hi_eitc_amount"] = 0.40 * units["eitc_amount"].fillna(0)
+    if (units["hi_eitc_amount"] > 0).sum() < 2:
+        pytest.skip("not enough HI-EITC-eligible rows in fixture")
+
+    fed_before = units["eitc_amount"].copy()
+
+    target_count = float(units.loc[units["hi_eitc_amount"] > 0, "weight"].sum()) * 0.5
+    scaled = AdminCaseload(pd.DataFrame([{
+        "program": "hi_eitc", "year": 2022, "unit": "return",
+        "count": target_count, "annual_dollars_millions": 1.0,
+    }]))
+
+    out = calibrate_benefits(units, caseload=scaled, year=2022, programs=("hi_eitc",))
+    assert "hi_eitc_receives_imputed" in out.columns
+    non_recip = out[~out["hi_eitc_receives_imputed"]]
+    assert (non_recip["hi_eitc_amount"] == 0).all()
+    # Federal EITC unaffected by HI calibration.
+    pd.testing.assert_series_equal(
+        out["eitc_amount"], fed_before, check_names=False
+    )
+
+
+# ---------------------------------------------------------------------------
 # Reform-path interaction (TRIM3 convention)
 # ---------------------------------------------------------------------------
 
