@@ -181,6 +181,70 @@ def impute_takeup(
     return df
 
 
+def scale_benefit_to_dollar_target(
+    units: pd.DataFrame,
+    *,
+    benefit_col: str,
+    target_dollars_M: float,
+    weight_col: str = "weight",
+) -> tuple[pd.DataFrame, float]:
+    """Scale a post-take-up benefit column so aggregate dollars match an SOI anchor.
+
+    Parameters
+    ----------
+    units:
+        Tax-unit DataFrame with ``benefit_col`` already zeroed for non-recipients
+        (i.e., after :func:`impute_takeup`).
+    benefit_col:
+        Dollar column to scale (e.g. ``"eitc_amount"``).
+    target_dollars_M:
+        IRS SOI or admin target in millions of dollars.
+    weight_col:
+        Population-weight column.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, float]
+        ``(scaled_units, scalar)`` where ``scalar = target / model`` so callers
+        can propagate it to proportionally linked columns (e.g. HI EITC).
+        Returns ``(units, 1.0)`` unchanged when model total is zero.
+    """
+    model_dollars_M = float(
+        (units[benefit_col] * units[weight_col]).sum() / 1_000_000
+    )
+    if model_dollars_M == 0:
+        logger.warning(
+            "scale_benefit_to_dollar_target(%s): model total is zero; "
+            "skipping dollar calibration",
+            benefit_col,
+        )
+        return units, 1.0
+
+    scalar = target_dollars_M / model_dollars_M
+    if scalar > 2.0 or scalar < 0.5:
+        logger.warning(
+            "scale_benefit_to_dollar_target(%s): unusual scalar=%.3f "
+            "(model=%.1fM, target=%.1fM) — check SOI anchor or benefit module",
+            benefit_col,
+            scalar,
+            model_dollars_M,
+            target_dollars_M,
+        )
+    else:
+        logger.info(
+            "scale_benefit_to_dollar_target(%s): scalar=%.3f "
+            "(model=%.1fM → target=%.1fM)",
+            benefit_col,
+            scalar,
+            model_dollars_M,
+            target_dollars_M,
+        )
+
+    out = units.copy()
+    out[benefit_col] = out[benefit_col] * scalar
+    return out, scalar
+
+
 def calibrate_benefits(
     units: pd.DataFrame,
     *,
@@ -224,6 +288,7 @@ def calibrate_benefits(
             credit are most likely to actually file for it.
     """
     df = units
+    eitc_dollar_scalar: float = 1.0  # set when 'eitc' is processed; propagated to 'hi_eitc'
     program_cols = {
         "snap": ("snap_amount", "income", True),
         "ssi": ("ssi_amount", "income", True),
@@ -264,4 +329,19 @@ def calibrate_benefits(
             ascending=ascending,
             weight_col=weight_col,
         )
+
+        if program == "eitc" and target.annual_dollars_millions > 0:
+            df, eitc_dollar_scalar = scale_benefit_to_dollar_target(
+                df,
+                benefit_col=benefit_col,
+                target_dollars_M=target.annual_dollars_millions,
+                weight_col=weight_col,
+            )
+        elif program == "hi_eitc" and eitc_dollar_scalar != 1.0:
+            # hi_eitc is 40% of federal EITC; preserve proportionality after
+            # federal dollar calibration by applying the same scalar.
+            out = df.copy()
+            out[benefit_col] = out[benefit_col] * eitc_dollar_scalar
+            df = out
+
     return df

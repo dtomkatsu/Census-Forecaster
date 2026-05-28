@@ -107,6 +107,7 @@ from .calibration import (
     impute_childcare_expense,
     impute_moop,
     impute_takeup,
+    scale_benefit_to_dollar_target,
     impute_work_expense,
     joint_ipf,
     validate_joint_distribution,
@@ -318,6 +319,7 @@ PUBLIC_API = (
     "CaseloadTarget",
     "calibrate_benefits",
     "impute_takeup",
+    "scale_benefit_to_dollar_target",
     # Phase 8: ACS demographic projection + donor-match + geographic stratification
     "project_demographics_forward",
     "hawaii_senior_share",

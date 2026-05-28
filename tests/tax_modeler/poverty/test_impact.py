@@ -379,8 +379,13 @@ def test_credit_takeup_reduces_baseline_lift():
     (baseline reflects receipt), some marginal-eligible units lose their
     EITC, so the no_eitc counterfactual moves fewer of them below the
     poverty line.
+
+    This test uses a count-only caseload (annual_dollars_millions=0) to
+    isolate the take-up zeroing behavior from the dollar calibration step,
+    which requires a full-PUMS population to produce a meaningful scalar.
     """
-    from tax_modeler.pipeline import apply_credit_takeup
+    from tax_modeler.calibration.admin_caseload import AdminCaseload
+    from tax_modeler.calibration.takeup_imputation import calibrate_benefits
 
     rng = np.random.default_rng(101)
     rows = []
@@ -404,9 +409,25 @@ def test_credit_takeup_reduces_baseline_lift():
     s_pre = compute_poverty_impact(units_pre, tax_year=2022).by_state.iloc[0]
     lift_pre = s_pre["persons_lifted_no_eitc"]
 
+    # Build a count-only caseload (annual_dollars_millions=0) so that the
+    # dollar-calibration step is skipped. On a 150-row fixture the dollar
+    # totals are nowhere near the IRS SOI state total, so the scalar would
+    # be nonsensically large; we test the zeroing behavior in isolation.
+    real_eitc = AdminCaseload.load().target("eitc", 2022)
+    real_actc = AdminCaseload.load().target("actc", 2022)
+    count_only_cl = AdminCaseload(pd.DataFrame([
+        {"program": "eitc",  "year": 2022, "unit": real_eitc.unit,
+         "count": real_eitc.count, "annual_dollars_millions": 0.0},
+        {"program": "actc", "year": 2022, "unit": real_actc.unit,
+         "count": real_actc.count, "annual_dollars_millions": 0.0},
+    ]))
+
     # Apply take-up calibration; this zeroes credits for the lowest-eligible
     # filers until the weighted claim count matches the IRS SOI target.
-    units_post = apply_credit_takeup(units_pre.copy(), year=2022, programs=("eitc", "actc"))
+    units_post = calibrate_benefits(
+        units_pre.copy(), caseload=count_only_cl, year=2022,
+        programs=("eitc", "actc"),
+    )
     s_post = compute_poverty_impact(units_post, tax_year=2022).by_state.iloc[0]
     lift_post = s_post["persons_lifted_no_eitc"]
 

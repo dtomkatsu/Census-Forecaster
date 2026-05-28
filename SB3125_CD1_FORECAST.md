@@ -1,11 +1,30 @@
 # SB 3125 CD1 — Hawaii Income Tax Fiscal Impact Forecast
 ## Tax Years 2027–2031
 
-**Last updated:** May 14, 2026
+**Last updated:** May 27, 2026
 **Analyst:** Hawaii Appleseed Center for Law and Economic Justice
 **Model version:** CD2 vintage carryforward model + Round-2 REEC refinements (May 14, 2026).
 
 > **Maintenance note:** This document must be updated whenever forecast methodology changes — including parameter recalibration, new behavioral channels, tax treatment corrections, or data source changes. Update the relevant section(s) and the Results table before committing.
+
+---
+
+## SOI-anchored EITC dollar calibration — May 27, 2026
+
+**Methodology addition:** Post-take-up proportional scaling to match IRS SOI HI TY2022 aggregate EITC dollars ($184.7M).
+
+After count-based take-up imputation (which marks non-recipients to zero), the model may still understate the aggregate EITC dollar total due to ACS wage underreporting and filer mix-shift. A new `scale_benefit_to_dollar_target()` step now applies a proportional scalar (`target_dollars_M / model_dollars_M`) to `eitc_amount` for all imputed recipients. The HI EITC (`hi_eitc_amount`, 40% of federal) is scaled by the same factor to preserve the 40% rate.
+
+**Guard rails:** The scalar is logged at WARNING level when it falls outside [0.5, 2.0] — values outside this range indicate a data mismatch rather than a calibration adjustment. A zero model total skips scaling entirely to prevent divide-by-zero.
+
+**Files changed:**
+- `packages/tax_modeler/src/tax_modeler/calibration/takeup_imputation.py` — added `scale_benefit_to_dollar_target()` function and integrated it into `calibrate_benefits()` for the 'eitc' and 'hi_eitc' programs.
+- `packages/tax_modeler/src/tax_modeler/calibration/__init__.py` — exported `scale_benefit_to_dollar_target`.
+- `packages/tax_modeler/src/tax_modeler/__init__.py` — exported `scale_benefit_to_dollar_target`.
+- `tests/tax_modeler/smoke/test_takeup_smoke.py` — 5 new tests covering scalar application, HI-EITC proportionality, unusual-scalar warning, zero-model guard, and calibrate_benefits integration.
+- `tests/tax_modeler/poverty/test_impact.py` — updated `test_credit_takeup_reduces_baseline_lift` to use count-only caseload (annual_dollars_millions=0) so the zeroing-behavior invariant is tested independently of dollar scaling.
+
+**Forecast impact:** Closes the remaining dollar gap between the model and IRS SOI HI TY2022 actuals after the filer-age fix. The scalar applied to the full PUMS population should be ≈1.0–1.3 (small upward adjustment). SB 3125 CD1 bracket and REEC/CGEC/TCRA computations are not affected; this calibration applies to the baseline EITC receipt column only.
 
 ---
 

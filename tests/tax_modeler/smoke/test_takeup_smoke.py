@@ -28,6 +28,7 @@ from tax_modeler import (
     compute_ssi_hi_supplement_for_units,
     impute_takeup,
 )
+from tax_modeler.calibration.takeup_imputation import scale_benefit_to_dollar_target
 from tax_modeler.errors import ConfigError, DataValidationError
 
 
@@ -348,3 +349,121 @@ def test_reform_path_does_not_apply_baseline_takeup(taxed_units):
     # No counterfactual_units (no benefit overrides) — the assertion is that
     # apply_reform doesn't crash on calibrated baseline data.
     assert result.counterfactual_units is None
+
+
+# ---------------------------------------------------------------------------
+# scale_benefit_to_dollar_target — SOI-anchored dollar calibration
+# ---------------------------------------------------------------------------
+
+
+def _make_eitc_units(n: int = 10, eitc_per_unit: float = 1_000.0) -> pd.DataFrame:
+    """Minimal DataFrame with eitc_amount and weight columns."""
+    return pd.DataFrame({
+        "eitc_amount": [eitc_per_unit] * n,
+        "hi_eitc_amount": [eitc_per_unit * 0.4] * n,
+        "weight": [1.0] * n,
+        "income": [30_000.0] * n,
+    })
+
+
+def test_scale_benefit_scalar_applied():
+    """model=100M, target=120M → scalar=1.2, all amounts ×1.2."""
+    # 100 units × $1M each × weight 1.0 = $100M model total
+    df = pd.DataFrame({
+        "eitc_amount": [1_000_000.0] * 100,
+        "weight": [1.0] * 100,
+    })
+    out, scalar = scale_benefit_to_dollar_target(
+        df, benefit_col="eitc_amount", target_dollars_M=120.0
+    )
+    assert abs(scalar - 1.2) < 1e-9
+    np.testing.assert_allclose(out["eitc_amount"].to_numpy(), 1_200_000.0)
+
+
+def test_scale_benefit_hi_eitc_same_scalar():
+    """hi_eitc_amount must be scaled by the same scalar as the federal credit."""
+    df = pd.DataFrame({
+        "eitc_amount": [1_000_000.0] * 50,
+        "hi_eitc_amount": [400_000.0] * 50,   # 40% of federal
+        "weight": [1.0] * 50,
+    })
+    # Federal: model=50M, target=75M → scalar=1.5
+    out_fed, scalar_fed = scale_benefit_to_dollar_target(
+        df, benefit_col="eitc_amount", target_dollars_M=75.0
+    )
+    assert abs(scalar_fed - 1.5) < 1e-9
+
+    # Apply same scalar to hi_eitc manually (mirrors calibrate_benefits logic)
+    out_hi = out_fed.copy()
+    out_hi["hi_eitc_amount"] = out_hi["hi_eitc_amount"] * scalar_fed
+    # hi_eitc should still be 40% of federal after scaling
+    ratio = out_hi["hi_eitc_amount"] / out_fed["eitc_amount"]
+    np.testing.assert_allclose(ratio.to_numpy(), 0.4)
+
+
+def test_scale_benefit_unusual_scalar_warns(caplog):
+    """scalar > 2.0 must emit a WARNING."""
+    df = pd.DataFrame({
+        "eitc_amount": [1_000.0] * 10,  # model total = 0.01M
+        "weight": [1.0] * 10,
+    })
+    with caplog.at_level(logging.WARNING, logger="tax_modeler.calibration.takeup_imputation"):
+        _, scalar = scale_benefit_to_dollar_target(
+            df, benefit_col="eitc_amount", target_dollars_M=1_000.0  # 100,000× overshoot
+        )
+    assert scalar > 2.0
+    assert any("unusual scalar" in rec.message for rec in caplog.records)
+
+
+def test_scale_benefit_zero_model_returns_unchanged(caplog):
+    """model total == 0 must return the frame unchanged without divide-by-zero."""
+    df = pd.DataFrame({
+        "eitc_amount": [0.0] * 5,
+        "weight": [1.0] * 5,
+    })
+    with caplog.at_level(logging.WARNING, logger="tax_modeler.calibration.takeup_imputation"):
+        out, scalar = scale_benefit_to_dollar_target(
+            df, benefit_col="eitc_amount", target_dollars_M=100.0
+        )
+    assert scalar == 1.0
+    assert (out["eitc_amount"] == 0.0).all()
+    assert any("zero" in rec.message for rec in caplog.records)
+
+
+def test_calibrate_benefits_eitc_dollar_calibration_scales_hi_eitc(taxed_units):
+    """When eitc + hi_eitc are both in programs and eitc has annual_dollars_millions > 0,
+    hi_eitc_amount should be scaled by the same federal scalar."""
+    if "eitc_amount" not in taxed_units.columns:
+        pytest.skip("taxed_units fixture missing eitc_amount column")
+
+    units = taxed_units.copy()
+    units["hi_eitc_amount"] = 0.40 * units["eitc_amount"].fillna(0)
+
+    eitc_eligible = units[units["eitc_amount"] > 0]
+    hi_eligible = units[units["hi_eitc_amount"] > 0]
+    if len(eitc_eligible) < 2 or len(hi_eligible) < 2:
+        pytest.skip("not enough EITC/HI-EITC eligible rows in fixture")
+
+    # Build a scaled caseload for both programs; give eitc a dollar target.
+    eitc_count = float(eitc_eligible["weight"].sum())
+    hi_count = float(hi_eligible["weight"].sum())
+    # model eitc total in $M (before calibration)
+    model_eitc_M = float((eitc_eligible["eitc_amount"] * eitc_eligible["weight"]).sum()) / 1e6
+    # Set target to 1.5× model to force a known scalar
+    target_eitc_M = model_eitc_M * 1.5 if model_eitc_M > 0 else 1.0
+
+    scaled = AdminCaseload(pd.DataFrame([
+        {"program": "eitc", "year": 2022, "unit": "return",
+         "count": eitc_count, "annual_dollars_millions": target_eitc_M},
+        {"program": "hi_eitc", "year": 2022, "unit": "return",
+         "count": hi_count, "annual_dollars_millions": 0.0},
+    ]))
+
+    out = calibrate_benefits(units, caseload=scaled, year=2022, programs=("eitc", "hi_eitc"))
+
+    # For recipients, hi_eitc should still be ~40% of eitc_amount after scaling.
+    recipients = out[out["eitc_receives_imputed"] & out["hi_eitc_receives_imputed"]]
+    if len(recipients) == 0:
+        pytest.skip("no joint eitc+hi_eitc recipients in fixture")
+    ratio = recipients["hi_eitc_amount"] / recipients["eitc_amount"]
+    np.testing.assert_allclose(ratio.to_numpy(), 0.4, rtol=1e-6)

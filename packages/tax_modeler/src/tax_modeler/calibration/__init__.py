@@ -19,7 +19,7 @@ from .income_source_split import IncomeSourceSplitter, split_income_sources
 from .wage_growth_adjustment import WageGrowthAdjuster, generate_growth_rate_report
 from .soi_calibration import SOICalibrator
 from .admin_caseload import AdminCaseload, CaseloadTarget
-from .takeup_imputation import calibrate_benefits, impute_takeup
+from .takeup_imputation import calibrate_benefits, impute_takeup, scale_benefit_to_dollar_target
 from .donor_match import (
     DonorMatcher,
     impute_childcare_expense,
@@ -58,6 +58,7 @@ __all__ = [
     'CaseloadTarget',
     'calibrate_benefits',
     'impute_takeup',
+    'scale_benefit_to_dollar_target',
     # Phase 8: donor-matching imputation (CPS-ASEC → ACS)
     'DonorMatcher',
     'impute_moop',
