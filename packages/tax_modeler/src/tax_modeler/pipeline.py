@@ -164,19 +164,21 @@ def enrich_with_spm_unit_id(
 def enrich_for_credits(df: pd.DataFrame) -> pd.DataFrame:
     """Stage 3: derive credit-calculation inputs from TaxUnitConstructor columns.
 
-    TaxUnitConstructor stores dependent person IDs in ``dependents``
-    (list[str]).  Credit calculations expect ``dependents`` to be a list of
-    dicts with ``age``, ``relationship``, ``citizenship``, ``months_in_home``.
-    This step replaces the person-ID list with synthetic dicts using
-    ``num_dependents`` as the count, assuming each is a qualifying child aged 10.
+    Credit calculations expect ``dependents`` to be a list of dicts with
+    ``age``, ``relationship``, ``citizenship``, ``months_in_home`` (plus
+    ``school_level`` / ``disabled`` for the EITC qualifying-child test).
+    ``TaxUnitConstructor`` now emits these REAL per-dependent records in
+    ``dependents_details``; this step uses them when present and only
+    synthesizes age-10 placeholders as a FALLBACK (e.g. caller-supplied frames
+    or synthesized top-filer rows that lack per-dependent detail).
 
     Derived columns added:
       - ``earned_income``          wages + self-employment income (skipped if present)
       - ``investment_income``      interest/dividend income (skipped if present)
       - ``total_cash_income``      ITEP-style TCI for quintile binning (always recomputed)
-      - ``num_qualifying_children`` capped copy of num_dependents (skipped if present)
+      - ``num_qualifying_children`` EITC-rule count of real dependents, cap 3 (skipped if present)
       - ``dependents``             list of credit-ready dicts (overwrites str list)
-      - ``dependents_details``     alias of dependents (for EITC code path)
+      - ``dependents_details``     real per-dependent dicts (or synthetic fallback)
     """
     df = df.copy()
 
@@ -184,17 +186,38 @@ def enrich_for_credits(df: pd.DataFrame) -> pd.DataFrame:
     if "dependents" in df.columns:
         df["dependent_person_ids"] = df["dependents"]
 
-    def _make_dep_dicts(n: int):
+    from tax_modeler.credits.eitc import _count_qualifying_children_eitc
+
+    def _synthetic_dep_dicts(n: int):
+        # Fallback ONLY when real per-dependent records are absent (e.g.
+        # caller-supplied tax-unit frames, synthesized top-filer rows). Real
+        # details come from TaxUnitConstructor via ``dependents_details``.
         return [
             {"age": 10, "relationship": 22, "citizenship": 1, "months_in_home": 12}
         ] * max(0, int(n))
 
-    df["dependents"] = df["num_dependents"].apply(_make_dep_dicts)
-    df["dependents_details"] = df["dependents"]
+    def _coerce_dep_details(row):
+        real = row.get("dependents_details")
+        n = int(row.get("num_dependents", 0) or 0)
+        is_real_list = (
+            isinstance(real, (list, tuple))
+            and len(real) == n
+            and all(isinstance(x, dict) for x in real)
+        )
+        return list(real) if is_real_list else _synthetic_dep_dicts(n)
 
-    # Qualifying children count (proxy: all dependents, capped at 3 for EITC)
+    df["dependents_details"] = df.apply(_coerce_dep_details, axis=1)
+    df["dependents"] = df["dependents_details"]
+
+    # Qualifying-children count from real per-dependent EITC rules
+    # (age / relationship / citizenship), capped at 3. This replaces a blind
+    # count of num_dependents, so attached adult dependents (e.g. an elderly
+    # parent) are correctly excluded. Falls back to synthetic placeholders when
+    # real details are absent.
     if "num_qualifying_children" not in df.columns:
-        df["num_qualifying_children"] = df["num_dependents"].clip(upper=3).astype(int)
+        df["num_qualifying_children"] = df["dependents_details"].apply(
+            lambda deps: min(_count_qualifying_children_eitc(deps), 3)
+        ).astype(int)
 
     def _col(name: str) -> pd.Series:
         return df[name].fillna(0) if name in df.columns else pd.Series(0.0, index=df.index)

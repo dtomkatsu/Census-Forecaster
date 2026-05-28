@@ -660,38 +660,59 @@ class TaxUnitConstructor:
         
         # First pass: Identify potential HoH filers
         for adult_id in remaining_adult_ids:
+            # An adult already claimed as someone's dependent is not a filer.
+            if adult_id in claimed_dependents:
+                continue
             adult_deps = dependents.get(adult_id, set()) - claimed_dependents
             if adult_deps:  # Only consider adults with unclaimed dependents
                 potential_hoh.append((adult_id, adult_deps))
-        
+
         # Sort potential HoH by number of dependents (most first)
         potential_hoh.sort(key=lambda x: len(x[1]), reverse=True)
-        
+
         # Process HoH filers
         for adult_id, deps in potential_hoh:
-            if adult_id in processed_adults:
+            if adult_id in processed_adults or adult_id in claimed_dependents:
                 continue
-                
+
             tax_unit = self._create_single_filer(
-                adults.loc[adult_id], 
-                hh_group, 
-                hh_data, 
+                adults.loc[adult_id],
+                hh_group,
+                hh_data,
                 list(deps)
             )
-            
+
             if tax_unit and tax_unit['filing_status'] == 'head_of_household':
                 num_deps = len(tax_unit['dependents'])
                 logger.info(f"Created HoH tax unit for {adult_id} with {num_deps} dependents")
                 tax_units.append(tax_unit)
                 claimed_dependents.update(tax_unit['dependents'])
                 processed_adults.add(adult_id)
-        
-        # Process remaining adults as single filers (vectorized where possible)
+
+        # Process remaining adults as single filers.
+        #
+        # An adult designated as another adult's dependent (e.g. an adult child
+        # still at home, or a qualifying relative) must be CLAIMED, not filed —
+        # but only if their guardian actually files and claims them. Process
+        # likely guardians first (non-dependents, most-dependents-first) so the
+        # claim lands before we reach the dependent, and skip anyone already
+        # claimed. Any designated dependent left unclaimed (guardian couldn't
+        # claim them) falls through to filing for themselves, so no person is
+        # dropped from the population.
         remaining_adult_ids = set(adults.index) - processed_adults
-        for adult_id in remaining_adult_ids:
+        designated_adult_deps = {a for a in remaining_adult_ids if a in all_dependents}
+
+        def _filer_order_key(aid: str):
+            is_designated = aid in designated_adult_deps
+            n_deps = len(dependents.get(aid, set()))
+            return (is_designated, -n_deps)
+
+        for adult_id in sorted(remaining_adult_ids, key=_filer_order_key):
+            if adult_id in processed_adults or adult_id in claimed_dependents:
+                continue
             adult = adults.loc[adult_id]
             deps = list(dependents.get(adult_id, set()) - claimed_dependents)
-            
+
             # Don't force 'single' status - let _create_single_filer determine HoH eligibility
             tax_unit = self._create_single_filer(
                 adult,
@@ -699,7 +720,7 @@ class TaxUnitConstructor:
                 hh_data,
                 deps
             )
-            
+
             if tax_unit:
                 num_deps = len(tax_unit['dependents'])
                 logger.debug(f"Created single filer tax unit for {adult_id} with {num_deps} dependents")
@@ -732,8 +753,9 @@ class TaxUnitConstructor:
                 claimed_dependents.add(dep_id)
                 logger.info(f"Assigned unclaimed dependent {dep_id} to tax unit {tax_units[idx]['filer_id']}")
         
-        # Final validation and logging
-        unassigned_adults = set(adults.index) - processed_adults
+        # Final validation and logging. Adults claimed as a dependent of another
+        # filer are correctly assigned (as dependents), not unassigned filers.
+        unassigned_adults = set(adults.index) - processed_adults - claimed_dependents
         num_assigned_deps = len(claimed_dependents)
         
         # Enforce maximum tax units per household (if cap is set)
@@ -1181,6 +1203,7 @@ class TaxUnitConstructor:
             'income': income,
             'num_dependents': len(valid_dependents),
             'dependents': [str(d) for d in valid_dependents],  # Ensure dependents are strings
+            'dependents_details': self._build_dependent_details(valid_dependents, hh_members),
             'hh_id': str(adult1['SERIALNO']),  # Ensure hh_id is string
             'weight': hybrid_weight,  # Use hybrid weight
             'hh_weight': hh_weight,   # Store original household weight for reference
@@ -1330,6 +1353,7 @@ class TaxUnitConstructor:
             'income': income,
             'num_dependents': len(valid_dependents),
             'dependents': [str(d) for d in valid_dependents],  # Ensure dependents are strings
+            'dependents_details': self._build_dependent_details(valid_dependents, hh_members),
             'hh_id': str(adult1['SERIALNO']),  # Ensure hh_id is string
             'weight': hybrid_weight,  # Use hybrid weight
             'hh_weight': hh_weight,   # Store original household weight for reference
@@ -1395,7 +1419,41 @@ class TaxUnitConstructor:
             
         return False
 
-    def _create_single_filer(self, adult: pd.Series, hh_members: pd.DataFrame, 
+    @staticmethod
+    def _build_dependent_details(dep_ids: List[str], hh_members: pd.DataFrame) -> List[dict]:
+        """Build per-dependent records (real age/relationship/citizenship/etc.).
+
+        Credit code (EITC ``_count_qualifying_children_eitc`` and CTC
+        ``_is_qualifying_child_ctc``) applies its OWN age/relationship tests on
+        these dicts. Carrying real PUMS values — instead of synthetic age-10
+        placeholders — is what lets an attached adult dependent (e.g. an elderly
+        parent) be excluded from EITC/CTC qualifying-child counts.
+        """
+        def _safe_int(value, default=0):
+            if value is None or (isinstance(value, float) and pd.isna(value)):
+                return default
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+
+        details: List[dict] = []
+        for dep_id in dep_ids:
+            dep_id_str = str(dep_id)
+            if dep_id_str not in hh_members.index:
+                continue
+            d = hh_members.loc[dep_id_str]
+            details.append({
+                'age': _safe_int(d.get('AGEP', 0)),
+                'relationship': _safe_int(d.get('RELSHIPP', 0)),
+                'citizenship': _safe_int(d.get('CIT', 1), default=1),
+                'months_in_home': 12,  # PUMS has no sub-year residency data
+                'school_level': _safe_int(d.get('SCHL', 0)),
+                'disabled': _safe_int(d.get('DIS', 2), default=2) == 1,
+            })
+        return details
+
+    def _create_single_filer(self, adult: pd.Series, hh_members: pd.DataFrame,
                            hh_data: pd.Series, available_deps: List[str] = None,
                            filing_status: str = None) -> Optional[dict]:
         """
@@ -1515,6 +1573,7 @@ class TaxUnitConstructor:
             'income': income,
             'num_dependents': len(valid_dependents),
             'dependents': [str(d) for d in valid_dependents],
+            'dependents_details': self._build_dependent_details(valid_dependents, hh_members),
             'hh_id': str(adult.get('SERIALNO', hh_data.get('SERIALNO', ''))),
             'weight': hybrid_weight,
             'hh_weight': hh_weight,

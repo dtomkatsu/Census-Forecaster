@@ -79,3 +79,42 @@ def test_missing_age_defaults_eligible():
     }
     result = calculate_eitc(unit)
     assert result['eitc_amount'] > 0
+
+
+# --- Coupling guard: attached adult relatives are not EITC qualifying children ---
+
+def test_attached_adult_relative_not_eitc_qualifying_child():
+    """A filer who claims an elderly parent (or other adult relative) as a
+    dependent must NOT count that adult as an EITC qualifying child. Guards the
+    Part 2 coupling: once dependents carry real ages, the qualifying-child
+    count excludes adult dependents."""
+    unit = {
+        'filing_status': 'single',
+        'income': 15_000,
+        'earned_income': 15_000,
+        'investment_income': 0.0,
+        'primary_agep': 45,
+        'dependents_details': [
+            {'age': 70, 'relationship': 27, 'citizenship': 1},  # elderly parent
+        ],
+    }
+    result = calculate_eitc(unit)
+    assert result['eitc_qualifying_children'] == 0
+
+
+def test_mixed_dependents_counts_only_qualifying_child():
+    """With one young child and one elderly parent, only the child counts as an
+    EITC qualifying child."""
+    unit = {
+        'filing_status': 'head_of_household',
+        'income': 20_000,
+        'earned_income': 20_000,
+        'investment_income': 0.0,
+        'primary_agep': 40,
+        'dependents_details': [
+            {'age': 8, 'relationship': 22, 'citizenship': 1},   # qualifying child
+            {'age': 72, 'relationship': 27, 'citizenship': 1},  # elderly parent
+        ],
+    }
+    result = calculate_eitc(unit)
+    assert result['eitc_qualifying_children'] == 1

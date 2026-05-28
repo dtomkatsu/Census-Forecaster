@@ -115,5 +115,82 @@ class TestDependencies:
         hh_df = create_test_household()
         filer = hh_df.loc['1_1']
         unrelated = hh_df.loc['1_5']  # Unrelated individual
-        
+
         assert _is_qualifying_relative(unrelated, filer, hh_df) is False
+
+    def test_elderly_parent_over_income_limit_not_attached(self):
+        """Elderly parent earning above the gross-income limit is not a
+        qualifying relative and is attached to no one (files for themselves)."""
+        hh_df = create_test_household()  # 1_6 is parent (RELSHIPP 27), WAGP 10000
+        dependents = identify_dependents(hh_df)
+        assert all('1_6' not in deps for deps in dependents.values())
+
+    def test_roommate_not_attached(self):
+        """An unrelated working roommate (RELSHIPP 36) is never a dependent."""
+        hh_df = create_test_household()  # 1_5 is roommate, WAGP 30000
+        dependents = identify_dependents(hh_df)
+        assert all('1_5' not in deps for deps in dependents.values())
+
+
+def _household(members):
+    df = pd.DataFrame(members)
+    df['person_id'] = df['SERIALNO'] + '_' + df['SPORDER'].astype(str)
+    return df.set_index('person_id')
+
+
+class TestAdultDependentAttachment:
+    """Adult relatives who should be claimed as dependents, not split into
+    their own childless tax units (the over-splitting fix)."""
+
+    def test_adult_child_qualifying_relative_attached(self):
+        """A non-student adult child (age >= 24) earning under the gross-income
+        limit is a qualifying relative of the householder and is attached."""
+        hh = _household([
+            {'SERIALNO': '9', 'SPORDER': 1, 'AGEP': 58, 'SEX': 1, 'MAR': 1,
+             'RELSHIPP': 20, 'SCHL': 21, 'SCH': 0, 'WAGP': 70000},
+            {'SERIALNO': '9', 'SPORDER': 2, 'AGEP': 27, 'SEX': 2, 'MAR': 5,
+             'RELSHIPP': 22, 'SCHL': 19, 'SCH': 0, 'WAGP': 3000},
+        ])
+        dependents = identify_dependents(hh)
+        assert '9_2' in dependents['9_1']
+
+    def test_working_adult_child_over_limit_independent(self):
+        """An adult child earning above the gross-income limit is NOT a
+        dependent and remains an independent filer."""
+        hh = _household([
+            {'SERIALNO': '10', 'SPORDER': 1, 'AGEP': 58, 'SEX': 1, 'MAR': 1,
+             'RELSHIPP': 20, 'SCHL': 21, 'SCH': 0, 'WAGP': 70000},
+            {'SERIALNO': '10', 'SPORDER': 2, 'AGEP': 30, 'SEX': 2, 'MAR': 5,
+             'RELSHIPP': 22, 'SCHL': 19, 'SCH': 0, 'WAGP': 40000},
+        ])
+        dependents = identify_dependents(hh)
+        assert all('10_2' not in deps for deps in dependents.values())
+
+    def test_student_adult_child_with_part_time_job_is_dependent(self):
+        """A 20-year-old student child with a modest part-time job stays a
+        qualifying child (below the student self-support floor)."""
+        hh = _household([
+            {'SERIALNO': '11', 'SPORDER': 1, 'AGEP': 50, 'SEX': 1, 'MAR': 1,
+             'RELSHIPP': 20, 'SCHL': 21, 'SCH': 0, 'WAGP': 60000},
+            {'SERIALNO': '11', 'SPORDER': 2, 'AGEP': 20, 'SEX': 2, 'MAR': 5,
+             'RELSHIPP': 22, 'SCHL': 16, 'SCH': 1, 'WAGP': 8000},
+        ])
+        dependents = identify_dependents(hh)
+        assert '11_2' in dependents['11_1']
+
+    @pytest.mark.parametrize("income,year_qualifies", [
+        (4_800, {2023: False, 2024: True}),
+    ])
+    def test_year_aware_gross_income_limit(self, income, year_qualifies):
+        """The gross-income limit is year-aware: $4,800 disqualifies in TY2023
+        ($4,700 limit) but qualifies in TY2024 ($5,050 limit)."""
+        hh = _household([
+            {'SERIALNO': '12', 'SPORDER': 1, 'AGEP': 60, 'SEX': 1, 'MAR': 1,
+             'RELSHIPP': 20, 'SCHL': 21, 'SCH': 0, 'WAGP': 70000},
+            {'SERIALNO': '12', 'SPORDER': 2, 'AGEP': 28, 'SEX': 2, 'MAR': 5,
+             'RELSHIPP': 26, 'SCHL': 19, 'SCH': 0, 'WAGP': income},
+        ])
+        for year, should_qualify in year_qualifies.items():
+            deps = identify_dependents(hh, tax_year=year)
+            attached = '12_2' in deps['12_1']
+            assert attached is should_qualify, f"year={year}"

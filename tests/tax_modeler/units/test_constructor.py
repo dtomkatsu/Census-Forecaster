@@ -228,3 +228,62 @@ class TestTaxUnitConstructor:
         assert tax_unit is not None
         assert tax_unit['filing_status'] in ['single', 'head_of_household']  # Could be either
         assert tax_unit['filer_id'] == '3_single_3_1'  # New format includes filing status
+
+
+def _make_df(person_rows, hh_rows):
+    pdf = pd.DataFrame(person_rows)
+    pdf['person_id'] = pdf['SERIALNO'] + '_' + pdf['SPORDER'].astype(str)
+    pdf['is_adult'] = pdf['AGEP'] >= 18
+    pdf = pdf.set_index('person_id')
+    return pdf, pd.DataFrame(hh_rows)
+
+
+class TestAdultDependentNotOverSplit:
+    """Over-splitting fix: an adult who is claimed as a dependent must not also
+    become their own tax unit, and real dependent ages must be carried."""
+
+    def test_adult_relative_child_does_not_create_extra_unit(self):
+        """Householder + non-student adult child (age 27, $3k) → ONE unit, with
+        the adult child claimed as a dependent rather than filing separately."""
+        person_rows = [
+            {'SERIALNO': '90', 'SPORDER': '1', 'AGEP': 58, 'SEX': 1, 'MAR': 5,
+             'RELSHIPP': 20, 'WAGP': 70000, 'PINCP': 70000, 'CIT': 1, 'SEMP': 0,
+             'ADJINC': 1.0, 'SCHL': 21, 'DIS': 2},
+            {'SERIALNO': '90', 'SPORDER': '2', 'AGEP': 27, 'SEX': 2, 'MAR': 5,
+             'RELSHIPP': 22, 'WAGP': 3000, 'PINCP': 3000, 'CIT': 1, 'SEMP': 0,
+             'ADJINC': 1.0, 'SCHL': 19, 'DIS': 2},
+        ]
+        hh_rows = [{'SERIALNO': '90', 'HINCP': 73000, 'ADJINC': 1.0, 'WGTP': 100}]
+        person_df, hh_df = _make_df(person_rows, hh_rows)
+
+        units = TaxUnitConstructor(
+            person_df, hh_df, use_soi_calibration=False, progress_bar=False
+        ).create_rule_based_units(parallel=False)
+
+        hh90 = units[units['hh_id'] == '90']
+        assert len(hh90) == 1, hh90[['filing_status', 'num_dependents']].to_dict('records')
+        assert hh90.iloc[0]['num_dependents'] == 1
+
+    def test_dependents_details_carry_real_ages(self):
+        """dependents_details must reflect the real dependent age/relationship,
+        not synthetic age-10 placeholders."""
+        person_rows = [
+            {'SERIALNO': '91', 'SPORDER': '1', 'AGEP': 40, 'SEX': 2, 'MAR': 5,
+             'RELSHIPP': 20, 'WAGP': 45000, 'PINCP': 45000, 'CIT': 1, 'SEMP': 0,
+             'ADJINC': 1.0, 'SCHL': 18, 'DIS': 2},
+            {'SERIALNO': '91', 'SPORDER': '2', 'AGEP': 7, 'SEX': 1, 'MAR': 0,
+             'RELSHIPP': 22, 'WAGP': 0, 'PINCP': 0, 'CIT': 1, 'SEMP': 0,
+             'ADJINC': 1.0, 'SCHL': 4, 'DIS': 2},
+        ]
+        hh_rows = [{'SERIALNO': '91', 'HINCP': 45000, 'ADJINC': 1.0, 'WGTP': 100}]
+        person_df, hh_df = _make_df(person_rows, hh_rows)
+
+        units = TaxUnitConstructor(
+            person_df, hh_df, use_soi_calibration=False, progress_bar=False
+        ).create_rule_based_units(parallel=False)
+
+        row = units[units['hh_id'] == '91'].iloc[0]
+        details = row['dependents_details']
+        assert isinstance(details, list) and len(details) == 1
+        assert details[0]['age'] == 7
+        assert details[0]['relationship'] == 22
