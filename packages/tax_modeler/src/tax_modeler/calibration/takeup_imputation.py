@@ -45,6 +45,19 @@ from .admin_caseload import AdminCaseload, CaseloadTarget
 logger = logging.getLogger(__name__)
 
 
+# IRS SOI Historic Table 2, Hawaii TY2022 — EITC returns by number of
+# qualifying children (0, 1, 2, 3-or-more). The pooled EITC take-up target
+# is distributed across these buckets so the childless bucket — which the
+# microsimulation over-produces relative to IRS — is capped at its IRS share
+# instead of absorbing the entire pooled take-up slack.
+EITC_RETURNS_BY_CHILDREN_HI_TY2022: dict[int, float] = {
+    0: 26_900.0,
+    1: 27_820.0,
+    2: 18_460.0,
+    3: 11_790.0,
+}
+
+
 def impute_takeup(
     units: pd.DataFrame,
     *,
@@ -181,6 +194,86 @@ def impute_takeup(
     return df
 
 
+def impute_takeup_eitc_by_children(
+    units: pd.DataFrame,
+    *,
+    target: CaseloadTarget,
+    benefit_col: str = "eitc_amount",
+    children_col: str = "eitc_qualifying_children",
+    score_col: str = "eitc_amount",
+    ascending: bool = False,
+    weight_col: str = "weight",
+    out_col: Optional[str] = None,
+    distribution: Optional[dict[int, float]] = None,
+) -> pd.DataFrame:
+    """EITC take-up stratified by qualifying-child count.
+
+    The pooled :class:`CaseloadTarget` ``count`` is split across 0/1/2/3+
+    qualifying-child buckets in proportion to the IRS SOI by-children
+    distribution (:data:`EITC_RETURNS_BY_CHILDREN_HI_TY2022`), then
+    :func:`impute_takeup` runs independently within each bucket. Because
+    rank-and-truncate is per bucket, the over-produced childless bucket is
+    capped at its IRS share — surplus childless eligibles are truncated —
+    while the (eligibility-short) with-children buckets keep all their
+    eligibles. This corrects the childless-claimer share without disturbing
+    the pooled dollar anchor: the caller's
+    :func:`scale_benefit_to_dollar_target` step still runs afterward.
+
+    Bucket targets are shares of ``target.count`` (they sum to it), so in the
+    saturated case — every bucket has surplus eligibles — the total marked
+    equals the pooled target, identical to :func:`impute_takeup`.
+    """
+    if children_col not in units.columns:
+        raise DataValidationError(
+            f"impute_takeup_eitc_by_children requires {children_col!r} on units"
+        )
+    if out_col is None:
+        if benefit_col.endswith("_amount"):
+            out_col = benefit_col[: -len("_amount")] + "_receives_imputed"
+        else:
+            out_col = f"{benefit_col}_receives_imputed"
+
+    dist = dict(distribution or EITC_RETURNS_BY_CHILDREN_HI_TY2022)
+    dist_total = float(sum(dist.values()))
+    top_bucket = max(dist)
+
+    df = units.copy()
+    df[out_col] = False
+
+    n_kids = (
+        df[children_col].fillna(0).clip(lower=0).astype(int).clip(upper=top_bucket)
+    )
+    eligible = df[benefit_col].fillna(0) > 0
+
+    for bucket in sorted(dist):
+        bucket_mask = eligible & (n_kids == bucket)
+        if not bucket_mask.any():
+            continue
+        bucket_target = CaseloadTarget(
+            program=f"{target.program}_kids{bucket}",
+            year=target.year,
+            unit=target.unit,
+            count=target.count * dist[bucket] / dist_total,
+            annual_dollars_millions=0.0,
+            source=target.source,
+        )
+        imputed = impute_takeup(
+            df.loc[bucket_mask],
+            target=bucket_target,
+            benefit_col=benefit_col,
+            score_col=score_col,
+            ascending=ascending,
+            weight_col=weight_col,
+            out_col=out_col,
+        )
+        df.loc[imputed.index, out_col] = imputed[out_col]
+        df.loc[imputed.index, benefit_col] = imputed[benefit_col]
+
+    # Non-eligible units contribute zero to baseline outlays.
+    df.loc[~eligible, benefit_col] = 0.0
+    return df
+
+
 def scale_benefit_to_dollar_target(
     units: pd.DataFrame,
     *,
@@ -252,6 +345,7 @@ def calibrate_benefits(
     year: int,
     programs: tuple[str, ...] = ("snap", "ssi", "ssi_hi_supplement"),
     weight_col: str = "weight",
+    stratify_eitc_by_children: bool = False,
 ) -> pd.DataFrame:
     """Apply take-up imputation to one or more programs in a single pass.
 
@@ -286,6 +380,13 @@ def calibrate_benefits(
           * ``eitc`` / ``ctc`` / ``actc``: highest-eligible-dollar first
             (ascending=False) — taxpayers with the largest eligible
             credit are most likely to actually file for it.
+    stratify_eitc_by_children:
+        When True, the ``eitc`` program is calibrated with
+        :func:`impute_takeup_eitc_by_children` — the pooled count target is
+        split across 0/1/2/3+ qualifying-child buckets per the IRS SOI
+        by-children distribution, rather than a single pooled rank-truncate.
+        Caps the over-produced childless bucket at its IRS share. Default
+        False (pooled behavior). Other programs are unaffected.
     """
     df = units
     eitc_dollar_scalar: float = 1.0  # set when 'eitc' is processed; propagated to 'hi_eitc'
@@ -321,14 +422,24 @@ def calibrate_benefits(
                 "run the benefit module before calibrating."
             )
         target = caseload.target(program, year)
-        df = impute_takeup(
-            df,
-            target=target,
-            benefit_col=benefit_col,
-            score_col=score_col,
-            ascending=ascending,
-            weight_col=weight_col,
-        )
+        if program == "eitc" and stratify_eitc_by_children:
+            df = impute_takeup_eitc_by_children(
+                df,
+                target=target,
+                benefit_col=benefit_col,
+                score_col=score_col,
+                ascending=ascending,
+                weight_col=weight_col,
+            )
+        else:
+            df = impute_takeup(
+                df,
+                target=target,
+                benefit_col=benefit_col,
+                score_col=score_col,
+                ascending=ascending,
+                weight_col=weight_col,
+            )
 
         if program == "eitc" and target.annual_dollars_millions > 0:
             df, eitc_dollar_scalar = scale_benefit_to_dollar_target(

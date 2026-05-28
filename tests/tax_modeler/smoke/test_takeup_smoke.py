@@ -28,7 +28,10 @@ from tax_modeler import (
     compute_ssi_hi_supplement_for_units,
     impute_takeup,
 )
-from tax_modeler.calibration.takeup_imputation import scale_benefit_to_dollar_target
+from tax_modeler.calibration.takeup_imputation import (
+    impute_takeup_eitc_by_children,
+    scale_benefit_to_dollar_target,
+)
 from tax_modeler.errors import ConfigError, DataValidationError
 
 
@@ -266,6 +269,92 @@ def test_calibrate_benefits_eitc_ranks_descending_by_amount(taxed_units):
     if claim_status.any() and (~claim_status).any():
         # All claimants' pre-amounts >= all non-claimants' pre-amounts (tie tol)
         assert pre_amount[claim_status].min() >= pre_amount[~claim_status].max() - 0.01
+
+
+# ---------------------------------------------------------------------------
+# Stratified-by-children EITC take-up (lever 1 — childless-share correction)
+# ---------------------------------------------------------------------------
+
+
+def _eitc_units_by_children(n0: int, n1: int) -> pd.DataFrame:
+    """Frame with n0 childless + n1 one-child EITC-eligible units, weight 1 each."""
+    rows = [{"eitc_amount": 3000.0 - i, "eitc_qualifying_children": 0,
+             "weight": 1.0, "income": 15_000.0} for i in range(n0)]
+    rows += [{"eitc_amount": 4000.0 - i, "eitc_qualifying_children": 1,
+              "weight": 1.0, "income": 20_000.0} for i in range(n1)]
+    return pd.DataFrame(rows)
+
+
+def test_eitc_stratified_caps_overproduced_childless_bucket():
+    """A surplus childless pool is truncated to its bucket target while a short
+    with-children pool keeps every eligible unit."""
+    # 100 childless eligibles, 10 one-child eligibles.
+    units = _eitc_units_by_children(n0=100, n1=10)
+    # Pooled count target 60, split 50/50 → bucket target 30 each.
+    target = CaseloadTarget(
+        program="eitc", year=2022, unit="return",
+        count=60.0, annual_dollars_millions=0.0,
+    )
+    out = impute_takeup_eitc_by_children(
+        units, target=target, distribution={0: 50.0, 1: 50.0},
+    )
+    recv = out["eitc_receives_imputed"]
+    childless_recv = float(out.loc[recv & (out["eitc_qualifying_children"] == 0), "weight"].sum())
+    onekid_recv = float(out.loc[recv & (out["eitc_qualifying_children"] == 1), "weight"].sum())
+    # Childless capped near 30 (overshoot by at most one boundary unit).
+    assert 30.0 <= childless_recv <= 31.0
+    # All 10 one-child eligibles kept (pool below its 30 target).
+    assert onekid_recv == 10.0
+    # Non-recipients zeroed.
+    assert (out.loc[~recv, "eitc_amount"] == 0).all()
+
+
+def test_eitc_stratified_highest_amount_first_within_bucket():
+    """Within the childless bucket, the largest eligible amounts are claimed."""
+    units = _eitc_units_by_children(n0=100, n1=0)
+    target = CaseloadTarget(
+        program="eitc", year=2022, unit="return",
+        count=20.0, annual_dollars_millions=0.0,
+    )
+    out = impute_takeup_eitc_by_children(
+        units, target=target, distribution={0: 1.0},
+    )
+    recv = out["eitc_receives_imputed"]
+    # eitc_amount = 3000 - i, so the highest amounts (lowest i) claim first.
+    assert out.loc[recv, "eitc_amount"].min() >= out.loc[~recv, "eitc_amount"].max()
+
+
+def test_eitc_stratified_requires_children_col():
+    units = pd.DataFrame({"eitc_amount": [1000.0], "weight": [1.0]})
+    target = CaseloadTarget(
+        program="eitc", year=2022, unit="return",
+        count=1.0, annual_dollars_millions=0.0,
+    )
+    with pytest.raises(DataValidationError, match="eitc_qualifying_children"):
+        impute_takeup_eitc_by_children(units, target=target)
+
+
+def test_calibrate_benefits_stratify_flag_routes_to_by_children(taxed_units):
+    """stratify_eitc_by_children=True still zeroes non-recipients and yields the
+    eitc_receives_imputed column (contract parity with pooled path)."""
+    if "eitc_amount" not in taxed_units.columns:
+        pytest.skip("taxed_units fixture missing eitc_amount column")
+    if "eitc_qualifying_children" not in taxed_units.columns:
+        pytest.skip("taxed_units fixture missing eitc_qualifying_children column")
+    real = AdminCaseload.load().target("eitc", 2022)
+    fixture_factor = 0.0001
+    scaled = AdminCaseload(pd.DataFrame([{
+        "program": "eitc", "year": 2022, "unit": "return",
+        "count": real.count * fixture_factor,
+        "annual_dollars_millions": real.annual_dollars_millions * fixture_factor,
+    }]))
+    out = calibrate_benefits(
+        taxed_units, caseload=scaled, year=2022, programs=("eitc",),
+        stratify_eitc_by_children=True,
+    )
+    assert "eitc_receives_imputed" in out.columns
+    non_recipients = out[~out["eitc_receives_imputed"]]
+    assert (non_recipients["eitc_amount"] == 0).all()
 
 
 # ---------------------------------------------------------------------------

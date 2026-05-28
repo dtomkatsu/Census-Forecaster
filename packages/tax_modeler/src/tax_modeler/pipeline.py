@@ -407,6 +407,7 @@ def apply_credit_takeup(
     *,
     year: int = 2022,
     programs: tuple[str, ...] = ("eitc", "actc"),
+    stratify_eitc_by_children: bool = True,
 ) -> pd.DataFrame:
     """Apply IRS-anchored take-up imputation to federal EITC/CTC dollars.
 
@@ -432,6 +433,14 @@ def apply_credit_takeup(
         the refundable portion of CTC (ACTC), since these are the
         primary anti-poverty channels. Pass ``("eitc", "ctc", "actc")``
         for the full set when CBPP comparison covers total CTC.
+    stratify_eitc_by_children:
+        When True (default), EITC take-up is stratified across 0/1/2/3+
+        qualifying-child buckets per the IRS SOI by-children distribution
+        instead of a single pooled rank-truncate. The microsimulation
+        over-produces childless EITC eligibles relative to IRS Hawaii; a
+        pooled target lets them absorb the whole take-up slack, inflating
+        the childless-claimer share. Bucketing caps the childless bucket at
+        its IRS share. ACTC and any other programs are unaffected.
 
     Notes
     -----
@@ -444,7 +453,13 @@ def apply_credit_takeup(
     from tax_modeler.calibration.takeup_imputation import calibrate_benefits
 
     caseload = AdminCaseload.load()
-    return calibrate_benefits(df, caseload=caseload, year=year, programs=programs)
+    return calibrate_benefits(
+        df,
+        caseload=caseload,
+        year=year,
+        programs=programs,
+        stratify_eitc_by_children=stratify_eitc_by_children,
+    )
 
 
 def calibrate(df: pd.DataFrame) -> pd.DataFrame:

@@ -99,6 +99,27 @@ def _build_units(
     return units
 
 
+def _build_units_production(
+    persons: pd.DataFrame, households: pd.DataFrame, pums_dir: Path, tax_year: int
+) -> pd.DataFrame:
+    """Reproduce the production forecast build sequence through EITC take-up.
+
+    Mirrors forecast_hi_eitc_revert_20.py: load -> project/base-tax ->
+    IRS-anchored credit take-up -> HI EITC. Unlike _build_units this applies
+    the pooled IRS take-up truncation + dollar scaling exactly as the real
+    forecast does, so the by-children mix here is the *production* mix, not a
+    clean-room eligibility snapshot. tax_year != 2022 triggers forward
+    projection (income grown to the target year)."""
+    import poverty_impact_report as pir
+
+    base_units, _persons = pir._load_units(pums_dir, use_fixture=False)
+    project_required = tax_year != 2022
+    units = pir._build_units_for_tax_year(base_units, tax_year, project=project_required)
+    units = pir._apply_credit_takeup(units, tax_year=tax_year)
+    units = pir._apply_hi_eitc(units, tax_year=tax_year)
+    return units
+
+
 def _bucket(nqc: int) -> str:
     if nqc <= 0:
         return "0"
@@ -328,6 +349,10 @@ def main() -> None:
                     help="EITC parameter year (default 2022 to match IRS target).")
     ap.add_argument("--apply-takeup", action="store_true",
                     help="Apply IRS-anchored pooled EITC take-up before bucketing.")
+    ap.add_argument("--production", action="store_true",
+                    help="Reproduce the production forecast build (load -> "
+                         "project/base-tax -> IRS take-up -> HI EITC) and bucket "
+                         "its claimers. tax_year!=2022 projects income forward.")
     ap.add_argument("--scale-to-irs-total", action="store_true",
                     help="Rescale model to IRS grand total to isolate the mix from the level gap.")
     args = ap.parse_args()
@@ -338,13 +363,20 @@ def main() -> None:
     )
     print(f"Source: {args.source}  |  persons: {len(persons):,}  "
           f"households: {n_households:,}  EITC param year: {args.tax_year}")
-    if args.source == "pums":
+    if args.source == "pums" and not (args.production and args.tax_year != 2022):
         print("(income held at PUMS vintage; apply_2026_growth=False in rule-based path)")
     print()
 
-    units = _build_units(persons, households, args.tax_year, args.apply_takeup)
-    if args.apply_takeup:
-        print("(post pooled IRS take-up: EITC truncated to SOI Hawaii ~84k claim target)\n")
+    if args.production:
+        print("(PRODUCTION build: load -> project/base-tax -> IRS take-up -> HI EITC)")
+        if args.tax_year != 2022:
+            print(f"(income PROJECTED forward to TY{args.tax_year})")
+        print()
+        units = _build_units_production(persons, households, args.pums_dir, args.tax_year)
+    else:
+        units = _build_units(persons, households, args.tax_year, args.apply_takeup)
+        if args.apply_takeup:
+            print("(post pooled IRS take-up: EITC truncated to SOI Hawaii ~84k claim target)\n")
     _report(units, args.scale_to_irs_total)
     _native_single_parent_structure(persons, households)
 
