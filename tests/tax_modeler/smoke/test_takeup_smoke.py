@@ -275,15 +275,19 @@ def test_calibrate_benefits_eitc_ranks_descending_by_amount(taxed_units):
 def test_admin_caseload_has_hi_eitc_anchor():
     """Hawaii caseload table must include a hi_eitc anchor for the
     1A take-up-calibration step in forecast_hi_eitc_revert_20.py.
+    Anchor year is TY 2023 — the first year HI EITC was refundable
+    (Act 209, 2023). DOTAX Tax Credits Claimed Table A-1/A-2: 84,470
+    returns, $77.054M.
     """
     cl = AdminCaseload.load()
-    hi = cl.target("hi_eitc", 2022)
+    hi = cl.target("hi_eitc", 2023)
     assert hi.unit == "return"
-    assert 30_000 < hi.count < 100_000, (
-        f"hi_eitc count {hi.count} should be < federal EITC (~84k); "
-        "the anchor models state-EITC take-up gap relative to federal."
+    # DOTAX TY 2023: 84,470 returns. Refundable HI EITC has near-100%
+    # take-up because it auto-attaches to the federal EITC claim.
+    assert 80_000 < hi.count < 90_000, (
+        f"hi_eitc count {hi.count} should match DOTAX TY 2023 (84,470)."
     )
-    assert 20 < hi.annual_dollars_millions < 100
+    assert 70 < hi.annual_dollars_millions < 90
 
 
 def test_calibrate_benefits_supports_hi_eitc(taxed_units):
@@ -301,11 +305,11 @@ def test_calibrate_benefits_supports_hi_eitc(taxed_units):
 
     target_count = float(units.loc[units["hi_eitc_amount"] > 0, "weight"].sum()) * 0.5
     scaled = AdminCaseload(pd.DataFrame([{
-        "program": "hi_eitc", "year": 2022, "unit": "return",
+        "program": "hi_eitc", "year": 2023, "unit": "return",
         "count": target_count, "annual_dollars_millions": 1.0,
     }]))
 
-    out = calibrate_benefits(units, caseload=scaled, year=2022, programs=("hi_eitc",))
+    out = calibrate_benefits(units, caseload=scaled, year=2023, programs=("hi_eitc",))
     assert "hi_eitc_receives_imputed" in out.columns
     non_recip = out[~out["hi_eitc_receives_imputed"]]
     assert (non_recip["hi_eitc_amount"] == 0).all()
