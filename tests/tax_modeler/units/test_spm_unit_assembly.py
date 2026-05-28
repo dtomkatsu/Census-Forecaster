@@ -17,40 +17,39 @@ def _make_persons(rows: list[dict]) -> pd.DataFrame:
 
 
 def test_primary_spm_unit_covers_householder_and_relatives():
-    """Householder (20) + spouse (21) + child (25) + parent-in-law (31)
-    ... wait — 31 is parent-in-law in the canonical set treated as
-    relative-by-marriage in the project's _PRIMARY_SPM_RELSHIPP constants?
-    Per the module's source (mirror of entities/graph.py), 31 is in the
-    UNRELATED set. Use the parent code 29 to keep this test deterministic.
-    """
+    """Householder (20) + spouse (21) + child (25) + parent (29) +
+    parent-in-law (31) all pool into the one primary SPM unit. All five
+    canonical codes are in SPM_PRIMARY."""
     persons = _make_persons([
         {"SERIALNO": "S1", "SPORDER": 1, "RELSHIPP": 20, "AGEP": 45},  # head
         {"SERIALNO": "S1", "SPORDER": 2, "RELSHIPP": 21, "AGEP": 42},  # spouse
         {"SERIALNO": "S1", "SPORDER": 3, "RELSHIPP": 25, "AGEP": 10},  # child
         {"SERIALNO": "S1", "SPORDER": 4, "RELSHIPP": 29, "AGEP": 70},  # parent
+        {"SERIALNO": "S1", "SPORDER": 5, "RELSHIPP": 31, "AGEP": 68},  # parent-in-law
     ])
     out = build_spm_unit_assignment(persons)
     assert set(out["spm_unit_id"]) == {"S1_primary"}
 
 
 def test_cohabiting_partner_with_shared_kid_in_primary_spm_unit():
-    """Unmarried partner (RELSHIPP 33) + their child (RELSHIPP 25 or
-    foster code 34) pool with the householder's primary SPM unit."""
+    """Unmarried partner (RELSHIPP 22) + their child (RELSHIPP 25) +
+    foster child (RELSHIPP 35) pool with the householder's primary SPM
+    unit."""
     persons = _make_persons([
         {"SERIALNO": "S2", "SPORDER": 1, "RELSHIPP": 20, "AGEP": 35},
-        {"SERIALNO": "S2", "SPORDER": 2, "RELSHIPP": 33, "AGEP": 33},  # partner
+        {"SERIALNO": "S2", "SPORDER": 2, "RELSHIPP": 22, "AGEP": 33},  # partner
         {"SERIALNO": "S2", "SPORDER": 3, "RELSHIPP": 25, "AGEP": 5},   # shared child
-        {"SERIALNO": "S2", "SPORDER": 4, "RELSHIPP": 34, "AGEP": 8},   # foster
+        {"SERIALNO": "S2", "SPORDER": 4, "RELSHIPP": 35, "AGEP": 8},   # foster
     ])
     out = build_spm_unit_assignment(persons)
     assert set(out["spm_unit_id"]) == {"S2_primary"}
 
 
 def test_unrelated_adult_roommate_gets_own_spm_unit():
-    """Unrelated adult (RELSHIPP 35) aged 15+ → separate SPM unit."""
+    """Unrelated adult (RELSHIPP 34 = roommate) aged 15+ → separate SPM unit."""
     persons = _make_persons([
         {"SERIALNO": "S3", "SPORDER": 1, "RELSHIPP": 20, "AGEP": 30},
-        {"SERIALNO": "S3", "SPORDER": 2, "RELSHIPP": 35, "AGEP": 28},  # roommate
+        {"SERIALNO": "S3", "SPORDER": 2, "RELSHIPP": 34, "AGEP": 28},  # roommate
     ])
     out = build_spm_unit_assignment(persons)
     ids = list(out["spm_unit_id"])
@@ -62,17 +61,17 @@ def test_under_15_unrelated_child_pools_with_primary():
     """Per P60-280, unrelated child <15 joins the householder's SPM unit."""
     persons = _make_persons([
         {"SERIALNO": "S4", "SPORDER": 1, "RELSHIPP": 20, "AGEP": 45},
-        {"SERIALNO": "S4", "SPORDER": 2, "RELSHIPP": 35, "AGEP": 8},   # under-15
+        {"SERIALNO": "S4", "SPORDER": 2, "RELSHIPP": 34, "AGEP": 8},   # unrelated child <15
     ])
     out = build_spm_unit_assignment(persons)
     assert set(out["spm_unit_id"]) == {"S4_primary"}
 
 
 def test_group_quarters_excluded():
-    """RELSHIPP 36/37 (institutional / non-institutional GQ) → spm_unit_id NA."""
+    """RELSHIPP 37/38 (institutional / non-institutional GQ) → spm_unit_id NA."""
     persons = _make_persons([
-        {"SERIALNO": "GQ1", "SPORDER": 1, "RELSHIPP": 36, "AGEP": 25},
-        {"SERIALNO": "GQ2", "SPORDER": 1, "RELSHIPP": 37, "AGEP": 22},
+        {"SERIALNO": "GQ1", "SPORDER": 1, "RELSHIPP": 37, "AGEP": 25},
+        {"SERIALNO": "GQ2", "SPORDER": 1, "RELSHIPP": 38, "AGEP": 22},
     ])
     out = build_spm_unit_assignment(persons)
     assert out["spm_unit_id"].isna().all()
@@ -133,11 +132,11 @@ def test_attach_to_tax_units_joins_by_primary_filer_id():
 
 
 def test_attach_unrelated_adult_gets_own_spm_unit_id():
-    """Tax unit headed by an unrelated adult (RELSHIPP 35, age 28) lands
+    """Tax unit headed by an unrelated adult (RELSHIPP 34, age 28) lands
     in the unrel SPM unit, not the household's primary."""
     persons = _make_persons([
         {"SERIALNO": "H2", "SPORDER": 1, "RELSHIPP": 20, "AGEP": 40},
-        {"SERIALNO": "H2", "SPORDER": 2, "RELSHIPP": 35, "AGEP": 28},  # roommate
+        {"SERIALNO": "H2", "SPORDER": 2, "RELSHIPP": 34, "AGEP": 28},  # roommate
     ])
     assigned = build_spm_unit_assignment(persons)
     units = pd.DataFrame([
@@ -159,6 +158,36 @@ def test_attach_unknown_primary_filer_id_becomes_na():
     ])
     out = attach_spm_unit_id_to_tax_units(units, assigned)
     assert pd.isna(out["spm_unit_id"].iloc[0])
+
+
+@pytest.mark.parametrize("relshipp,expected_partition", [
+    (21, "primary"),    # opposite-sex spouse
+    (22, "primary"),    # opposite-sex partner
+    (25, "primary"),    # biological child
+    (29, "primary"),    # parent
+    (31, "primary"),    # parent-in-law
+    (33, "primary"),    # other relative
+    (35, "primary"),    # foster child
+    (34, "unrel"),      # roommate (adult)
+    (36, "unrel"),      # other non-relative (adult)
+    (37, "gq"),         # institutional group quarters
+    (38, "gq"),         # non-institutional group quarters
+])
+def test_relshipp_partition_mapping(relshipp, expected_partition):
+    """Each canonical RELSHIPP code lands in the correct SPM partition when
+    the second household member is an adult (age 40)."""
+    persons = _make_persons([
+        {"SERIALNO": "M1", "SPORDER": 1, "RELSHIPP": 20, "AGEP": 50},
+        {"SERIALNO": "M1", "SPORDER": 2, "RELSHIPP": relshipp, "AGEP": 40},
+    ])
+    out = build_spm_unit_assignment(persons)
+    member = out.iloc[1]["spm_unit_id"]
+    if expected_partition == "primary":
+        assert member == "M1_primary"
+    elif expected_partition == "unrel":
+        assert member == "M1_unrel_2"
+    else:
+        assert pd.isna(member)
 
 
 def test_attach_with_person_id_as_index():

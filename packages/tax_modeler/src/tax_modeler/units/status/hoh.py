@@ -10,6 +10,11 @@ from __future__ import annotations
 import pandas as pd
 from typing import Dict, List, Optional, Tuple, Union
 
+from tax_modeler.units.relshipp_codes import (
+    EITC_QUALIFYING_CHILD_RELS,
+    QUALIFYING_RELATIVE_RELS,
+)
+
 def is_head_of_household(
     person: pd.Series, 
     person_data: pd.DataFrame,
@@ -264,27 +269,12 @@ def _is_qualifying_child(
     person_data: pd.DataFrame
 ) -> bool:
     """Check if a person is a qualifying child of the potential HOH."""
-    # Relationship to filer (child, stepchild, foster child, etc.)
+    # Relationship to filer must be an EITC-style qualifying-child relationship
+    # (own child / sibling / grandchild / foster child) -- canonical Census
+    # 2019+ RELSHIPP codes; see tax_modeler.units.relshipp_codes.
     rel = child.get('RELSHIPP', 0)
-    
-    # PUMS relationship codes for children:
-    # 3 = Biological son or daughter
-    # 4 = Adopted son or daughter  
-    # 5 = Stepson or stepdaughter
-    # 6 = Brother or sister
-    # 7 = Father or mother
-    # 8 = Grandchild
-    # 9 = Parent-in-law
-    # 10 = Son-in-law or daughter-in-law
-    # 11 = Other relative
-    # 12 = Roomer, boarder
-    # 13 = Housemate, roommate
-    # 14 = Unmarried partner
-    # 15 = Foster child
-    # 16 = Other nonrelative
-    # 17 = Institutionalized group quarters person
-    
-    if rel not in [3, 4, 5, 6, 8, 15]:  # Child relationships
+
+    if rel not in EITC_QUALIFYING_CHILD_RELS:
         return False
         
     # Age test - must be under 19, or under 24 if full-time student, or any age if disabled
@@ -328,12 +318,11 @@ def _is_qualifying_relative(
     if _is_qualifying_child(relative, potential_hoh, person_data):
         return False
         
-    # Relationship test - must be a relative or have lived with filer all year
+    # Relationship test - must be a blood/marriage relative (canonical
+    # RELSHIPP; see tax_modeler.units.relshipp_codes.QUALIFYING_RELATIVE_RELS).
     rel = relative.get('RELSHIPP', 0)
-    
-    # Valid relationships for qualifying relative
-    valid_rels = [3, 4, 5, 6, 7, 8, 9, 10, 11, 15]  # Various relative relationships
-    if rel not in valid_rels:
+
+    if rel not in QUALIFYING_RELATIVE_RELS:
         return False
         
     # Gross income test

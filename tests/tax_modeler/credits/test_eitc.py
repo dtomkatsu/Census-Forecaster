@@ -28,7 +28,7 @@ def _parent_unit(primary_age: int, earned_income: float = 20_000) -> dict:
         'earned_income': earned_income,
         'investment_income': 0.0,
         'dependents_details': [
-            {'age': 5, 'relationship': 22, 'citizenship': 1},
+            {'age': 5, 'relationship': 25, 'citizenship': 1},
         ],
         'primary_agep': primary_age,
     }
@@ -95,7 +95,7 @@ def test_attached_adult_relative_not_eitc_qualifying_child():
         'investment_income': 0.0,
         'primary_agep': 45,
         'dependents_details': [
-            {'age': 70, 'relationship': 27, 'citizenship': 1},  # elderly parent
+            {'age': 70, 'relationship': 29, 'citizenship': 1},  # elderly parent
         ],
     }
     result = calculate_eitc(unit)
@@ -112,9 +112,75 @@ def test_mixed_dependents_counts_only_qualifying_child():
         'investment_income': 0.0,
         'primary_agep': 40,
         'dependents_details': [
-            {'age': 8, 'relationship': 22, 'citizenship': 1},   # qualifying child
-            {'age': 72, 'relationship': 27, 'citizenship': 1},  # elderly parent
+            {'age': 8, 'relationship': 25, 'citizenship': 1},   # qualifying child
+            {'age': 72, 'relationship': 29, 'citizenship': 1},  # elderly parent
         ],
     }
     result = calculate_eitc(unit)
     assert result['eitc_qualifying_children'] == 1
+
+
+# --- Canonical RELSHIPP qualifying-child relationship set (the relationship-
+#     code bug fix: grandchild/step/sibling/foster were silently dropped) ---
+
+def _unit_with_dep(dep: dict) -> dict:
+    return {
+        'filing_status': 'head_of_household',
+        'income': 20_000,
+        'earned_income': 20_000,
+        'investment_income': 0.0,
+        'primary_agep': 40,
+        'dependents_details': [dep],
+    }
+
+
+@pytest.mark.parametrize("relationship,label", [
+    (25, "biological child"),
+    (26, "adopted child"),
+    (27, "stepchild"),
+    (28, "sibling"),
+    (30, "grandchild"),
+    (35, "foster child"),
+])
+def test_canonical_relationship_counts_as_qualifying_child(relationship, label):
+    """Each canonical qualifying-child relationship code counts when the age
+    test passes. Grandchild (30), stepchild (27), sibling (28) and foster (35)
+    were the codes the +20-offset bug silently dropped."""
+    result = calculate_eitc(_unit_with_dep(
+        {'age': 8, 'relationship': relationship, 'citizenship': 1}
+    ))
+    assert result['eitc_qualifying_children'] == 1, label
+
+
+@pytest.mark.parametrize("relationship,label", [
+    (22, "opposite-sex unmarried partner"),
+    (24, "same-sex unmarried partner"),
+    (34, "roommate / housemate"),
+    (36, "other non-relative"),
+    (29, "parent"),
+    (31, "parent-in-law"),
+])
+def test_non_child_relationship_never_counts_as_qualifying_child(relationship, label):
+    """Partners, roommates, other non-relatives and adult relatives are not
+    EITC qualifying children regardless of age."""
+    result = calculate_eitc(_unit_with_dep(
+        {'age': 8, 'relationship': relationship, 'citizenship': 1}
+    ))
+    assert result['eitc_qualifying_children'] == 0, label
+
+
+def test_grandchild_student_under_24_counts():
+    """A 21-year-old full-time-student grandchild still counts (age<24 +
+    SCHL>=16)."""
+    result = calculate_eitc(_unit_with_dep(
+        {'age': 21, 'relationship': 30, 'citizenship': 1, 'school_level': 19}
+    ))
+    assert result['eitc_qualifying_children'] == 1
+
+
+def test_grandchild_nonstudent_over_19_does_not_count():
+    """A 21-year-old non-student grandchild fails the age test."""
+    result = calculate_eitc(_unit_with_dep(
+        {'age': 21, 'relationship': 30, 'citizenship': 1}
+    ))
+    assert result['eitc_qualifying_children'] == 0

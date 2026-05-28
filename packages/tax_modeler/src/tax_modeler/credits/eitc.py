@@ -27,6 +27,8 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from tax_modeler.units.relshipp_codes import EITC_QUALIFYING_CHILD_RELS
+
 
 @dataclass
 class EITCChildParameters:
@@ -328,14 +330,15 @@ def _count_qualifying_children_eitc(dependents: List[Dict]) -> int:
 
     EITC qualifying child rules (differ from CTC):
     - Age: under 19; or under 24 if a full-time student (SCHL >= 16); or any age if disabled (DIS=1)
-    - Relationship: biological child (22), adopted child (23), stepchild (24),
-                    grandchild (25), brother/sister (26), foster child (34)
+    - Relationship: own child (bio 25 / adopted 26 / step 27), sibling (28),
+                    grandchild (30), foster child (35) -- see
+                    ``relshipp_codes.EITC_QUALIFYING_CHILD_RELS``
     - Must be a US citizen/national/resident alien (CIT 1-4)
     - Cannot be married filing jointly (simplified: check MAR != 1)
 
     Note: EITC does NOT have the under-17 age cap that CTC uses.
     """
-    QUALIFYING_RELATIONSHIPS = {22, 23, 24, 25, 26, 34}
+    QUALIFYING_RELATIONSHIPS = EITC_QUALIFYING_CHILD_RELS
     count = 0
 
     for dep in dependents:

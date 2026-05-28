@@ -264,13 +264,13 @@ def _two_kid_30k_unit() -> pd.DataFrame:
         "num_qualifying_children": 2,
         # CTC uses ``dependents`` (string code path).
         "dependents": [
-            {"age": 8, "relationship": "22", "citizenship": "1"},
-            {"age": 12, "relationship": "22", "citizenship": "1"},
+            {"age": 8, "relationship": "25", "citizenship": "1"},
+            {"age": 12, "relationship": "25", "citizenship": "1"},
         ],
         # EITC uses ``dependents_details`` with integer codes.
         "dependents_details": [
-            {"age": 8, "relationship": 22, "citizenship": 1},
-            {"age": 12, "relationship": 22, "citizenship": 1},
+            {"age": 8, "relationship": 25, "citizenship": 1},
+            {"age": 12, "relationship": 25, "citizenship": 1},
         ],
     }])
 

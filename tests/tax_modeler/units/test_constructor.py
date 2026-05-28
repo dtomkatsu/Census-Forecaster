@@ -17,11 +17,11 @@ def create_test_data():
         # Household 1 - Married couple with child (joint filers)
         {'SERIALNO': '1', 'SPORDER': '1', 'AGEP': 35, 'SEX': 1, 'MAR': 1, 'RELSHIPP': 20, 'WAGP': 60000, 'HINCP': 100000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
         {'SERIALNO': '1', 'SPORDER': '2', 'AGEP': 33, 'SEX': 2, 'MAR': 1, 'RELSHIPP': 21, 'WAGP': 40000, 'HINCP': 100000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
-        {'SERIALNO': '1', 'SPORDER': '3', 'AGEP': 5, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 22, 'WAGP': 0, 'HINCP': 100000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 1},
+        {'SERIALNO': '1', 'SPORDER': '3', 'AGEP': 5, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 25, 'WAGP': 0, 'HINCP': 100000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 1},
         
         # Household 2 - Single parent with child
         {'SERIALNO': '2', 'SPORDER': '1', 'AGEP': 30, 'SEX': 2, 'MAR': 5, 'RELSHIPP': 20, 'WAGP': 45000, 'HINCP': 50000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
-        {'SERIALNO': '2', 'SPORDER': '2', 'AGEP': 8, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 22, 'WAGP': 0, 'HINCP': 50000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 5},
+        {'SERIALNO': '2', 'SPORDER': '2', 'AGEP': 8, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 25, 'WAGP': 0, 'HINCP': 50000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 5},
         
         # Household 3 - Single person
         {'SERIALNO': '3', 'SPORDER': '1', 'AGEP': 28, 'SEX': 1, 'MAR': 5, 'RELSHIPP': 20, 'WAGP': 50000, 'HINCP': 50000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
@@ -31,7 +31,7 @@ def create_test_data():
         # Also requires PINCP set (constructor's _should_file_separately reads PINCP, not WAGP).
         {'SERIALNO': '4', 'SPORDER': '1', 'AGEP': 40, 'SEX': 1, 'MAR': 1, 'RELSHIPP': 20, 'WAGP': 400000, 'PINCP': 400000, 'HINCP': 405000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
         {'SERIALNO': '4', 'SPORDER': '2', 'AGEP': 38, 'SEX': 2, 'MAR': 1, 'RELSHIPP': 21, 'WAGP':   5000, 'PINCP':   5000, 'HINCP': 405000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
-        {'SERIALNO': '4', 'SPORDER': '3', 'AGEP': 12, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 22, 'WAGP':      0, 'PINCP':      0, 'HINCP': 405000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 6},
+        {'SERIALNO': '4', 'SPORDER': '3', 'AGEP': 12, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 25, 'WAGP':      0, 'PINCP':      0, 'HINCP': 405000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 6},
 
         # Household 5 - Married couple filing separately (ultra-high income + disparity).
         # Combined $605k + 120x ratio → MFS score ≈ 10 (guaranteed MFS).
@@ -250,7 +250,7 @@ class TestAdultDependentNotOverSplit:
              'RELSHIPP': 20, 'WAGP': 70000, 'PINCP': 70000, 'CIT': 1, 'SEMP': 0,
              'ADJINC': 1.0, 'SCHL': 21, 'DIS': 2},
             {'SERIALNO': '90', 'SPORDER': '2', 'AGEP': 27, 'SEX': 2, 'MAR': 5,
-             'RELSHIPP': 22, 'WAGP': 3000, 'PINCP': 3000, 'CIT': 1, 'SEMP': 0,
+             'RELSHIPP': 25, 'WAGP': 3000, 'PINCP': 3000, 'CIT': 1, 'SEMP': 0,
              'ADJINC': 1.0, 'SCHL': 19, 'DIS': 2},
         ]
         hh_rows = [{'SERIALNO': '90', 'HINCP': 73000, 'ADJINC': 1.0, 'WGTP': 100}]
@@ -272,7 +272,7 @@ class TestAdultDependentNotOverSplit:
              'RELSHIPP': 20, 'WAGP': 45000, 'PINCP': 45000, 'CIT': 1, 'SEMP': 0,
              'ADJINC': 1.0, 'SCHL': 18, 'DIS': 2},
             {'SERIALNO': '91', 'SPORDER': '2', 'AGEP': 7, 'SEX': 1, 'MAR': 0,
-             'RELSHIPP': 22, 'WAGP': 0, 'PINCP': 0, 'CIT': 1, 'SEMP': 0,
+             'RELSHIPP': 25, 'WAGP': 0, 'PINCP': 0, 'CIT': 1, 'SEMP': 0,
              'ADJINC': 1.0, 'SCHL': 4, 'DIS': 2},
         ]
         hh_rows = [{'SERIALNO': '91', 'HINCP': 45000, 'ADJINC': 1.0, 'WGTP': 100}]
@@ -286,4 +286,4 @@ class TestAdultDependentNotOverSplit:
         details = row['dependents_details']
         assert isinstance(details, list) and len(details) == 1
         assert details[0]['age'] == 7
-        assert details[0]['relationship'] == 22
+        assert details[0]['relationship'] == 25

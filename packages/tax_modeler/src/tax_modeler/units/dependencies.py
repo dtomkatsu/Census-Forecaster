@@ -11,6 +11,15 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 import pandas as pd
 import numpy as np
 
+from tax_modeler.units.relshipp_codes import (
+    GRANDCHILD,
+    OWN_CHILD,
+    FOSTER_CHILD,
+    REFERENCE_PERSON,
+    SPOUSE,
+    QUALIFYING_RELATIVE_RELS,
+)
+
 # IRS qualifying-relative gross-income limit by tax year (Rev. Proc. inflation
 # adjustments). A would-be qualifying relative earning at/above this cannot be
 # claimed as a dependent.
@@ -191,41 +200,26 @@ def _is_parent(adult: pd.Series, child: pd.Series, household: pd.DataFrame) -> b
     if age_diff < 15:
         return False
     
-    # Check relationship codes
+    # Check relationship codes (canonical Census 2019+ RELSHIPP; see
+    # tax_modeler.units.relshipp_codes). A householder (20) or their spouse
+    # (21) is treated as the parent of an own child (bio 25 / adopted 26 /
+    # step 27) or grandchild (30) living in the household.
     adult_rel = adult.get('RELSHIPP', 0)
     child_rel = child.get('RELSHIPP', 0)
-    
-    # Parent-child relationships in PUMS:
-    # 20 = Reference person (householder)
-    # 22 = Biological son or daughter
-    # 23 = Adopted son or daughter  
-    # 24 = Stepson or stepdaughter
-    # 25 = Grandchild
-    # 26 = Brother or sister
-    # 27 = Father or mother
-    # 28 = Grandparent
-    # 29 = Son-in-law or daughter-in-law
-    # 30 = Other relative
-    # 31 = Roomer or boarder
-    # 32 = Housemate or roommate
-    # 33 = Unmarried partner
-    # 34 = Foster child
-    # 35 = Other nonrelative
-    # 36 = Institutionalized group quarters population
-    # 37 = Noninstitutionalized group quarters population
-    
-    # If adult is householder (20) and child is biological/adopted/step child (3, 22-24) or grandchild (25)
-    if adult_rel == 20 and child_rel in [3, 22, 23, 24, 25]:
+
+    _parent_child_codes = OWN_CHILD | {GRANDCHILD}
+
+    if adult_rel == REFERENCE_PERSON and child_rel in _parent_child_codes:
         return True
 
-    # If adult is spouse (21) and child is biological/adopted/step child (3, 22-24) or grandchild (25)
-    if adult_rel == 21 and child_rel in [3, 22, 23, 24, 25]:
+    # Spouse of the householder (21 = opposite-sex, 23 = same-sex)
+    if adult_rel in {21, 23} and child_rel in _parent_child_codes:
         return True
-        
+
     # Foster child relationship
-    if child_rel == 34:
+    if child_rel == FOSTER_CHILD:
         return True
-    
+
     return False
 
 def _is_stepparent(guardian: pd.Series, child: pd.Series, household: pd.DataFrame) -> bool:
@@ -244,11 +238,10 @@ def _is_stepparent(guardian: pd.Series, child: pd.Series, household: pd.DataFram
 
 def _is_foster_parent(guardian: pd.Series, child: pd.Series, household: pd.DataFrame) -> bool:
     """Check if guardian is a foster parent of the child."""
-    # PUMS code 34 = Foster child; householder is RELSHIPP 20
-    # Test data may use code 5 for foster child and 1 for householder
+    # Canonical RELSHIPP: 35 = Foster child, 20 = householder.
     child_rel = child.get('RELSHIPP')
     guardian_rel = guardian.get('RELSHIPP')
-    if child_rel in [34, 5] and guardian_rel in [20, 1]:
+    if child_rel == FOSTER_CHILD and guardian_rel == REFERENCE_PERSON:
         return True
 
     return False
@@ -271,14 +264,14 @@ def _are_spouses(person1: pd.Series, person2: pd.Series) -> bool:
     if person1.get('MAR') != 1 or person2.get('MAR') != 1:
         return False
 
-    # Check relationship codes as integers
-    # PUMS: householder=20, spouse=21; test data may use householder=1, spouse=2
+    # Check relationship codes. Canonical RELSHIPP: householder=20,
+    # spouse=21 (opposite-sex) or 23 (same-sex).
     rel1 = person1.get('RELSHIPP', 0)
     rel2 = person2.get('RELSHIPP', 0)
 
     return (
-        (rel1 == 20 and rel2 == 21) or (rel1 == 21 and rel2 == 20) or  # PUMS codes
-        (rel1 == 1 and rel2 == 2) or (rel1 == 2 and rel2 == 1)          # test data codes
+        (rel1 == REFERENCE_PERSON and rel2 in SPOUSE) or
+        (rel2 == REFERENCE_PERSON and rel1 in SPOUSE)
     )
 
 def _is_qualifying_relative(
@@ -375,21 +368,14 @@ def _is_child_relationship(
     household: pd.DataFrame
 ) -> bool:
     """Check if the relationship is a qualifying child relationship."""
-    # Check if potential_guardian is a parent, stepparent, or foster parent
+    # Check if potential_guardian is a parent, stepparent, or foster parent.
+    # _is_parent already covers own child (25/26/27) and grandchild (30) of
+    # the householder or their spouse.
     if (_is_parent(potential_guardian, child, household) or
             _is_stepparent(potential_guardian, child, household) or
             _is_foster_parent(potential_guardian, child, household)):
         return True
-    
-    # Also check for grandchild relationship (RELSHIPP=25)
-    # In PUMS data, many children are coded as grandchildren
-    child_rel = child.get('RELSHIPP', 0)
-    guardian_rel = potential_guardian.get('RELSHIPP', 0)
-    
-    if guardian_rel in [20, 21] and child_rel == 25:
-        # Householder or spouse with grandchild - this is a qualifying relationship
-        return True
-        
+
     return False
 
 def _is_student(person: pd.Series) -> bool:
@@ -458,12 +444,14 @@ def _provides_over_half_own_support(person: pd.Series, household: pd.DataFrame) 
     age = float(person.get('AGEP', 0) or 0)
     return person_income > _self_support_floor(age)
 
-# PUMS RELSHIPP codes that denote a relative of the householder:
-#   22-24 child, 25 grandchild, 26 sibling, 27 parent, 28 grandparent,
-#   29 in-law, 30 other relative, 31 parent-in-law.
-# (20 householder and 21 spouse are NOT in this set — spouses file together,
-#  and the householder is the reference point, not a dependent.)
-_RELATIVE_RELSHIPP_CODES = frozenset({22, 23, 24, 25, 26, 27, 28, 29, 30, 31})
+# Canonical RELSHIPP codes that denote a blood/marriage relative of the
+# householder eligible to be a qualifying relative (see
+# tax_modeler.units.relshipp_codes.QUALIFYING_RELATIVE_RELS): own children,
+# sibling, parent, grandchild, in-laws, other relative, foster child.
+# Householder (20), spouses (21/23) and unmarried partners (22/24) are NOT
+# in this set — spouses file together and the householder is the reference
+# point, not a dependent.
+_RELATIVE_RELSHIPP_CODES = QUALIFYING_RELATIVE_RELS
 
 
 def _is_relative(person1: pd.Series, person2: pd.Series) -> bool:

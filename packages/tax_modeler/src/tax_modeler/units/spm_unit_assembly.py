@@ -15,22 +15,23 @@ PUMS RELSHIPP codes (2019+ vintage; same set the entities/graph.py
 module uses):
 
   20  Householder
-  21  Opposite-sex spouse                  22  Opposite-sex unmarried partner *
-  23  Same-sex spouse                      24  Same-sex unmarried partner    *
+  21  Opposite-sex spouse                  22  Opposite-sex unmarried partner
+  23  Same-sex spouse                      24  Same-sex unmarried partner
   25  Biological son/daughter              26  Adopted son/daughter
   27  Stepson/stepdaughter                 28  Brother/sister
   29  Father/mother                        30  Grandchild
   31  Parent-in-law                        32  Son-in-law/daughter-in-law
-  33  Other relative (cousin, niece, nephew, ...) — but ALSO unmarried partner in some vintages
-  34  Foster child
-  35  Other non-relative
-  36  Institutionalized group quarters
-  37  Non-institutionalized group quarters
+  33  Other relative (cousin, niece, nephew, ...)
+  34  Roommate / housemate / boarder       35  Foster child
+  36  Other non-relative
+  37  Institutionalized group quarters     38  Non-institutionalized group quarters
 
-The repo treats codes 20-30 + 33 + 34 as the primary SPM unit (this
-matches the existing constants in entities/graph.py:262-266 — the
-"unmarried partner" code 33 is grouped with the primary set per the
-canonical Census interpretation used in this project).
+The repo treats codes 20-33 + 35 as the primary SPM unit (householder +
+spouse + unmarried partner + all blood/marriage relatives + foster
+child), per the canonical sets in
+:mod:`tax_modeler.units.relshipp_codes`. Roommates (34) and other
+non-relatives (36) aged 15+ form their own one-person SPM units; group
+quarters (37, 38) are excluded from SPM accounting.
 
 This module is the **vectorized** entry point used by the poverty
 pipeline. `EntityGraph._spm_units_for_household` (graph.py) is the
@@ -42,17 +43,21 @@ import numpy as np
 import pandas as pd
 
 from tax_modeler.errors import DataValidationError
+from tax_modeler.units.relshipp_codes import (
+    GROUP_QUARTERS,
+    SPM_PRIMARY,
+    SPM_UNRELATED,
+)
 
 
-# Mirrors entities/graph.py:262-266. Householder (20) + family relations
-# (21-30) + unmarried partner (33) + foster child (34) all share the
-# primary SPM unit. Unrelated adults (31, 32, 35) split off into their
-# own one-person SPM units. Group quarters (36, 37) are excluded.
-_PRIMARY_SPM_RELSHIPP: frozenset[int] = frozenset({
-    20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 33, 34,
-})
-_UNRELATED_RELSHIPP: frozenset[int] = frozenset({31, 32, 35})
-_GROUP_QUARTERS_RELSHIPP: frozenset[int] = frozenset({36, 37})
+# Canonical Census 2019+ RELSHIPP grouping (see relshipp_codes). The
+# householder + spouses + unmarried partners + all blood/marriage relatives
+# + foster children share the primary SPM unit; roommates (34) and other
+# nonrelatives (36) aged 15+ split into their own one-person SPM units;
+# group quarters (37, 38) are excluded from SPM accounting.
+_PRIMARY_SPM_RELSHIPP: frozenset[int] = SPM_PRIMARY
+_UNRELATED_RELSHIPP: frozenset[int] = SPM_UNRELATED
+_GROUP_QUARTERS_RELSHIPP: frozenset[int] = GROUP_QUARTERS
 
 # Age threshold for the "unrelated child" rule (P60-280): any unrelated
 # child under 15 pools with the primary SPM unit.

@@ -111,7 +111,7 @@ def sample_household_data() -> pd.DataFrame:
         # Household 2: single parent with one child
         {"SERIALNO": "2", "SPORDER": "1", "RELSHIPP": "20", "SEX": "2",
          "AGE": "30", "MAR": "5", "PINCP": "40000", "ADJINC": "1000000"},
-        {"SERIALNO": "2", "SPORDER": "2", "RELSHIPP": "03", "SEX": "1",
+        {"SERIALNO": "2", "SPORDER": "2", "RELSHIPP": "25", "SEX": "1",
          "AGE": "8", "MAR": "6", "PINCP": "0", "ADJINC": "1000000"},
     ]
     return pd.DataFrame(data)
