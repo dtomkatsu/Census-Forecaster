@@ -293,6 +293,12 @@ def calculate_eitc(tax_unit: Dict, tax_year: int = 2023) -> Dict[str, float]:
     num_qualifying = _count_qualifying_children_eitc(dependents)
     result['eitc_qualifying_children'] = num_qualifying
 
+    # IRC §32(c)(1)(A)(ii): childless filers must be aged 25-64
+    if num_qualifying == 0:
+        filer_age = int(tax_unit.get('primary_agep') or 40)
+        if not (25 <= filer_age <= 64):
+            return result
+
     # Clamp to the highest-bracket key (3 = "3 or more")
     bracket_key = min(num_qualifying, 3)
     child_params = params.by_children[bracket_key]

@@ -9,6 +9,30 @@
 
 ---
 
+## EITC age-eligibility correction — May 27, 2026
+
+**Tax treatment correction:** Enforced IRC §32(c)(1)(A)(ii) age 25–64 requirement
+for childless filers in `calculate_eitc()`.
+
+Prior behavior allowed childless filers of any age to receive the federal EITC,
+which overstated EITC receipts by ~$10.6M vs IRS SOI Hawaii TY2022 actuals
+($184.7M actual). Affected filers: 28,084 under-25 claimants (~$9.9M) and 3,147
+over-64 claimants (~$0.7M).
+
+**Files changed:**
+- `packages/tax_modeler/src/tax_modeler/credits/eitc.py` — added age guard after
+  qualifying-child count; defaults to age 40 (eligible) when `primary_agep` is
+  absent to avoid penalizing incomplete records.
+- `tests/tax_modeler/credits/test_eitc.py` — 6 new tests covering boundary ages
+  (24/25/64/65), parent exemption, and missing-age default.
+
+**Forecast impact:** Reduces modeled EITC base slightly. Does not affect the SB
+3125 CD1 income-tax bracket or REEC/CGEC/TCRA credit computations directly, but
+improves accuracy of the baseline tax-unit income distribution used in Step 5
+calibration.
+
+---
+
 ## CD2 REEC model — Round 2 refinements (May 14, 2026, late)
 
 Following the May 14 vintage-carryforward correction, five additional
