@@ -206,6 +206,46 @@ def test_missing_spm_unit_id_raises():
         aggregate_to_spm_units(tu_no_id, persons)
 
 
+def test_replicate_weights_carried_per_spm_unit():
+    """WGTP1..N broadcast onto persons are carried verbatim per SPM unit."""
+    persons = _persons([
+        {"SERIALNO": "H6", "SPORDER": 1, "AGEP": 40, "PWGTP": 100, "WGTP": 100,
+         "WGTP1": 110, "WGTP2": 90, "spm_unit_id": "H6_primary"},
+        {"SERIALNO": "H6", "SPORDER": 2, "AGEP": 38, "PWGTP": 100, "WGTP": 100,
+         "WGTP1": 110, "WGTP2": 90, "spm_unit_id": "H6_primary"},
+    ])
+    tu = _tax_units([
+        {"filer_id": "tu1", "SERIALNO": "H6", "PUMA": "0100", "tenure": "renter",
+         "county": "Honolulu", "house_district": 1, "senate_district": 1,
+         "total_cash_income": 60000, "eitc_amount": 0, "ctc_refundable": 0,
+         "spm_unit_id": "H6_primary", "hh_weight": 100},
+    ])
+    out = aggregate_to_spm_units(
+        tu, persons, replicate_weight_cols=["WGTP1", "WGTP2"]
+    )
+    row = out.iloc[0]
+    assert row["weight"] == 100  # full-sample WGTP
+    assert row["WGTP1"] == 110
+    assert row["WGTP2"] == 90
+
+
+def test_missing_replicate_weight_col_raises():
+    persons = _persons([
+        {"SERIALNO": "H7", "SPORDER": 1, "AGEP": 40, "PWGTP": 100, "WGTP": 100,
+         "WGTP1": 110, "spm_unit_id": "H7_primary"},
+    ])
+    tu = _tax_units([
+        {"filer_id": "tu1", "SERIALNO": "H7", "PUMA": "0100", "tenure": "renter",
+         "county": "Honolulu", "house_district": 1, "senate_district": 1,
+         "total_cash_income": 60000, "eitc_amount": 0, "ctc_refundable": 0,
+         "spm_unit_id": "H7_primary", "hh_weight": 100},
+    ])
+    with pytest.raises(DataValidationError, match="replicate_weight_cols"):
+        aggregate_to_spm_units(
+            tu, persons, replicate_weight_cols=["WGTP1", "WGTP2"]  # WGTP2 absent
+        )
+
+
 def test_multi_puma_within_household_raises():
     """Defensive check: PUMS households are single-PUMA. Tampering raises."""
     persons = _persons([

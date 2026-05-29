@@ -66,14 +66,26 @@ DEFAULT_FIXTURE_DIR = REPO_ROOT / "tests" / "tax_modeler" / "fixtures"
 # ---------------------------------------------------------------------------
 
 
+def _replicate_weight_cols(prefix: str = "WGTP", n: int = 80) -> list[str]:
+    """ACS replicate-weight column names, ``WGTP1`` .. ``WGTP80`` by default."""
+    return [f"{prefix}{i}" for i in range(1, n + 1)]
+
+
 def _load_units(
-    pums_data_dir: Optional[Path], use_fixture: bool
+    pums_data_dir: Optional[Path],
+    use_fixture: bool,
+    *,
+    with_replicate_weights: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Build enriched, taxed tax units with HI EITC + geography assigned.
 
     Returns ``(units, persons)``. The ``persons`` frame is returned so
     downstream SPM-unit assembly can read RELSHIPP, AGEP, and WGTP
     directly from PUMS.
+
+    When ``with_replicate_weights`` is set, the 80 ACS household replicate
+    weights (``WGTP1`` .. ``WGTP80``) are also broadcast from households
+    onto persons so SDR sampling-variance can be computed downstream.
     """
     from tax_modeler.pipeline import enrich_for_credits
     from tax_modeler.units.constructor import TaxUnitConstructor
@@ -112,9 +124,24 @@ def _load_units(
 
     # Broadcast WGTP from households onto persons so the SPM aggregator
     # can pick up the household weight without re-joining downstream.
+    broadcast_cols = []
     if "WGTP" not in persons.columns and "WGTP" in households.columns:
+        broadcast_cols.append("WGTP")
+    if with_replicate_weights:
+        rep_cols = [
+            c for c in _replicate_weight_cols()
+            if c in households.columns and c not in persons.columns
+        ]
+        if not rep_cols:
+            raise FileNotFoundError(
+                "--replicate-se requested but no WGTP1..80 replicate-weight "
+                "columns are present on the household frame. Re-export PUMS "
+                "with replicate weights (psam_h15 must carry WGTP1..WGTP80)."
+            )
+        broadcast_cols.extend(rep_cols)
+    if broadcast_cols:
         persons = persons.merge(
-            households[["SERIALNO", "WGTP"]].drop_duplicates(subset=["SERIALNO"]),
+            households[["SERIALNO", *broadcast_cols]].drop_duplicates(subset=["SERIALNO"]),
             how="left", on="SERIALNO",
         )
 
@@ -470,6 +497,16 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                    help="(Default OFF.) Rake unit weights so per-HD totals "
                         "match IRS SOI ZIP filer counts, holding PUMA "
                         "marginals fixed. Tightens district-level uncertainty.")
+    p.add_argument("--replicate-se", action="store_true", default=False,
+                   help="(Default OFF.) Compute ACS successive-difference-"
+                        "replication (SDR) sampling standard errors + 90%% "
+                        "confidence intervals for the headline poverty "
+                        "statistics, using the 80 household replicate weights "
+                        "(WGTP1..80). Writes by_state_se.csv + by_county_se.csv "
+                        "and prints CIs in the summary. Requires SPM-unit mode "
+                        "(incompatible with --by-tax-unit) and a PUMS export "
+                        "carrying the replicate weights. Captures SAMPLING "
+                        "variance only — not model/imputation uncertainty.")
     p.add_argument("--hi-ctc-takeup-rate", type=float, default=0.80,
                    help="Take-up rate applied to the hi_ctc_650 expansion "
                         "increment. Default 0.80 (year-1 ramp consistent with "
@@ -495,16 +532,46 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
-def _print_summary(*, tax_year: int, by_state: pd.DataFrame, scenarios: tuple[str, ...]) -> None:
+def _print_summary(
+    *,
+    tax_year: int,
+    by_state: pd.DataFrame,
+    scenarios: tuple[str, ...],
+    sdr_state: Optional[pd.DataFrame] = None,
+) -> None:
     s = by_state.iloc[0]
+    se = sdr_state.iloc[0] if sdr_state is not None and not sdr_state.empty else None
+
+    def _ci(metric: str, scale: float = 1.0, unit: str = "") -> str:
+        """Format ``[low, high] (±moe)`` for a metric, or '' if no SDR."""
+        if se is None:
+            return ""
+        lo = se.get(f"{metric}_ci90_low")
+        hi = se.get(f"{metric}_ci90_high")
+        std = se.get(f"{metric}_se")
+        if lo is None or hi is None or std is None:
+            return ""
+        return (f"   90% CI [{unit}{lo * scale:,.1f}, {unit}{hi * scale:,.1f}]"
+                f" (±{unit}{1.645 * std * scale:,.1f})")
+
     print()
     print(f"=== TY {tax_year} Hawaii poverty impact ===")
     rate = s["poverty_rate_baseline"]
     persons_total = s["weighted_persons"]
     persons_poor = s["persons_in_poverty_baseline"]
-    print(f"  Baseline SPM poverty rate         : {rate * 100:>14.2f}%")
-    print(f"  Persons in poverty (baseline)     : {persons_poor:>15,.0f}")
+    rate_ci = ""
+    if se is not None:
+        lo = se.get("poverty_rate_baseline_ci90_low")
+        hi = se.get("poverty_rate_baseline_ci90_high")
+        if lo is not None and hi is not None:
+            rate_ci = f"   90% CI [{lo * 100:.2f}%, {hi * 100:.2f}%]"
+    print(f"  Baseline SPM poverty rate         : {rate * 100:>14.2f}%{rate_ci}")
+    print(f"  Persons in poverty (baseline)     : {persons_poor:>15,.0f}"
+          f"{_ci('persons_in_poverty_baseline')}")
     print(f"  Weighted persons (state)          : {persons_total:>15,.0f}")
+    if se is not None:
+        print("  (CIs reflect ACS sampling variance only — SDR, R=80; "
+              "they EXCLUDE model/imputation/take-up/aging uncertainty.)")
     print()
     label_map = {
         "no_eitc":           "Persons lifted by EITC",
@@ -523,10 +590,11 @@ def _print_summary(*, tax_year: int, by_state: pd.DataFrame, scenarios: tuple[st
             continue
         label = label_map.get(scn, scn)
         sign = "+" if not scn.startswith("no_") else ""
-        print(f"  {label:<48} : {sign}{s[col]:>14,.0f}")
+        print(f"  {label:<48} : {sign}{s[col]:>14,.0f}{_ci(col)}")
     print()
     gap_baseline_m = s["poverty_gap_baseline_$"] / 1e6
-    print(f"  Baseline poverty gap              : ${gap_baseline_m:>14,.1f}M")
+    print(f"  Baseline poverty gap              : ${gap_baseline_m:>14,.1f}M"
+          f"{_ci('poverty_gap_baseline_$', scale=1e-6, unit='$')}")
     for scn in scenarios:
         col = f"gap_closed_{scn}_$"
         if col not in s.index:
@@ -538,7 +606,8 @@ def _print_summary(*, tax_year: int, by_state: pd.DataFrame, scenarios: tuple[st
             .replace("Additional poverty", "Additional poverty gap")
         )
         sign = "+" if not scn.startswith("no_") else ""
-        print(f"  {label:<48} : {sign}${s[col] / 1e6:>13,.1f}M")
+        print(f"  {label:<48} : {sign}${s[col] / 1e6:>13,.1f}M"
+              f"{_ci(col, scale=1e-6, unit='$')}")
     print()
 
 
@@ -552,10 +621,19 @@ def main(argv: Optional[list] = None) -> int:
     if args.tax_year not in {2022, 2023, 2024, 2025}:
         LOG.error("--tax-year must be one of {2022, 2023, 2024, 2025}; got %d", args.tax_year)
         return 2
+    if args.replicate_se and args.by_tax_unit:
+        LOG.error(
+            "--replicate-se requires SPM-unit mode; it is incompatible with "
+            "--by-tax-unit. Drop --by-tax-unit to compute SDR sampling SEs."
+        )
+        return 2
     args.out.mkdir(parents=True, exist_ok=True)
 
     # 1. Build base units + load persons frame (needed for SPM unit assembly).
-    base_units, persons = _load_units(args.pums_data_dir, args.use_fixture)
+    base_units, persons = _load_units(
+        args.pums_data_dir, args.use_fixture,
+        with_replicate_weights=args.replicate_se,
+    )
 
     # 1b. Attach SPM unit IDs to both frames using PUMS RELSHIPP/AGEP per
     #     Census P60-280. Done early so the spm_unit_id column rides
@@ -674,7 +752,13 @@ def main(argv: Optional[list] = None) -> int:
         poverty_frame = units
     else:
         from tax_modeler.poverty.spm_aggregation import aggregate_to_spm_units
-        poverty_frame = aggregate_to_spm_units(units, persons)
+        rep_cols = (
+            [c for c in _replicate_weight_cols() if c in persons.columns]
+            if args.replicate_se else None
+        )
+        poverty_frame = aggregate_to_spm_units(
+            units, persons, replicate_weight_cols=rep_cols
+        )
         LOG.info(
             "Aggregated %d tax units -> %d SPM units (P60-280 RELSHIPP rules).",
             len(units), len(poverty_frame),
@@ -731,8 +815,34 @@ def main(argv: Optional[list] = None) -> int:
     result.by_household_type.to_csv(args.out / "by_household_type.csv", index=False)
     LOG.info("Wrote 5 poverty-impact CSVs to %s", args.out)
 
+    # 9b. SDR sampling standard errors + 90% CIs (ACS replicate weights).
+    #     State + county only — district point estimates already carry the
+    #     deterministic-hash ~±20% caveat, so a sampling-only SE there would
+    #     understate true uncertainty and mislead.
+    sdr_state = None
+    if args.replicate_se:
+        from tax_modeler.poverty.uncertainty import compute_poverty_sdr
+        rep_cols = [c for c in _replicate_weight_cols() if c in result.units.columns]
+        sdr_state = compute_poverty_sdr(
+            result.units, replicate_weight_cols=rep_cols,
+            scenarios=result.scenarios, group_col=None,
+        )
+        sdr_county = compute_poverty_sdr(
+            result.units, replicate_weight_cols=rep_cols,
+            scenarios=result.scenarios, group_col="county",
+        )
+        sdr_state.to_csv(args.out / "by_state_se.csv", index=False)
+        sdr_county.to_csv(args.out / "by_county_se.csv", index=False)
+        LOG.info(
+            "Wrote SDR sampling SE/CI CSVs (R=%d replicate weights) to %s",
+            len(rep_cols), args.out,
+        )
+
     # 10. Summary block.
-    _print_summary(tax_year=args.tax_year, by_state=result.by_state, scenarios=result.scenarios)
+    _print_summary(
+        tax_year=args.tax_year, by_state=result.by_state,
+        scenarios=result.scenarios, sdr_state=sdr_state,
+    )
 
     if result.notes:
         print("Notes:")
