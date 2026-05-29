@@ -20,6 +20,7 @@ from .wage_growth_adjustment import WageGrowthAdjuster, generate_growth_rate_rep
 from .soi_calibration import SOICalibrator
 from .admin_caseload import AdminCaseload, CaseloadTarget
 from .takeup_imputation import calibrate_benefits, impute_takeup, scale_benefit_to_dollar_target
+from .eitc_reweight import reweight_eitc_eligibles_by_children
 from .donor_match import (
     DonorMatcher,
     impute_childcare_expense,
@@ -59,6 +60,8 @@ __all__ = [
     'calibrate_benefits',
     'impute_takeup',
     'scale_benefit_to_dollar_target',
+    # Lever 3a: surgical EITC by-children reweight
+    'reweight_eitc_eligibles_by_children',
     # Phase 8: donor-matching imputation (CPS-ASEC → ACS)
     'DonorMatcher',
     'impute_moop',

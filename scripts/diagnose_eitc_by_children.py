@@ -100,7 +100,8 @@ def _build_units(
 
 
 def _build_units_production(
-    persons: pd.DataFrame, households: pd.DataFrame, pums_dir: Path, tax_year: int
+    persons: pd.DataFrame, households: pd.DataFrame, pums_dir: Path, tax_year: int,
+    reweight_by_children: bool = False,
 ) -> pd.DataFrame:
     """Reproduce the production forecast build sequence through EITC take-up.
 
@@ -109,15 +110,49 @@ def _build_units_production(
     the pooled IRS take-up truncation + dollar scaling exactly as the real
     forecast does, so the by-children mix here is the *production* mix, not a
     clean-room eligibility snapshot. tax_year != 2022 triggers forward
-    projection (income grown to the target year)."""
+    projection (income grown to the target year).
+
+    ``reweight_by_children`` toggles lever 3a — the surgical EITC by-children
+    reweight applied *between* base-tax and take-up, so short with-children
+    eligible buckets reach their IRS targets before truncation."""
     import poverty_impact_report as pir
 
     base_units, _persons = pir._load_units(pums_dir, use_fixture=False)
     project_required = tax_year != 2022
     units = pir._build_units_for_tax_year(base_units, tax_year, project=project_required)
+    if reweight_by_children:
+        from tax_modeler.calibration.eitc_reweight import (
+            reweight_eitc_eligibles_by_children,
+        )
+        units, info = reweight_eitc_eligibles_by_children(units)
+        _print_reweight_info(info)
     units = pir._apply_credit_takeup(units, tax_year=tax_year)
     units = pir._apply_hi_eitc(units, tax_year=tax_year)
     return units
+
+
+def _print_reweight_info(info: dict) -> None:
+    """Pretty-print the lever-3a reweight diagnostics (per-bucket + drift)."""
+    before = info["total_weight_before"]
+    after = info["total_weight_after"]
+    drift = after - before
+    print("=" * 72)
+    print("LEVER 3a — EITC by-children reweight (eligible pool, pre-take-up)")
+    print("=" * 72)
+    print(f"  {'kids':<5} {'n units':>8} {'wt before':>12} {'wt after':>12} "
+          f"{'factor':>8} {'IRS target':>12}")
+    print("  " + "-" * 62)
+    for bucket in sorted(info["buckets"]):
+        b = info["buckets"][bucket]
+        label = "3+" if bucket >= 3 else str(bucket)
+        print(f"  {label:<5} {b['n_units']:>8,} {b['before']:>12,.0f} "
+              f"{b['after']:>12,.0f} {b['factor']:>8.3f} {b['target']:>12,.0f}")
+    if not info["buckets"]:
+        print("  (no bucket was below target; nothing up-weighted)")
+    print("  " + "-" * 62)
+    print(f"  total tax-unit weight: {before:,.0f} -> {after:,.0f}  "
+          f"({drift:+,.0f}, {(100*drift/before if before else 0):+.2f}%)")
+    print()
 
 
 def _bucket(nqc: int) -> str:
@@ -353,6 +388,11 @@ def main() -> None:
                     help="Reproduce the production forecast build (load -> "
                          "project/base-tax -> IRS take-up -> HI EITC) and bucket "
                          "its claimers. tax_year!=2022 projects income forward.")
+    ap.add_argument("--reweight-eitc-by-children", action="store_true",
+                    help="(Production builds only.) Apply lever 3a — up-weight "
+                         "EITC-eligible units in short with-children buckets to "
+                         "their IRS targets before take-up truncation. Reports "
+                         "the per-bucket factors and total population drift.")
     ap.add_argument("--scale-to-irs-total", action="store_true",
                     help="Rescale model to IRS grand total to isolate the mix from the level gap.")
     args = ap.parse_args()
@@ -372,7 +412,10 @@ def main() -> None:
         if args.tax_year != 2022:
             print(f"(income PROJECTED forward to TY{args.tax_year})")
         print()
-        units = _build_units_production(persons, households, args.pums_dir, args.tax_year)
+        units = _build_units_production(
+            persons, households, args.pums_dir, args.tax_year,
+            reweight_by_children=args.reweight_eitc_by_children,
+        )
     else:
         units = _build_units(persons, households, args.tax_year, args.apply_takeup)
         if args.apply_takeup:

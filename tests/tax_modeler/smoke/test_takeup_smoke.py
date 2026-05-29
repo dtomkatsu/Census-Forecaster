@@ -32,6 +32,7 @@ from tax_modeler.calibration.takeup_imputation import (
     impute_takeup_eitc_by_children,
     scale_benefit_to_dollar_target,
 )
+from tax_modeler.calibration.eitc_reweight import reweight_eitc_eligibles_by_children
 from tax_modeler.errors import ConfigError, DataValidationError
 
 
@@ -355,6 +356,136 @@ def test_calibrate_benefits_stratify_flag_routes_to_by_children(taxed_units):
     assert "eitc_receives_imputed" in out.columns
     non_recipients = out[~out["eitc_receives_imputed"]]
     assert (non_recipients["eitc_amount"] == 0).all()
+
+
+# ---------------------------------------------------------------------------
+# Surgical EITC by-children reweight (lever 3a — fills short with-children
+# buckets so the stratified take-up can land the IRS childless share)
+# ---------------------------------------------------------------------------
+
+
+def _eitc_eligible_pool(weighted_counts: dict[int, int]) -> pd.DataFrame:
+    """EITC-eligible pool: ``weighted_counts[k]`` units (weight 1.0) in bucket k.
+
+    ``eitc_amount`` descends within a bucket and stays strictly positive, so
+    rank-and-truncate is deterministic and every unit reads as eligible.
+    """
+    rows = []
+    for k in sorted(weighted_counts):
+        n = int(weighted_counts[k])
+        for i in range(n):
+            rows.append({
+                "eitc_amount": 1000.0 + (n - i),
+                "eitc_qualifying_children": k,
+                "weight": 1.0,
+                "income": 20_000.0,
+            })
+    return pd.DataFrame(rows)
+
+
+def test_reweight_lifts_short_bucket_to_target():
+    """A below-target with-children bucket is scaled up to its IRS count; an
+    over-produced bucket is left untouched (surgical: no down-weights)."""
+    units = _eitc_eligible_pool({0: 30, 1: 10})
+    out, info = reweight_eitc_eligibles_by_children(units, targets={0: 20.0, 1: 20.0})
+
+    # Bucket 1 was short (10 < 20): every eligible unit scaled ×2 → exactly 20.
+    b1 = float(out.loc[out["eitc_qualifying_children"] == 1, "weight"].sum())
+    assert b1 == pytest.approx(20.0)
+    assert info["buckets"][1]["factor"] == pytest.approx(2.0)
+    assert info["buckets"][1]["before"] == pytest.approx(10.0)
+    assert info["buckets"][1]["after"] == pytest.approx(20.0)
+
+    # Bucket 0 over target (30 > 20): untouched, absent from info["buckets"].
+    b0 = float(out.loc[out["eitc_qualifying_children"] == 0, "weight"].sum())
+    assert b0 == pytest.approx(30.0)
+    assert 0 not in info["buckets"]
+
+    # Total weight drifted up by exactly the bucket-1 fill (10), nothing else.
+    assert info["total_weight_after"] - info["total_weight_before"] == pytest.approx(10.0)
+
+
+def test_reweight_ignores_noneligible_units():
+    """Only EITC-eligible (benefit > 0) units are counted and scaled; zero-benefit
+    units in a short bucket keep their original weight."""
+    units = _eitc_eligible_pool({1: 10})
+    noneligible = pd.DataFrame([{
+        "eitc_amount": 0.0, "eitc_qualifying_children": 1,
+        "weight": 1.0, "income": 20_000.0,
+    } for _ in range(5)])
+    units = pd.concat([units, noneligible], ignore_index=True)
+
+    out, info = reweight_eitc_eligibles_by_children(units, targets={1: 20.0})
+
+    eligible_w = float(out.loc[out["eitc_amount"] > 0, "weight"].sum())
+    noneligible_w = float(out.loc[out["eitc_amount"] == 0, "weight"].sum())
+    assert eligible_w == pytest.approx(20.0)      # 10 eligible × 2
+    assert noneligible_w == pytest.approx(5.0)    # untouched
+    assert info["buckets"][1]["before"] == pytest.approx(10.0)  # eligible only
+
+
+def test_reweight_requires_children_col():
+    units = pd.DataFrame({"eitc_amount": [1000.0], "weight": [1.0]})
+    with pytest.raises(DataValidationError, match="eitc_qualifying_children"):
+        reweight_eitc_eligibles_by_children(units)
+
+
+def test_reweight_empty_targets_raises():
+    units = _eitc_eligible_pool({0: 5})
+    with pytest.raises(DataValidationError, match="non-empty targets"):
+        reweight_eitc_eligibles_by_children(units, targets={})
+
+
+def test_reweight_max_factor_caps_and_warns(caplog):
+    """A computed factor above max_factor is capped (bucket then falls short of
+    target) and a warning is logged."""
+    units = _eitc_eligible_pool({1: 10})
+    with caplog.at_level(logging.WARNING, logger="tax_modeler.calibration.eitc_reweight"):
+        out, info = reweight_eitc_eligibles_by_children(
+            units, targets={1: 100.0}, max_factor=3.0,
+        )
+    # Uncapped factor would be 10× (10 → 100); capped to 3× → 30, short of 100.
+    assert info["buckets"][1]["factor"] == pytest.approx(3.0)
+    b1 = float(out.loc[out["eitc_qualifying_children"] == 1, "weight"].sum())
+    assert b1 == pytest.approx(30.0)
+    assert any("max_factor" in rec.message for rec in caplog.records)
+
+
+def test_reweight_then_takeup_hits_irs_childless_share():
+    """Composition headline: reweight + stratified take-up drives the childless
+    EITC share to the IRS 31.7%, materially below the ~37% the take-up
+    truncation reaches on its own (short with-children buckets can't be filled
+    by truncation alone)."""
+    # Scaled-down (÷10) HI TY2022 shape: childless over target, 1-/2-kid short,
+    # 3+ slightly over — the real eligibility shortfall.
+    pool = {0: 3000, 1: 2000, 2: 1400, 3: 1200}
+    irs = {0: 2690.0, 1: 2782.0, 2: 1846.0, 3: 1179.0}
+    pooled_count = sum(irs.values())  # 8497
+
+    def _childless_share(units: pd.DataFrame) -> float:
+        target = CaseloadTarget(
+            program="eitc", year=2022, unit="return",
+            count=pooled_count, annual_dollars_millions=0.0,
+        )
+        out = impute_takeup_eitc_by_children(units, target=target, distribution=irs)
+        recv = out["eitc_receives_imputed"]
+        total = float(out.loc[recv, "weight"].sum())
+        childless = float(
+            out.loc[recv & (out["eitc_qualifying_children"] == 0), "weight"].sum()
+        )
+        return childless / total
+
+    base = _eitc_eligible_pool(pool)
+    share_no_reweight = _childless_share(base)
+    reweighted, _ = reweight_eitc_eligibles_by_children(base, targets=irs)
+    share_reweight = _childless_share(reweighted)
+
+    # Take-up alone is stuck near 37% — it can cap the childless surplus but
+    # cannot manufacture the missing 1-/2-kid eligibles.
+    assert share_no_reweight == pytest.approx(0.370, abs=0.005)
+    # Reweight fills the short buckets; the childless share lands on IRS 31.7%.
+    assert share_reweight == pytest.approx(0.317, abs=0.005)
+    assert share_reweight < share_no_reweight - 0.04
 
 
 # ---------------------------------------------------------------------------

@@ -286,6 +286,38 @@ def _apply_arpa_ctc(units: pd.DataFrame) -> pd.DataFrame:
     return arpa_ctc_for_tax_units(units)
 
 
+def _apply_eitc_reweight(units: pd.DataFrame) -> pd.DataFrame:
+    """Lever 3a: up-weight EITC-eligible units in short with-children buckets.
+
+    The microsimulation under-produces EITC-eligible 1-/2-qualifying-child tax
+    units relative to IRS SOI Hawaii (~0.74 / ~0.77 of the by-children targets);
+    a take-up truncation can cap over-produced buckets but cannot fill short
+    ones. This reweight lifts the short buckets to their IRS targets *before*
+    ``_apply_credit_takeup``, so the stratified take-up then trims each bucket to
+    its IRS share and the EITC childless-claimer share lands at IRS Hawaii's
+    31.7% (vs ~36% with take-up alone).
+
+    Surgical: only EITC-eligible units in short buckets are up-weighted, no
+    compensating down-weights. Measured drift (TY2025 PUMS): ~+1.5% tax-unit
+    weight, ~+0.2% HI net revenue — all on low-income filers. The SPM-unit
+    weight used for poverty accounting is the household WGTP, re-derived
+    independent of the tax-unit ``weight`` this edits.
+    """
+    from tax_modeler.calibration.eitc_reweight import (
+        reweight_eitc_eligibles_by_children,
+    )
+    out, info = reweight_eitc_eligibles_by_children(units)
+    before, after = info["total_weight_before"], info["total_weight_after"]
+    factors = {k: round(v["factor"], 3) for k, v in info["buckets"].items()}
+    LOG.info(
+        "EITC by-children reweight: up-weighted buckets %s; tax-unit weight "
+        "%.0f -> %.0f (%+.2f%%)",
+        factors or "none (no short bucket)", before, after,
+        (100.0 * (after - before) / before) if before else 0.0,
+    )
+    return out
+
+
 def _apply_credit_takeup(
     units: pd.DataFrame,
     *,
@@ -346,6 +378,17 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                         "*receipt*, not *eligibility*. Use "
                         "--no-apply-credit-takeup to disable.")
     p.add_argument("--no-apply-credit-takeup", dest="apply_credit_takeup",
+                   action="store_false", help=argparse.SUPPRESS)
+    p.add_argument("--reweight-eitc-by-children", action="store_true", default=True,
+                   help="(Default ON.) Lever 3a: up-weight EITC-eligible units "
+                        "in short with-children buckets (1-/2-kid) to IRS "
+                        "by-children targets before take-up, so the EITC "
+                        "childless-claimer share matches IRS Hawaii (31.7%%) "
+                        "rather than the ~36%% the take-up truncation alone "
+                        "yields. Adds ~1.5%% tax-unit weight on low-income "
+                        "filers (~+0.2%% HI net revenue). Use "
+                        "--no-reweight-eitc-by-children to disable.")
+    p.add_argument("--no-reweight-eitc-by-children", dest="reweight_eitc_by_children",
                    action="store_false", help=argparse.SUPPRESS)
     p.add_argument("--apply-moop", action="store_true", default=True,
                    help="(Default ON.) Impute MOOP (medical out-of-pocket) "
@@ -504,6 +547,15 @@ def main(argv: Optional[list] = None) -> int:
     PUMS_CONSTRUCTION_YEAR = 2022
     project_required = args.tax_year != PUMS_CONSTRUCTION_YEAR
     units = _build_units_for_tax_year(base_units, args.tax_year, project=project_required)
+
+    # 2b. Lever 3a: EITC by-children reweight. Up-weights EITC-eligible units in
+    #     short with-children buckets to IRS by-children targets *before*
+    #     take-up, so the stratified truncation in step 3 yields the IRS
+    #     childless-claimer share (31.7%) instead of ~36%. Tax-unit weight only;
+    #     SPM poverty (WGTP-weighted) sees only the indirect benefit-take-up
+    #     selection shift, not a direct weight change.
+    if args.reweight_eitc_by_children:
+        units = _apply_eitc_reweight(units)
 
     # 3. IRS-anchored take-up: rank-and-truncate EITC/ACTC eligibles to
     #    actual SOI claim counts. Must run *before* ARPA CTC counterfactual
