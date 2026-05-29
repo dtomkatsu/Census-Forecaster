@@ -128,19 +128,31 @@ def _load_units(
     return units, persons
 
 
-def _build_units_for_tax_year(units: pd.DataFrame, tax_year: int, project: bool) -> pd.DataFrame:
+def _build_units_for_tax_year(
+    units: pd.DataFrame, tax_year: int, project: bool, *, use_cbo_aging: bool = False
+) -> pd.DataFrame:
     """Compute base tax (federal CTC/EITC) for a given year.
 
     HI EITC is intentionally NOT computed here — it is computed after the
     IRS-anchored credit take-up imputation, so that filers who do not take
     up the federal EITC also have zero HI EITC (HI EITC is a fixed
     percentage of the federal credit).
+
+    When ``project`` is True, income is aged to ``tax_year``. With
+    ``use_cbo_aging=True`` the aging uses CBO per-component growth (the same
+    engine the revenue path uses), so a reform's revenue score and its poverty
+    score are computed on one coherent aged income distribution; otherwise the
+    legacy county-scalar B19013 growth is used. Geography is preserved either
+    way. ``use_cbo_aging`` is a no-op when ``project`` is False (TY2022 base,
+    no aging).
     """
     from tax_modeler.pipeline import compute_base_tax
 
     if project:
         from tax_modeler.projection.tax_unit_projector import project_tax_units_forward
-        out = project_tax_units_forward(units, target_year=tax_year)
+        out = project_tax_units_forward(
+            units, target_year=tax_year, use_cbo_aging=use_cbo_aging
+        )
     else:
         out = compute_base_tax(units, tax_year=tax_year)
     return out
@@ -367,6 +379,17 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                         "Defaults to the synthetic fixture.")
     p.add_argument("--use-fixture", action="store_true",
                    help="Force use of the synthetic PUMS fixture.")
+    p.add_argument("--cbo-aging", action=argparse.BooleanOptionalAction, default=True,
+                   help="(Default ON.) When projecting to a future tax year, "
+                        "age income with CBO per-component growth — the same "
+                        "engine the revenue path uses — instead of the legacy "
+                        "county-scalar B19013 growth. Puts the poverty/"
+                        "distributional results on the same aged income "
+                        "distribution as the revenue forecast (coherence). "
+                        "Trades county growth differentiation for income-type "
+                        "differentiation; geography is preserved. Pass "
+                        "--no-cbo-aging for the legacy county-scalar path. "
+                        "No-op for --tax-year 2022 (base year, no aging).")
     p.add_argument("--apply-snap", action="store_true", default=True,
                    help="(Default ON.) Compute + take-up-impute SNAP before "
                         "the SPM computation. Use --no-apply-snap to disable.")
@@ -546,7 +569,10 @@ def main(argv: Optional[list] = None) -> int:
     # 2. Compute tax + credits for the requested year.
     PUMS_CONSTRUCTION_YEAR = 2022
     project_required = args.tax_year != PUMS_CONSTRUCTION_YEAR
-    units = _build_units_for_tax_year(base_units, args.tax_year, project=project_required)
+    units = _build_units_for_tax_year(
+        base_units, args.tax_year, project=project_required,
+        use_cbo_aging=args.cbo_aging,
+    )
 
     # 2b. Lever 3a: EITC by-children reweight. Up-weights EITC-eligible units in
     #     short with-children buckets to IRS by-children targets *before*
