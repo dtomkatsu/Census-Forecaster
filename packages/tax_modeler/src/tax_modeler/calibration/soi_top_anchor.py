@@ -48,6 +48,8 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from tax_modeler.calibration.cbo_aging import net_growth_factor
+
 logger = logging.getLogger(__name__)
 
 # DOTAX A8 high-income filing status mix (matches existing synthesizer).
@@ -175,7 +177,7 @@ def _aged_tier_avg_agi(
     for comp, share in components.items():
         cbo_f = cbo_rates.factor(comp, target_year)
         hi_f = hawaii_factors.get(comp, 1.0)
-        aged_per_dollar += share * cbo_f * hi_f
+        aged_per_dollar += share * net_growth_factor(cbo_f, hi_f)
     return anchor.avg_agi * aged_per_dollar
 
 
@@ -212,7 +214,7 @@ def _aged_tier_capgain_share(
     for comp, share in components.items():
         cbo_f = cbo_rates.factor(comp, target_year)
         hi_f = hawaii_factors.get(comp, 1.0)
-        aged = share * cbo_f * hi_f
+        aged = share * net_growth_factor(cbo_f, hi_f)
         aged_total += aged
         if comp == "capital_gains":
             aged_cg = aged
