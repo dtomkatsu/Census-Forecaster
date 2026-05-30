@@ -80,6 +80,7 @@ def macro_anchor_projection(
     target_year: int,
     annual_growth_rate: float,
     sample_se_floor: float | None = None,
+    rate_se_log: float | None = None,
 ) -> ForecastPoint:
     """Project a single observation forward at an exogenous annual rate.
 
@@ -90,11 +91,29 @@ def macro_anchor_projection(
     compounding, applies the cap, and returns a ForecastPoint with
     sample SE pulled from the input MOE.
 
-    The forecast variance for a "use the macro rate as truth" model is
-    explicitly the sample variance of the input (no model residuals to
-    add) — this is documented and intentional. If the user wants a
-    macro projection with its *own* uncertainty, blend the macro rate's
-    SE in by pre-inflating sample_se_floor.
+    Parameters
+    ----------
+    rate_se_log : float, optional
+        1-sigma standard error of the macro rate **in log space**
+        (i.e. the uncertainty in the annual log-growth-rate itself).
+        When supplied, the forecast SE is augmented by the delta-method
+        propagation of rate uncertainty into level uncertainty:
+            se_forecast = |horizon| · rate_se_log · point
+        This corrects the previous assumption that the macro rate is
+        perfectly known (se_forecast=0.0), which understated CI width
+        for long-horizon projections via the legacy ``project_ensemble``
+        path.  The production ``project_ensemble_multi`` path goes through
+        ``anchor_as_forecast`` (anchors.py) which already propagates
+        rate SE — this parameter is for the legacy fixed-rate path only.
+
+    Notes
+    -----
+    When ``rate_se_log`` is None (default) the function behaves as
+    before: se_forecast=0 and se_total = se_sample only.  Callers using
+    the legacy ``project_ensemble(macro_annual_rate=...)`` path should
+    supply ``rate_se_log`` to get honest forecast intervals; otherwise
+    the CI only captures ACS sampling noise and will be too narrow for
+    multi-year horizons.
     """
     horizon = target_year - effective_year(latest)
     if horizon <= 0:
@@ -133,13 +152,30 @@ def macro_anchor_projection(
     if sample_se_floor is not None and math.isfinite(sample_se_floor):
         se_sample = max(se_sample, sample_se_floor)
 
-    se_total = se_sample
+    # Forecast SE from rate uncertainty (delta method: Var(f(r)) ≈ (df/dr)² Var(r)).
+    # For f(r) = P₀ · (1+r)^h ≈ P₀ · exp(h·r_log), df/dr_log = h · point.
+    # When rate_se_log is None we fall back to se_forecast=0, preserving
+    # legacy behaviour but accepting the known under-statement of CI width.
+    if rate_se_log is not None and math.isfinite(rate_se_log) and rate_se_log > 0:
+        se_forecast = abs(horizon) * rate_se_log * point
+        notes_suffix = f"rate_se_log={rate_se_log:.4f}"
+        notes = f"{notes}; {notes_suffix}" if notes else notes_suffix
+    else:
+        se_forecast = 0.0
+        if horizon > 2:
+            # Warn when se_forecast=0 is likely to materially understate CI
+            # for multi-year projections via the legacy fixed-rate path.
+            warn = "se_forecast=0(legacy:supply rate_se_log for honest multi-year CI)"
+            notes = f"{notes}; {warn}" if notes else warn
+
+    from common.moe import combine_se as _combine_se
+    se_total = _combine_se(se_sample, se_forecast)
     ci_lo, ci_hi = ci_from_se(point, se_total)
     return ForecastPoint(
         point=point,
         se_total=se_total,
         se_sample=se_sample,
-        se_forecast=0.0,
+        se_forecast=se_forecast,
         ci90_low=ci_lo,
         ci90_high=ci_hi,
         method="macro_anchor",
@@ -320,6 +356,53 @@ def project_ensemble(
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
+# Coverage-warning helper
+# -----------------------------------------------------------------------------
+
+# Below this pre-override CI90 coverage the model's interval shape is
+# fundamentally unsuited to the indicator (e.g. Gaussian CI for a
+# mean-reverting unemployment series). The SE override rescales the width,
+# but a coverage warning is still warranted so consumers know the CI
+# relies entirely on empirical recalibration rather than a correctly
+# specified model.
+_PRE_OVERRIDE_COVERAGE_WARNING_THRESHOLD: float = 0.82
+
+
+def _coverage_warning_note(
+    indicator: str,
+    method: str,
+    calibration: dict | None,
+) -> str:
+    """Return a coverage-warning note when pre-override CI90 is materially below 90%.
+
+    Reads `ci90_coverage_by_indicator_method` (the raw, pre-SE-override
+    coverage) from the calibration payload.  If coverage is below
+    `_PRE_OVERRIDE_COVERAGE_WARNING_THRESHOLD`, returns a short string
+    that callers can append to ``ForecastPoint.notes``.  Empty string
+    when coverage is acceptable or calibration is absent.
+
+    The threshold 82% was chosen to flag S2301 (unemployment, ~77% raw
+    coverage) and B25064 (gross rent, ~83% raw coverage) while not
+    triggering for indicators that approach 85% after κ calibration.
+    """
+    if calibration is None:
+        return ""
+    raw_cov = (
+        calibration.get("ci90_coverage_by_indicator_method", {})
+        .get(indicator, {})
+        .get(method)
+    )
+    if raw_cov is None or not math.isfinite(raw_cov):
+        return ""
+    if raw_cov < _PRE_OVERRIDE_COVERAGE_WARNING_THRESHOLD:
+        return (
+            f"coverage_warn:raw_CI90={raw_cov:.1%}<{_PRE_OVERRIDE_COVERAGE_WARNING_THRESHOLD:.0%}"
+            f"(CI relies on SE rescaling; shape may not capture tail events)"
+        )
+    return ""
+
+
+# -----------------------------------------------------------------------------
 # v3 calibration lookup helpers
 # -----------------------------------------------------------------------------
 #
@@ -420,6 +503,14 @@ def _apply_se_override(
     if source_label:
         suffix += f"({source_label})"
     notes = f"{notes}; {suffix}" if notes else suffix
+
+    # Attach coverage warning when the raw (pre-override) CI90 coverage was
+    # materially below 90%, meaning the CI relies entirely on the SE
+    # multiplier rather than a correctly specified probability model.
+    cov_warn = _coverage_warning_note(indicator, method_key, calibration)
+    if cov_warn:
+        notes = f"{notes}; {cov_warn}"
+
     return ForecastPoint(
         point=fp.point,
         se_total=new_se_total,
@@ -690,7 +781,7 @@ def project_ensemble_multi(
     correlation_rho_inner: float = 0.7,
     correlation_rho_anchor: float = 0.5,
     populations: dict[str, int] | None = None,
-    use_ml: bool = True,
+    use_ml: bool = False,
     ml_series_by_key: dict[tuple[str, str], Sequence[AcsObservation]] | None = None,
     ml_populations: dict[str, int] | None = None,
     ml_model_cache: dict | None = None,

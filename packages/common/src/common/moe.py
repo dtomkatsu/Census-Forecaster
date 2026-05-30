@@ -186,3 +186,38 @@ def relative_se(estimate: float, moe: float) -> float:
     if math.isnan(se):
         return math.nan
     return se / abs(estimate)
+
+
+# Census Bureau CV reliability thresholds (ACS General Handbook §7).
+# CV = SE / |estimate|.  Values at or above the UNRELIABLE threshold should
+# not be published as-is; projections anchored to such estimates inherit
+# the same unreliability.
+CV_IMPRECISE_THRESHOLD: float = 0.12   # "use with caution" per Census guidance
+CV_UNRELIABLE_THRESHOLD: float = 0.40  # Census flags estimate as unreliable
+
+
+def moe_reliability_note(estimate: float, moe: float) -> str:
+    """Return a human-readable reliability note for an ACS estimate's MOE.
+
+    Returns an empty string when the input MOE meets Census quality
+    standards, or a short warning string when the CV exceeds published
+    thresholds.  Callers should append this to ``ForecastPoint.notes``.
+
+    Examples
+    --------
+    >>> moe_reliability_note(100.0, 99.0)   # CV ≈ 0.60 → unreliable
+    'input_cv=0.60(UNRELIABLE:Census flags CV>0.40)'
+    >>> moe_reliability_note(100.0, 25.0)   # CV ≈ 0.15 → imprecise
+    'input_cv=0.15(imprecise:CV>0.12)'
+    >>> moe_reliability_note(100.0, 10.0)   # CV = 0.06 → ok
+    ''
+    """
+    cv = relative_se(estimate, moe)
+    if not math.isfinite(cv):
+        # Suppressed or missing MOE — sentinel in Census data (moe < 0 or NaN).
+        return "input_moe=suppressed/missing"
+    if cv >= CV_UNRELIABLE_THRESHOLD:
+        return f"input_cv={cv:.2f}(UNRELIABLE:Census flags CV>{CV_UNRELIABLE_THRESHOLD})"
+    if cv >= CV_IMPRECISE_THRESHOLD:
+        return f"input_cv={cv:.2f}(imprecise:CV>{CV_IMPRECISE_THRESHOLD})"
+    return ""

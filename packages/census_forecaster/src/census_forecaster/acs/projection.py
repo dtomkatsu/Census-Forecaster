@@ -52,7 +52,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from common.models import AcsObservation, ForecastPoint
-from common.moe import moe_to_se, combine_se, ci_from_se, ACS_MOE_Z
+from common.moe import moe_to_se, combine_se, ci_from_se, ACS_MOE_Z, moe_reliability_note
 
 
 # -----------------------------------------------------------------------------
@@ -429,6 +429,13 @@ def project_damped_trend(
         log_target = math.log(latest.estimate) + horizon * math.log1p(-ANNUAL_RATE_CAP)
         notes = f"capped at -{ANNUAL_RATE_CAP * 100:.1f}%/yr momentum floor"
 
+    # Warn when the anchor observation's MOE is large enough to make the
+    # projection unreliable at its statistical foundation, regardless of
+    # how well the trend model is calibrated.
+    rel_note = moe_reliability_note(latest.estimate, latest.moe)
+    if rel_note:
+        notes = f"{notes}; {rel_note}" if notes else rel_note
+
     point = math.exp(log_target)
 
     # Forecast SE: residual std scaled by sqrt(h) in log space, then
@@ -571,6 +578,10 @@ def project_ar1_log_diff(
     elif implied < -ANNUAL_RATE_CAP:
         cum_log = horizon * math.log1p(-ANNUAL_RATE_CAP)
         notes = f"capped at -{ANNUAL_RATE_CAP * 100:.1f}%/yr momentum floor"
+
+    rel_note = moe_reliability_note(latest.estimate, latest.moe)
+    if rel_note:
+        notes = f"{notes}; {rel_note}" if notes else rel_note
 
     log_target = fit.last_log + cum_log
     point = math.exp(log_target)
