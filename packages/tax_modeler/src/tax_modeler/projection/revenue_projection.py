@@ -134,6 +134,26 @@ class RevenueProjection:
     b19082_top_share_projected:
         Projected B19082_005E top-quintile income share (fraction 0–1).
         ``None`` when B19082 data is unavailable.
+    b19082_status:
+        Audit string recording *why* the Phase H top-quintile concentration
+        layer was or was not applied.  One of:
+
+        * ``"applied"`` — B19082_005E data found and ``top_income_scale``
+          applied to the top brackets.
+        * ``"inactive:no_panel_data"`` — requested (``use_b19082=True``) but
+          B19082_005E is not in the bundled panel, so the projection
+          silently fell back to **uniform** income growth.  Top/median
+          divergence is **not** modeled; rebuild the panel with B19082_005E
+          to activate it.
+        * ``"inactive:error"`` — requested but the B19082 computation raised
+          (logged at debug); fell back to uniform growth.
+        * ``"skipped:custom_tax_fn"`` — a custom ``tax_fn`` was supplied, so
+          the B19082 layer was intentionally bypassed.
+        * ``"disabled"`` — ``use_b19082=False``.
+
+        Without this field, ``top_income_scale=None`` is ambiguous between a
+        genuine data gap and an intentional opt-out; consumers should check
+        ``b19082_status`` before trusting a uniform-growth revenue figure.
     """
     target_year: int
     geoid: str
@@ -157,6 +177,9 @@ class RevenueProjection:
     # B19082 top-quintile divergence (Phase H)
     top_income_scale: Optional[float]
     b19082_top_share_projected: Optional[float]
+    # Audit: why the Phase H layer was/wasn't applied (default keeps existing
+    # constructors valid; the projection function always sets it explicitly).
+    b19082_status: str = "disabled"
 
 
 # ---------------------------------------------------------------------------
@@ -311,9 +334,13 @@ def project_revenue_per_filer(
     # 4. B19082 top-quintile divergence (Phase H)
     top_income_scale: Optional[float] = None
     b19082_top_share_projected: Optional[float] = None
-    if use_b19082 and tax_fn is None:
-        # Only apply B19082 when using the default concentration model;
-        # custom tax_fn callers opt out of the B19082 layer.
+    if not use_b19082:
+        b19082_status = "disabled"
+    elif tax_fn is not None:
+        # Custom tax_fn callers opt out of the B19082 layer.
+        b19082_status = "skipped:custom_tax_fn"
+    else:
+        # Default concentration model: attempt the Phase H adjustment.
         try:
             from tax_modeler.projection.b19082_projection import (
                 compute_top_income_scale,
@@ -330,9 +357,22 @@ def project_revenue_per_filer(
                     geoid=geoid,
                     anchor_year=anchor_year,
                 )
+                b19082_status = "applied"
+            else:
+                # Requested but B19082_005E not in the bundled panel: the
+                # revenue figure below uses UNIFORM growth, not the
+                # top/median divergence the caller asked for. Surface it.
+                b19082_status = "inactive:no_panel_data"
+                logger.warning(
+                    "B19082_005E not in panel for geoid=%r; top-quintile "
+                    "concentration layer INACTIVE, using uniform growth. "
+                    "Rebuild the panel with B19082_005E to activate Phase H.",
+                    geoid,
+                )
         except Exception as exc:
             logger.debug("B19082 computation failed (%s); using uniform growth", exc)
             top_income_scale = None
+            b19082_status = "inactive:error"
 
     # 5. Revenue + delta-method SE
     if top_income_scale is not None:
@@ -388,6 +428,7 @@ def project_revenue_per_filer(
         revenue_growth_pct=revenue_growth_pct,
         top_income_scale=top_income_scale,
         b19082_top_share_projected=b19082_top_share_projected,
+        b19082_status=b19082_status,
     )
     logger.info(
         "Revenue projection [%s/%s → %d]: income=%.0f (±%.0f) "

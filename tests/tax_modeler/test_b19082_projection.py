@@ -522,6 +522,89 @@ class TestPhaseHIntegration:
 
 
 # ---------------------------------------------------------------------------
+# 5b. Phase H status auditability — b19082_status field
+# ---------------------------------------------------------------------------
+
+class TestPhaseHStatus:
+    """The b19082_status field disambiguates *why* the layer is/ isn't applied."""
+
+    def test_status_applied_when_data_present(self):
+        from tax_modeler.projection.revenue_projection import project_revenue_per_filer
+
+        series = _make_series(2015, 2022, base_pct=51.0, drift=0.1)
+        with patch(
+            "tax_modeler.projection.b19082_projection._load_b19082_series",
+            return_value=series,
+        ):
+            proj = project_revenue_per_filer(
+                target_year=2026, geoid="15003", use_b19082=True
+            )
+        assert proj is not None
+        assert proj.b19082_status == "applied"
+        assert proj.top_income_scale is not None
+
+    def test_status_inactive_no_panel_data(self):
+        """Requested but data absent → explicit no_panel_data status, not silent."""
+        from tax_modeler.projection.revenue_projection import project_revenue_per_filer
+
+        with patch(
+            "tax_modeler.projection.b19082_projection._load_b19082_series",
+            return_value=(),
+        ):
+            proj = project_revenue_per_filer(
+                target_year=2026, geoid="15003", use_b19082=True
+            )
+        assert proj is not None
+        assert proj.b19082_status == "inactive:no_panel_data"
+        assert proj.top_income_scale is None
+
+    def test_status_disabled_when_use_b19082_false(self):
+        from tax_modeler.projection.revenue_projection import project_revenue_per_filer
+
+        proj = project_revenue_per_filer(
+            target_year=2026, geoid="15003", use_b19082=False
+        )
+        assert proj is not None
+        assert proj.b19082_status == "disabled"
+
+    def test_status_skipped_for_custom_tax_fn(self):
+        from tax_modeler.projection.revenue_projection import project_revenue_per_filer
+
+        proj = project_revenue_per_filer(
+            target_year=2026, geoid="15003", tax_fn=lambda y: y * 0.05, use_b19082=True
+        )
+        assert proj is not None
+        assert proj.b19082_status == "skipped:custom_tax_fn"
+
+    def test_status_inactive_on_error(self):
+        from tax_modeler.projection.revenue_projection import project_revenue_per_filer
+
+        def _raise(*args, **kwargs):
+            raise RuntimeError("Simulated B19082 failure")
+
+        with patch(
+            "tax_modeler.projection.b19082_projection._load_b19082_series",
+            side_effect=_raise,
+        ):
+            proj = project_revenue_per_filer(
+                target_year=2026, geoid="15003", use_b19082=True
+            )
+        assert proj is not None
+        assert proj.b19082_status == "inactive:error"
+        assert proj.top_income_scale is None
+
+    def test_default_production_path_reports_no_panel_data(self):
+        """End-to-end: the bundled panel lacks B19082, so the real default
+        projection must report inactive:no_panel_data (or applied if a future
+        panel rebuild adds it)."""
+        from tax_modeler.projection.revenue_projection import project_revenue_2026
+
+        proj = project_revenue_2026(use_b19082=True)
+        assert proj is not None
+        assert proj.b19082_status in {"applied", "inactive:no_panel_data"}
+
+
+# ---------------------------------------------------------------------------
 # 6. Phase H ship gates
 # ---------------------------------------------------------------------------
 
