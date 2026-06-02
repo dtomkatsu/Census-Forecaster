@@ -71,14 +71,26 @@ DEFAULT_FIXTURE_DIR = REPO_ROOT / "tests" / "tax_modeler" / "fixtures"
 # ---------------------------------------------------------------------------
 
 
+def _replicate_weight_cols(prefix: str = "WGTP", n: int = 80) -> list[str]:
+    """ACS replicate-weight column names, ``WGTP1`` .. ``WGTP80`` by default."""
+    return [f"{prefix}{i}" for i in range(1, n + 1)]
+
+
 def _load_units(
-    pums_data_dir: Optional[Path], use_fixture: bool
+    pums_data_dir: Optional[Path],
+    use_fixture: bool,
+    *,
+    with_replicate_weights: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Build enriched, taxed tax units with HI EITC + geography assigned.
 
     Returns ``(units, persons)``. The ``persons`` frame is returned so
     downstream SPM-unit assembly can read RELSHIPP, AGEP, and WGTP
     directly from PUMS.
+
+    When ``with_replicate_weights`` is set, the 80 ACS household replicate
+    weights (``WGTP1`` .. ``WGTP80``) are also broadcast from households
+    onto persons so SDR sampling-variance can be computed downstream.
     """
     from tax_modeler.pipeline import enrich_for_credits
     from tax_modeler.units.constructor import TaxUnitConstructor
@@ -115,25 +127,35 @@ def _load_units(
         households = _coalesce(households)
         persons = _coalesce(persons)
 
-    # Broadcast WGTP from households onto persons so the SPM aggregator
     # can pick up the household weight without re-joining downstream. The
-    # 80 replicate weights (WGTP1..WGTP80) are broadcast alongside when
-    # present so SDR variance estimation downstream sees them on persons.
-    weight_cols_to_broadcast = [
-        c for c in ["WGTP"] + [f"WGTP{i}" for i in range(1, 81)]
-        if c in households.columns and c not in persons.columns
-    ]
-    if weight_cols_to_broadcast:
+    # 80 replicate weights (WGTP1..WGTP80) are broadcast alongside only when
+    # ``with_replicate_weights`` is set, so SDR variance estimation downstream
+    # sees them on persons.
+    broadcast_cols = []
+    if "WGTP" not in persons.columns and "WGTP" in households.columns:
+        broadcast_cols.append("WGTP")
+    if with_replicate_weights:
+        rep_cols = [
+            c for c in _replicate_weight_cols()
+            if c in households.columns and c not in persons.columns
+        ]
+        if not rep_cols:
+            raise FileNotFoundError(
+                "--replicate-se requested but no WGTP1..80 replicate-weight "
+                "columns are present on the household frame. Re-export PUMS "
+                "with replicate weights (psam_h15 must carry WGTP1..WGTP80)."
+            )
+        broadcast_cols.extend(rep_cols)
+    if broadcast_cols:
         persons = persons.merge(
-            households[["SERIALNO", *weight_cols_to_broadcast]]
-            .drop_duplicates(subset=["SERIALNO"]),
+            households[["SERIALNO", *broadcast_cols]].drop_duplicates(subset=["SERIALNO"]),
             how="left", on="SERIALNO",
         )
         LOG.info(
             "Broadcast %d weight column(s) from households onto persons "
             "(replicate weights present: %s)",
-            len(weight_cols_to_broadcast),
-            any(c.startswith("WGTP") and c != "WGTP" for c in weight_cols_to_broadcast),
+            len(broadcast_cols),
+            any(c.startswith("WGTP") and c != "WGTP" for c in broadcast_cols),
         )
 
     ctor = TaxUnitConstructor(
@@ -150,7 +172,9 @@ def _build_units_for_tax_year(
     units: pd.DataFrame,
     tax_year: int,
     project: bool,
+    *,
     eitc_poverty_alpha: float = 0.5,
+    use_cbo_aging: bool = False,
 ) -> pd.DataFrame:
     """Compute base tax (federal CTC/EITC) for a given year.
 
@@ -162,6 +186,14 @@ def _build_units_for_tax_year(
     ``eitc_poverty_alpha`` is the elasticity exponent passed through to
     :func:`scale_eitc_for_poverty` inside :func:`project_tax_units_forward`.
     Only meaningful when ``project=True``.
+
+    When ``project`` is True, income is aged to ``tax_year``. With
+    ``use_cbo_aging=True`` the aging uses CBO per-component growth (the same
+    engine the revenue path uses), so a reform's revenue score and its poverty
+    score are computed on one coherent aged income distribution; otherwise the
+    legacy county-scalar B19013 growth is used. Geography is preserved either
+    way. ``use_cbo_aging`` is a no-op when ``project`` is False (TY2022 base,
+    no aging).
     """
     from tax_modeler.pipeline import compute_base_tax
 
@@ -170,6 +202,7 @@ def _build_units_for_tax_year(
         out = project_tax_units_forward(
             units, target_year=tax_year,
             eitc_poverty_alpha=eitc_poverty_alpha,
+            use_cbo_aging=use_cbo_aging,
         )
     else:
         out = compute_base_tax(units, tax_year=tax_year)
@@ -335,6 +368,38 @@ def _apply_arpa_ctc(units: pd.DataFrame) -> pd.DataFrame:
     return arpa_ctc_for_tax_units(units)
 
 
+def _apply_eitc_reweight(units: pd.DataFrame) -> pd.DataFrame:
+    """Lever 3a: up-weight EITC-eligible units in short with-children buckets.
+
+    The microsimulation under-produces EITC-eligible 1-/2-qualifying-child tax
+    units relative to IRS SOI Hawaii (~0.74 / ~0.77 of the by-children targets);
+    a take-up truncation can cap over-produced buckets but cannot fill short
+    ones. This reweight lifts the short buckets to their IRS targets *before*
+    ``_apply_credit_takeup``, so the stratified take-up then trims each bucket to
+    its IRS share and the EITC childless-claimer share lands at IRS Hawaii's
+    31.7% (vs ~36% with take-up alone).
+
+    Surgical: only EITC-eligible units in short buckets are up-weighted, no
+    compensating down-weights. Measured drift (TY2025 PUMS): ~+1.5% tax-unit
+    weight, ~+0.2% HI net revenue — all on low-income filers. The SPM-unit
+    weight used for poverty accounting is the household WGTP, re-derived
+    independent of the tax-unit ``weight`` this edits.
+    """
+    from tax_modeler.calibration.eitc_reweight import (
+        reweight_eitc_eligibles_by_children,
+    )
+    out, info = reweight_eitc_eligibles_by_children(units)
+    before, after = info["total_weight_before"], info["total_weight_after"]
+    factors = {k: round(v["factor"], 3) for k, v in info["buckets"].items()}
+    LOG.info(
+        "EITC by-children reweight: up-weighted buckets %s; tax-unit weight "
+        "%.0f -> %.0f (%+.2f%%)",
+        factors or "none (no short bucket)", before, after,
+        (100.0 * (after - before) / before) if before else 0.0,
+    )
+    return out
+
+
 def _apply_credit_takeup(
     units: pd.DataFrame,
     *,
@@ -384,6 +449,17 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                         "Defaults to the synthetic fixture.")
     p.add_argument("--use-fixture", action="store_true",
                    help="Force use of the synthetic PUMS fixture.")
+    p.add_argument("--cbo-aging", action=argparse.BooleanOptionalAction, default=True,
+                   help="(Default ON.) When projecting to a future tax year, "
+                        "age income with CBO per-component growth — the same "
+                        "engine the revenue path uses — instead of the legacy "
+                        "county-scalar B19013 growth. Puts the poverty/"
+                        "distributional results on the same aged income "
+                        "distribution as the revenue forecast (coherence). "
+                        "Trades county growth differentiation for income-type "
+                        "differentiation; geography is preserved. Pass "
+                        "--no-cbo-aging for the legacy county-scalar path. "
+                        "No-op for --tax-year 2022 (base year, no aging).")
     p.add_argument("--apply-snap", action="store_true", default=True,
                    help="(Default ON.) Compute + take-up-impute SNAP before "
                         "the SPM computation. Use --no-apply-snap to disable.")
@@ -395,6 +471,17 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                         "*receipt*, not *eligibility*. Use "
                         "--no-apply-credit-takeup to disable.")
     p.add_argument("--no-apply-credit-takeup", dest="apply_credit_takeup",
+                   action="store_false", help=argparse.SUPPRESS)
+    p.add_argument("--reweight-eitc-by-children", action="store_true", default=True,
+                   help="(Default ON.) Lever 3a: up-weight EITC-eligible units "
+                        "in short with-children buckets (1-/2-kid) to IRS "
+                        "by-children targets before take-up, so the EITC "
+                        "childless-claimer share matches IRS Hawaii (31.7%%) "
+                        "rather than the ~36%% the take-up truncation alone "
+                        "yields. Adds ~1.5%% tax-unit weight on low-income "
+                        "filers (~+0.2%% HI net revenue). Use "
+                        "--no-reweight-eitc-by-children to disable.")
+    p.add_argument("--no-reweight-eitc-by-children", dest="reweight_eitc_by_children",
                    action="store_false", help=argparse.SUPPRESS)
     p.add_argument("--apply-moop", action="store_true", default=True,
                    help="(Default ON.) Impute MOOP (medical out-of-pocket) "
@@ -453,6 +540,16 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                    help="(Default OFF.) Rake unit weights so per-HD totals "
                         "match IRS SOI ZIP filer counts, holding PUMA "
                         "marginals fixed. Tightens district-level uncertainty.")
+    p.add_argument("--replicate-se", action="store_true", default=False,
+                   help="(Default OFF.) Compute ACS successive-difference-"
+                        "replication (SDR) sampling standard errors + 90%% "
+                        "confidence intervals for the headline poverty "
+                        "statistics, using the 80 household replicate weights "
+                        "(WGTP1..80). Writes by_state_se.csv + by_county_se.csv "
+                        "and prints CIs in the summary. Requires SPM-unit mode "
+                        "(incompatible with --by-tax-unit) and a PUMS export "
+                        "carrying the replicate weights. Captures SAMPLING "
+                        "variance only — not model/imputation uncertainty.")
     p.add_argument("--hi-ctc-takeup-rate", type=float, default=0.70,
                    help="Take-up rate applied to every hi_ctc_<NNN> "
                         "expansion increment. Default 0.70 (Hawaii-empirical "
@@ -648,16 +745,46 @@ def _narrative_for_scenario(
     return ""
 
 
-def _print_summary(*, tax_year: int, by_state: pd.DataFrame, scenarios: tuple[str, ...]) -> None:
+def _print_summary(
+    *,
+    tax_year: int,
+    by_state: pd.DataFrame,
+    scenarios: tuple[str, ...],
+    sdr_state: Optional[pd.DataFrame] = None,
+) -> None:
     s = by_state.iloc[0]
+    se = sdr_state.iloc[0] if sdr_state is not None and not sdr_state.empty else None
+
+    def _ci(metric: str, scale: float = 1.0, unit: str = "") -> str:
+        """Format ``[low, high] (±moe)`` for a metric, or '' if no SDR."""
+        if se is None:
+            return ""
+        lo = se.get(f"{metric}_ci90_low")
+        hi = se.get(f"{metric}_ci90_high")
+        std = se.get(f"{metric}_se")
+        if lo is None or hi is None or std is None:
+            return ""
+        return (f"   90% CI [{unit}{lo * scale:,.1f}, {unit}{hi * scale:,.1f}]"
+                f" (±{unit}{1.645 * std * scale:,.1f})")
+
     print()
     print(f"=== TY {tax_year} Hawaii poverty impact ===")
     rate = s["poverty_rate_baseline"]
     persons_total = s["weighted_persons"]
     persons_poor = s["persons_in_poverty_baseline"]
-    print(f"  Baseline SPM poverty rate         : {rate * 100:>14.2f}%")
-    print(f"  Persons in poverty (baseline)     : {persons_poor:>15,.0f}")
+    rate_ci = ""
+    if se is not None:
+        lo = se.get("poverty_rate_baseline_ci90_low")
+        hi = se.get("poverty_rate_baseline_ci90_high")
+        if lo is not None and hi is not None:
+            rate_ci = f"   90% CI [{lo * 100:.2f}%, {hi * 100:.2f}%]"
+    print(f"  Baseline SPM poverty rate         : {rate * 100:>14.2f}%{rate_ci}")
+    print(f"  Persons in poverty (baseline)     : {persons_poor:>15,.0f}"
+          f"{_ci('persons_in_poverty_baseline')}")
     print(f"  Weighted persons (state)          : {persons_total:>15,.0f}")
+    if se is not None:
+        print("  (CIs reflect ACS sampling variance only — SDR, R=80; "
+              "they EXCLUDE model/imputation/take-up/aging uncertainty.)")
     print()
     # Baseline narrative — sets the human-impact frame before scenarios run.
     poor_int = int(round(float(persons_poor)))
@@ -681,6 +808,8 @@ def _print_summary(*, tax_year: int, by_state: pd.DataFrame, scenarios: tuple[st
         "no_credits":        "Persons lifted by ALL three credits (joint)",
         "expanded_ctc_2021": "Additional lift if ARPA-style CTC restored",
         "hi_eitc_100pct":    "Additional lift if HI EITC → 100% of federal",
+        "hi_eitc_revert_20": "Additional poverty if HI EITC reverts to 20% of federal",
+        "hi_ctc_650":        "Additional lift if HI enacts $650/child CTC",
         "rxkids_hi":         "Additional lift if HI enacts RxKids cash program",
     }
     _hi_ctc_re = re.compile(r"^hi_ctc_(\d+)$")
@@ -694,7 +823,7 @@ def _print_summary(*, tax_year: int, by_state: pd.DataFrame, scenarios: tuple[st
         else:
             label = label_map.get(scn, scn)
         sign = "+" if not scn.startswith("no_") else ""
-        print(f"  {label:<48} : {sign}{s[col]:>14,.0f}")
+        print(f"  {label:<48} : {sign}{s[col]:>14,.0f}{_ci(col)}")
         # Appleseed-register narrative (skipped silently if no template
         # or zero lift). SE / param_range columns are pulled inline so the
         # narrative reflects whatever uncertainty data is present on the row.
@@ -715,14 +844,21 @@ def _print_summary(*, tax_year: int, by_state: pd.DataFrame, scenarios: tuple[st
             print()
     print()
     gap_baseline_m = s["poverty_gap_baseline_$"] / 1e6
-    print(f"  Baseline poverty gap              : ${gap_baseline_m:>14,.1f}M")
+    print(f"  Baseline poverty gap              : ${gap_baseline_m:>14,.1f}M"
+          f"{_ci('poverty_gap_baseline_$', scale=1e-6, unit='$')}")
     for scn in scenarios:
         col = f"gap_closed_{scn}_$"
         if col not in s.index:
             continue
-        label = label_map.get(scn, scn).replace("Persons lifted by", "Gap closed by").replace("Additional lift", "Additional gap closed")
+        label = (
+            label_map.get(scn, scn)
+            .replace("Persons lifted by", "Gap closed by")
+            .replace("Additional lift", "Additional gap closed")
+            .replace("Additional poverty", "Additional poverty gap")
+        )
         sign = "+" if not scn.startswith("no_") else ""
-        print(f"  {label:<48} : {sign}${s[col] / 1e6:>13,.1f}M")
+        print(f"  {label:<48} : {sign}${s[col] / 1e6:>13,.1f}M"
+              f"{_ci(col, scale=1e-6, unit='$')}")
     print()
 
 
@@ -736,10 +872,19 @@ def main(argv: Optional[list] = None) -> int:
     if args.tax_year not in {2022, 2023, 2024, 2025}:
         LOG.error("--tax-year must be one of {2022, 2023, 2024, 2025}; got %d", args.tax_year)
         return 2
+    if args.replicate_se and args.by_tax_unit:
+        LOG.error(
+            "--replicate-se requires SPM-unit mode; it is incompatible with "
+            "--by-tax-unit. Drop --by-tax-unit to compute SDR sampling SEs."
+        )
+        return 2
     args.out.mkdir(parents=True, exist_ok=True)
 
     # 1. Build base units + load persons frame (needed for SPM unit assembly).
-    base_units, persons = _load_units(args.pums_data_dir, args.use_fixture)
+    base_units, persons = _load_units(
+        args.pums_data_dir, args.use_fixture,
+        with_replicate_weights=args.replicate_se,
+    )
 
     # 1b. Attach SPM unit IDs to both frames using PUMS RELSHIPP/AGEP per
     #     Census P60-280. Done early so the spm_unit_id column rides
@@ -756,7 +901,17 @@ def main(argv: Optional[list] = None) -> int:
     units = _build_units_for_tax_year(
         base_units, args.tax_year, project=project_required,
         eitc_poverty_alpha=args.eitc_poverty_alpha,
+        use_cbo_aging=args.cbo_aging,
     )
+
+    # 2b. Lever 3a: EITC by-children reweight. Up-weights EITC-eligible units in
+    #     short with-children buckets to IRS by-children targets *before*
+    #     take-up, so the stratified truncation in step 3 yields the IRS
+    #     childless-claimer share (31.7%) instead of ~36%. Tax-unit weight only;
+    #     SPM poverty (WGTP-weighted) sees only the indirect benefit-take-up
+    #     selection shift, not a direct weight change.
+    if args.reweight_eitc_by_children:
+        units = _apply_eitc_reweight(units)
 
     # 3. IRS-anchored take-up: rank-and-truncate EITC/ACTC eligibles to
     #    actual SOI claim counts. Must run *before* ARPA CTC counterfactual
@@ -856,7 +1011,13 @@ def main(argv: Optional[list] = None) -> int:
         poverty_frame = units
     else:
         from tax_modeler.poverty.spm_aggregation import aggregate_to_spm_units
-        poverty_frame = aggregate_to_spm_units(units, persons)
+        rep_cols = (
+            [c for c in _replicate_weight_cols() if c in persons.columns]
+            if args.replicate_se else None
+        )
+        poverty_frame = aggregate_to_spm_units(
+            units, persons, replicate_weight_cols=rep_cols
+        )
         LOG.info(
             "Aggregated %d tax units -> %d SPM units (P60-280 RELSHIPP rules).",
             len(units), len(poverty_frame),
@@ -950,8 +1111,34 @@ def main(argv: Optional[list] = None) -> int:
     by_ht_out.to_csv(args.out / "by_household_type.csv", index=False)
     LOG.info("Wrote 5 poverty-impact CSVs to %s", args.out)
 
+    # 9b. SDR sampling standard errors + 90% CIs (ACS replicate weights).
+    #     State + county only — district point estimates already carry the
+    #     deterministic-hash ~±20% caveat, so a sampling-only SE there would
+    #     understate true uncertainty and mislead.
+    sdr_state = None
+    if args.replicate_se:
+        from tax_modeler.poverty.uncertainty import compute_poverty_sdr
+        rep_cols = [c for c in _replicate_weight_cols() if c in result.units.columns]
+        sdr_state = compute_poverty_sdr(
+            result.units, replicate_weight_cols=rep_cols,
+            scenarios=result.scenarios, group_col=None,
+        )
+        sdr_county = compute_poverty_sdr(
+            result.units, replicate_weight_cols=rep_cols,
+            scenarios=result.scenarios, group_col="county",
+        )
+        sdr_state.to_csv(args.out / "by_state_se.csv", index=False)
+        sdr_county.to_csv(args.out / "by_county_se.csv", index=False)
+        LOG.info(
+            "Wrote SDR sampling SE/CI CSVs (R=%d replicate weights) to %s",
+            len(rep_cols), args.out,
+        )
+
     # 10. Summary block.
-    _print_summary(tax_year=args.tax_year, by_state=result.by_state, scenarios=result.scenarios)
+    _print_summary(
+        tax_year=args.tax_year, by_state=result.by_state,
+        scenarios=result.scenarios, sdr_state=sdr_state,
+    )
 
     if result.notes:
         print("Notes:")

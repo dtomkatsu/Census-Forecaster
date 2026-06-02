@@ -49,6 +49,8 @@ from typing import Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from tax_modeler.calibration.cbo_aging import net_growth_factor
+
 logger = logging.getLogger(__name__)
 
 
@@ -156,13 +158,11 @@ def _component_growth_factor(
     """Composition-weighted CBO growth factor for one bracket/tier.
 
     Mirrors the formula used by ``cbo_aging.age_filers_with_components`` and
-    ``soi_top_anchor._aged_tier_avg_agi``: ``net_factor = cbo_f * hi_f`` for
-    each component, weighted by composition share, summed.
-
-    NOTE: This differs from a "HI grows at hi_f × national rate" formula
-    (which would be ``1 + hi_f * (cbo_f - 1)``). Using the same convention
-    as the downstream synthesis ensures stage-2 reweighting targets are
-    consistent with what the SOI anchor + CBO aging produce, so the IPF
+    ``soi_top_anchor._aged_tier_avg_agi`` via the shared
+    ``cbo_aging.net_growth_factor`` helper (Hawaii factor applied to the growth
+    increment), weighted by composition share and summed. Using the *same*
+    convention as the downstream synthesis ensures stage-2 reweighting targets
+    are consistent with what the SOI anchor + CBO aging produce, so the IPF
     doesn't fight itself.
     """
     if year == base_year:
@@ -173,7 +173,7 @@ def _component_growth_factor(
             continue
         cbo_factor = cbo_rates.factor(component, year)
         hi_factor = hawaii_factors.get(component, 1.0)
-        net_factor = cbo_factor * hi_factor
+        net_factor = net_growth_factor(cbo_factor, hi_factor)
         factor += share * net_factor
     return factor
 

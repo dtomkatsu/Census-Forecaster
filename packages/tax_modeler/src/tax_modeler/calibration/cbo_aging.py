@@ -79,6 +79,25 @@ DEFAULT_HAWAII_FACTORS: Dict[str, float] = {
 }
 
 
+def net_growth_factor(cbo_f: float, hi_f: float) -> float:
+    """Combine a CBO national growth factor with its Hawaii calibration ratio.
+
+    The Hawaii factor is a CAGR *ratio* (e.g. wages 0.85 = "HI wage CAGR ~85%
+    of national", per ``DEFAULT_HAWAII_FACTORS``), so it scales the growth
+    *increment*, not the level::
+
+        net = 1 + hi_f * (cbo_f - 1)
+
+    Applying it as a level multiplier (``cbo_f * hi_f``) is a units error — it
+    misreads a rate ratio as a level ratio and can imply Hawaii income shrinks
+    while the nation grows (e.g. ``0.85 * 1.149 = 0.976 < 1``). Centralized so
+    the filer-aging engine, the SOI top anchor, and the forward AGI targets
+    stay on one convention; mixing them makes the stage-2 IPF rake fight
+    itself.
+    """
+    return 1.0 + hi_f * (cbo_f - 1.0)
+
+
 @dataclass(frozen=True)
 class CBOComponentRates:
     """CBO per-component nominal growth factors keyed by (component, year).
@@ -319,7 +338,7 @@ def age_filers_with_components(
     for comp, amt in components.items():
         cbo_f = cbo_rates.factor(comp, target_year)
         hi_f = hawaii_factors.get(comp, 1.0)
-        net_f = cbo_f * hi_f
+        net_f = net_growth_factor(cbo_f, hi_f)
         aged_amt = amt * net_f
         out[f"cbo_aged_{comp}"] = aged_amt
         aged_total = aged_total + aged_amt
@@ -384,7 +403,7 @@ def age_filers_with_components(
                     hi_f = hawaii_factors.get(comp, 1.0)
                     logger.info(
                         "  $1M+ %-13s: $%6.0fM aged (factor=%.3f × HI %.2f = %.3f)",
-                        comp, top_M, cbo_f, hi_f, cbo_f * hi_f,
+                        comp, top_M, cbo_f, hi_f, net_growth_factor(cbo_f, hi_f),
                     )
 
     return out

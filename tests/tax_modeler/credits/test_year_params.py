@@ -24,8 +24,8 @@ from tax_modeler.credits.ctc import (
 
 # Two qualifying children, valid PUMS-style relationship + citizenship codes.
 _TWO_KID_DEPS = [
-    {'age': 8, 'relationship': 22, 'citizenship': 1},
-    {'age': 12, 'relationship': 22, 'citizenship': 1},
+    {'age': 8, 'relationship': 25, 'citizenship': 1},
+    {'age': 12, 'relationship': 25, 'citizenship': 1},
 ]
 
 

@@ -18,6 +18,8 @@ from pathlib import Path
 import pandas as pd
 from typing import Optional, Dict, Any, List, Tuple, Set
 
+from tax_modeler.units.relshipp_codes import PARENT, PARENT_IN_LAW
+
 logger = logging.getLogger(__name__)
 
 # Config file location
@@ -179,7 +181,8 @@ def dependent_based_rules(household: List[Dict[str, Any]], adult1: Dict[str, Any
     
     # No children - check other dependent situations
     has_elderly_dependent = any(
-        int(p.get('AGEP', 0)) > 65 and int(p.get('RELSHIPP', 0)) in [3, 4] 
+        int(p.get('AGEP', 0)) > 65
+        and int(p.get('RELSHIPP', 0)) in {PARENT, PARENT_IN_LAW}
         for p in household
     )
     

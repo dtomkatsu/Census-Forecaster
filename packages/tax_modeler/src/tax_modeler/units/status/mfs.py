@@ -146,33 +146,25 @@ def _are_married(person1: pd.Series, person2: pd.Series) -> bool:
     STRICT VALIDATION: Only identifies actual married couples based on PUMS relationship codes.
     This prevents incorrect pairing of unrelated married adults.
     
-    In PUMS data:
+    In canonical PUMS RELSHIPP data:
     - RELSHIPP=20 is householder
-    - RELSHIPP=21 is spouse
-    
-    In test data:
-    - RELSHIPP=1 is householder
-    - RELSHIPP=2 is spouse
+    - RELSHIPP=21 is opposite-sex spouse, 23 is same-sex spouse
     """
     # Get MAR and RELSHIPP values
     mar1 = person1.get('MAR', -1)
     mar2 = person2.get('MAR', -1)
     rel1 = person1.get('RELSHIPP', 0)
     rel2 = person2.get('RELSHIPP', 0)
-    
+
     # Both must be marked as married
     if mar1 != 1 or mar2 != 1:
         return False
-        
-    # STRICT CHECK: Only allow traditional householder + spouse patterns
-    # This prevents incorrect pairing of unrelated married adults in the same household
+
+    # STRICT CHECK: Only allow householder + spouse patterns. This prevents
+    # incorrect pairing of unrelated married adults in the same household.
     return (
-        # PUMS data codes: householder + spouse
-        (rel1 == 20 and rel2 == 21) or 
-        (rel1 == 21 and rel2 == 20) or
-        # Test data codes: householder + spouse
-        (rel1 == 1 and rel2 == 2) or
-        (rel1 == 2 and rel2 == 1)
+        (rel1 == 20 and rel2 in {21, 23}) or
+        (rel2 == 20 and rel1 in {21, 23})
     )
 
 def _calculate_income(person: pd.Series) -> float:

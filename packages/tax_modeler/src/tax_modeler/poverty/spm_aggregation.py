@@ -78,6 +78,12 @@ _SUM_COLS: tuple[str, ...] = (
     "work_expense_amount",
     # Hypothetical programs
     "rxkids_amount",
+    # Behavioral-response scenario columns (see
+    # tax_modeler.scenarios.eitc_labor_response). Summed so the LFP-exit
+    # resource loss aggregates correctly across multi-tax-unit SPM units.
+    "lfp_behavioral_resource_loss",
+    "lfp_behavioral_snap_offset",
+    "intensive_resource_loss",
     # Counts
     "num_dependents",
     "num_qualifying_children",
@@ -144,6 +150,7 @@ def aggregate_to_spm_units(
     sum_cols: Iterable[str] | None = None,
     representative_cols: Iterable[str] | None = None,
     include_replicate_weights: bool = True,
+    replicate_weight_cols: Iterable[str] | None = None,
 ) -> pd.DataFrame:
     """Roll tax units up to SPM units.
 
@@ -153,6 +160,12 @@ def aggregate_to_spm_units(
 
     Tax units with null ``spm_unit_id`` (group quarters, unknown
     RELSHIPP) are dropped.
+
+    ``replicate_weight_cols`` (e.g. ``["WGTP1", ..., "WGTP80"]``), if
+    supplied, are carried onto the output per SPM unit alongside the
+    full-sample ``weight`` so the result can be SDR-variance'd for ACS
+    sampling uncertainty. They must already be present on ``persons``
+    (broadcast from the household frame).
     """
     if spm_unit_id_col not in tax_units.columns:
         raise DataValidationError(
@@ -254,6 +267,14 @@ def aggregate_to_spm_units(
     # weights as WGTP1..WGTP80 for variance estimation via SDR. If they are
     # present on the source frame, roll them up identically to the main
     # WGTP — first value per SPM unit (they are household-constant).
+    #
+    # Two emission modes coexist:
+    #   * ``include_replicate_weights`` (default): auto-detect WGTP1..80 on the
+    #     source frame and emit canonical ``weight_r01..weight_r80`` — consumed
+    #     by impact._detect_replicate_weight_cols / hi_eitc_takeup_estimate.
+    #   * ``replicate_weight_cols``: explicit column list emitted verbatim
+    #     (names preserved) for tax_modeler.poverty.uncertainty SDR re-aggregation.
+    # Column names never collide (weight_r## vs WGTP#), so both may run.
     replicate_per_spm: dict[str, pd.Series] = {}
     if include_replicate_weights:
         for r in range(1, N_REPLICATES + 1):
@@ -268,6 +289,20 @@ def aggregate_to_spm_units(
                     .rename(out_col)
                 )
 
+    rep_wt_set = list(replicate_weight_cols) if replicate_weight_cols is not None else []
+    rep_weights = None
+    if rep_wt_set:
+        missing = [c for c in rep_wt_set if c not in pers.columns]
+        if missing:
+            raise DataValidationError(
+                "aggregate_to_spm_units: replicate_weight_cols not found on "
+                f"persons: {missing[:5]}. Broadcast them from households first."
+            )
+        rep_weights = (
+            pers.groupby(spm_unit_id_col, dropna=False, sort=False)[rep_wt_set]
+            .first()
+        )
+
     # ---- 5. Audit columns
     n_tax_units = (
         tu.groupby(spm_unit_id_col, dropna=False, sort=False).size().rename("n_tax_units_pooled")
@@ -278,12 +313,13 @@ def aggregate_to_spm_units(
         sums.join(reps, how="left")
         .join(composition, how="left")
         .join(wgtp_per_spm, how="left")
-        .join(n_tax_units, how="left")
     )
     if replicate_per_spm:
         rep_df = pd.concat(replicate_per_spm.values(), axis=1)
         out = out.join(rep_df, how="left")
-    out = out.reset_index()
+    if rep_weights is not None:
+        out = out.join(rep_weights, how="left")
+    out = out.join(n_tax_units, how="left").reset_index()
 
     # ---- 7. Derive spm-unit filing status proxy (for by_household_type)
     out["filing_status"] = [

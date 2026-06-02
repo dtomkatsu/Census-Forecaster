@@ -9,9 +9,9 @@ import pandas as pd
 import numpy as np
 from tax_modeler.units.status.hoh import is_head_of_household, _is_unmarried, _has_qualifying_person, _paid_half_home_cost
 
-# Test data — RELSHIPP uses post-2018 PUMS integer codes:
-#   20 = Reference person, 21 = Spouse, 22-25 = Child/grandchild,
-#   27 = Parent, 30 = Other relative, 36 = Roommate, 34 = Foster child.
+# Test data — RELSHIPP uses canonical Census 2019+ PUMS integer codes:
+#   20 = Reference person, 21 = Spouse, 25 = Biological child,
+#   29 = Parent, 35 = Foster child, 36 = Other nonrelative.
 def create_test_household():
     """Create a test household with various members."""
     # Create household members
@@ -19,11 +19,11 @@ def create_test_household():
         # Potential HOH - unmarried, has qualifying child
         {'SERIALNO': '1', 'SPORDER': '1', 'AGEP': 35, 'SEX': 1, 'MAR': 5, 'RELSHIPP': 20, 'HINCP': 40000, 'PAP': 0},
         # Qualifying child (biological child of householder)
-        {'SERIALNO': '1', 'SPORDER': '2', 'AGEP': 10, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 22, 'HINCP': 0, 'PAP': 0},
-        # Non-qualifying person (unrelated adult — roommate)
+        {'SERIALNO': '1', 'SPORDER': '2', 'AGEP': 10, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 25, 'HINCP': 0, 'PAP': 0},
+        # Non-qualifying person (unrelated adult — other nonrelative)
         {'SERIALNO': '1', 'SPORDER': '3', 'AGEP': 25, 'SEX': 2, 'MAR': 0, 'RELSHIPP': 36, 'HINCP': 20000, 'PAP': 0},
         # Qualifying relative (elderly parent)
-        {'SERIALNO': '1', 'SPORDER': '4', 'AGEP': 70, 'SEX': 2, 'MAR': 3, 'RELSHIPP': 27, 'HINCP': 5000, 'PAP': 0},
+        {'SERIALNO': '1', 'SPORDER': '4', 'AGEP': 70, 'SEX': 2, 'MAR': 3, 'RELSHIPP': 29, 'HINCP': 5000, 'PAP': 0},
     ]
     
     # Create DataFrame and set index

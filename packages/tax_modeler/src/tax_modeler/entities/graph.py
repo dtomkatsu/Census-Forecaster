@@ -15,6 +15,7 @@ from typing import Iterator, List, Optional
 import pandas as pd
 
 from tax_modeler.errors import DataValidationError
+from tax_modeler.units.relshipp_codes import SPM_PRIMARY, SPM_UNRELATED
 
 
 # ---------------------------------------------------------------------------
@@ -254,16 +255,13 @@ class EntityGraph:
     # produces this proper grouping. Without ``person_df`` it falls back
     # to the 1-per-household placeholder.
     #
-    # PUMS RELSHIPP codes used:
-    #   20 householder            33 unmarried partner       34 foster child
-    #   21-30, 32 family/related  31 roomer/boarder
-    #   35 other nonrelative      36-37 group quarters
-
-    _PRIMARY_SPM_RELSHIPP = frozenset({
-        20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30,  # householder + family
-        33, 34,                                        # unmarried partner, foster
-    })
-    _UNRELATED_RELSHIPP = frozenset({31, 32, 35})
+    # Canonical Census 2019+ RELSHIPP grouping (see
+    # tax_modeler.units.relshipp_codes): householder + spouses + unmarried
+    # partners + all blood/marriage relatives + foster children pool into the
+    # primary SPM unit; roommates (34) and other nonrelatives (36) split off;
+    # group quarters (37, 38) are excluded.
+    _PRIMARY_SPM_RELSHIPP = SPM_PRIMARY
+    _UNRELATED_RELSHIPP = SPM_UNRELATED
 
     def spm_units(self) -> Iterator[SPMUnit]:
         for hh in self.households():

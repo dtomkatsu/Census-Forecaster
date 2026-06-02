@@ -27,6 +27,8 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from tax_modeler.units.relshipp_codes import EITC_QUALIFYING_CHILD_RELS
+
 
 @dataclass
 class EITCChildParameters:
@@ -187,6 +189,61 @@ def eitc_parameters_for_year(tax_year: int) -> EITCParameters:
     return _EITC_PARAMS_BY_YEAR[tax_year]()
 
 
+def classify_eitc_region(
+    earned_income,
+    num_qualifying_children,
+    filing_status,
+    *,
+    tax_year: int,
+) -> np.ndarray:
+    """Classify each row's federal-EITC schedule region: phase_in / plateau / phase_out.
+
+    Vectorized over array-like inputs. Boundary convention: earnings
+    exactly equal to ``phase_in_ends`` or ``phaseout_start`` map to
+    ``"plateau"``; strict inequality is required to fall into
+    ``"phase_in"`` or ``"phase_out"``. Used by the intensive-margin
+    behavioral response in ``scenarios/eitc_labor_response.py`` to apply
+    a piecewise hours elasticity (phase-in workers respond most
+    strongly to EITC subsidy changes).
+
+    Parameters
+    ----------
+    earned_income, num_qualifying_children, filing_status
+        Array-like, all the same length. ``num_qualifying_children`` is
+        clamped to [0, 3] to match the EITC parameter schedule (3 = "3
+        or more"). ``filing_status`` strings are compared against
+        ``"married_filing_jointly"`` for the joint-vs-single phaseout
+        boundary.
+    tax_year
+        Used to look up the EITC parameter set; must be a supported
+        year per :func:`eitc_parameters_for_year`.
+
+    Returns
+    -------
+    np.ndarray of object dtype, values in {"phase_in", "plateau", "phase_out"}.
+    """
+    params = eitc_parameters_for_year(tax_year)
+    ei = np.asarray(earned_income, dtype=float)
+    n_kids = np.clip(np.asarray(num_qualifying_children, dtype=int), 0, 3)
+    is_joint = np.asarray(filing_status) == "married_filing_jointly"
+
+    phase_in_ends = np.array(
+        [params.by_children[k].phase_in_ends for k in n_kids], dtype=float
+    )
+    phaseout_start_single = np.array(
+        [params.by_children[k].phaseout_start_single for k in n_kids], dtype=float
+    )
+    phaseout_start_joint = np.array(
+        [params.by_children[k].phaseout_start_joint for k in n_kids], dtype=float
+    )
+    phaseout_start = np.where(is_joint, phaseout_start_joint, phaseout_start_single)
+
+    region = np.full(len(ei), "plateau", dtype=object)
+    region[ei < phase_in_ends] = "phase_in"
+    region[ei > phaseout_start] = "phase_out"
+    return region
+
+
 def calculate_eitc(tax_unit: Dict, tax_year: int = 2023) -> Dict[str, float]:
     """
     Calculate the EITC for a single tax unit.
@@ -238,6 +295,12 @@ def calculate_eitc(tax_unit: Dict, tax_year: int = 2023) -> Dict[str, float]:
     num_qualifying = _count_qualifying_children_eitc(dependents)
     result['eitc_qualifying_children'] = num_qualifying
 
+    # IRC §32(c)(1)(A)(ii): childless filers must be aged 25-64
+    if num_qualifying == 0:
+        filer_age = int(tax_unit.get('primary_agep') or 40)
+        if not (25 <= filer_age <= 64):
+            return result
+
     # Clamp to the highest-bracket key (3 = "3 or more")
     bracket_key = min(num_qualifying, 3)
     child_params = params.by_children[bracket_key]
@@ -267,14 +330,15 @@ def _count_qualifying_children_eitc(dependents: List[Dict]) -> int:
 
     EITC qualifying child rules (differ from CTC):
     - Age: under 19; or under 24 if a full-time student (SCHL >= 16); or any age if disabled (DIS=1)
-    - Relationship: biological child (22), adopted child (23), stepchild (24),
-                    grandchild (25), brother/sister (26), foster child (34)
+    - Relationship: own child (bio 25 / adopted 26 / step 27), sibling (28),
+                    grandchild (30), foster child (35) -- see
+                    ``relshipp_codes.EITC_QUALIFYING_CHILD_RELS``
     - Must be a US citizen/national/resident alien (CIT 1-4)
     - Cannot be married filing jointly (simplified: check MAR != 1)
 
     Note: EITC does NOT have the under-17 age cap that CTC uses.
     """
-    QUALIFYING_RELATIONSHIPS = {22, 23, 24, 25, 26, 34}
+    QUALIFYING_RELATIONSHIPS = EITC_QUALIFYING_CHILD_RELS
     count = 0
 
     for dep in dependents:

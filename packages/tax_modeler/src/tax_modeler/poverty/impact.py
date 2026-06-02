@@ -9,6 +9,17 @@ and re-computes them under one or more counterfactual scenarios:
     * ``no_hi_eitc``    — Hawaii state EITC removed
     * ``no_credits``    — all three credits removed
 
+  Partial-reduction scenarios:
+    * ``hi_eitc_revert_20`` — Hawaii state EITC rate cut from 40% (Act
+      209, 2023 current law) back to 20% of federal — i.e. ``hi_eitc_amount
+      × 0.5``.
+    * ``hi_eitc_revert_20_behavioral`` — same static cut plus the
+      extensive-margin single-mother LFP exit response per Meyer &
+      Rosenbaum (2001). Requires the ``lfp_behavioral_resource_loss``
+      column precomputed via
+      :func:`tax_modeler.scenarios.eitc_labor_response.apply_hi_eitc_lfp_response`
+      before SPM-unit aggregation.
+
   Expansion / new-credit scenarios:
     * ``expanded_ctc_2021`` — federal CTC replaced with the ARPA 2021
       design (see :mod:`tax_modeler.credits.arpa_ctc`).
@@ -132,6 +143,12 @@ _HI_EITC_CURRENT_RATE = 0.40  # Act 209 (2023) — 40% of federal, refundable.
 # work transparently for amendment analysis.
 _HI_CTC_SCENARIO_RE = re.compile(r"^hi_ctc_(\d+)$")
 
+# Scenarios that reduce resources (treat like removals for persons-lifted sign).
+_REMOVAL_LIKE_SCENARIOS: frozenset[str] = frozenset({
+    "hi_eitc_revert_20",
+    "hi_eitc_revert_20_behavioral",
+})
+
 # Filing-status values used for the by_household_type disaggregation.
 # ``head_of_household`` is the closest tax-unit proxy for "single mother"
 # (a parent or guardian filing without a spouse with at least one
@@ -218,6 +235,31 @@ def _scenario_resources(
         return baseline_resources - ctc
     if scenario == "no_hi_eitc":
         return baseline_resources - hi_eitc
+    if scenario == "hi_eitc_revert_20":
+        # Revert HI EITC from 40% (Act 209, 2023 current law) to 20% of
+        # federal. New HI EITC = 0.5 × current; reduction in resources
+        # equals half the baseline HI EITC dollars. No take-up adjustment
+        # needed — every existing HI EITC claimer keeps claiming at the
+        # lower rate (the credit still auto-attaches to federal EITC).
+        return baseline_resources - 0.5 * hi_eitc
+    if scenario == "hi_eitc_revert_20_behavioral":
+        # Static 50%-of-HI-EITC cut + behavioral channels precomputed on
+        # the tax-unit frame and propagated through SPM-unit aggregation
+        # via _SUM_COLS. Channels:
+        #   - lfp_behavioral_resource_loss : extensive-margin LFP exit
+        #   - lfp_behavioral_snap_offset   : SNAP cascading offset to LFP
+        #   - intensive_resource_loss      : intensive-margin (hours) cut
+        # All three are produced by tax_modeler.scenarios.eitc_labor_response.
+        static = 0.5 * hi_eitc
+        def _col(name: str) -> np.ndarray:
+            if name in units.columns:
+                return units[name].fillna(0).to_numpy(dtype=float)
+            return np.zeros_like(static)
+        lfp_loss = _col("lfp_behavioral_resource_loss")
+        snap_offset = _col("lfp_behavioral_snap_offset")
+        intensive = _col("intensive_resource_loss")
+        behavioral = np.maximum(lfp_loss - snap_offset + intensive, 0.0)
+        return baseline_resources - static - behavioral
     if scenario == "no_credits":
         return baseline_resources - (eitc + ctc + hi_eitc)
     if scenario == "expanded_ctc_2021":
@@ -323,10 +365,11 @@ def _aggregate(
             )
             gap_scn = float(np.maximum(thr - scn_r, 0.0).dot(fw))
 
-            # For removal scenarios: persons lifted = persons_in_poverty_scn - baseline.
+            # For removal-shaped scenarios: persons lifted = persons_in_poverty_scn - baseline.
             # Positive ⇒ credit lifts people out of poverty (counterfactual poorer).
             # For expansion scenarios: persons lifted = baseline - scn (counterfactual richer).
-            if scn.startswith("no_"):
+            removal_like = scn.startswith("no_") or scn in _REMOVAL_LIKE_SCENARIOS
+            if removal_like:
                 persons_lifted = persons_in_poverty_scn - persons_in_poverty_baseline
                 gap_closed = gap_scn - gap_baseline
             else:
@@ -570,6 +613,17 @@ def compute_poverty_impact(
             "$125/mo postnatal per child 0-5 × 12, 80% take-up). See "
             "RXKIDS_METHODOLOGY.md for parameter sourcing and the "
             "universal-variant override recipe."
+        )
+
+    if "hi_eitc_revert_20_behavioral" in scenarios:
+        notes.append(
+            "hi_eitc_revert_20_behavioral adds an extensive-margin "
+            "single-mother LFP exit response (Meyer-Rosenbaum 2001, "
+            "Eissa-Liebman 1996) to the static 50%-HI-EITC cut. Per-filer "
+            "expected resource loss is precomputed by "
+            "tax_modeler.scenarios.eitc_labor_response.apply_hi_eitc_lfp_response "
+            "and read from the lfp_behavioral_resource_loss column. "
+            "Default elasticity 0.5; scope is filing-status HoH only."
         )
 
     return PovertyImpactResult(

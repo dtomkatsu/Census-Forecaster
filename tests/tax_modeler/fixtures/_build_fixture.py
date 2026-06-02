@@ -245,7 +245,7 @@ def build_fixture(n_households: int = 50, seed: int = SEED) -> tuple[pd.DataFram
                 **_benefit_attrs(rng, income, 42),
             ))
             persons.append(_make_person(
-                serial, 2, RELSHIPP=27, MAR=5, SEX=1, AGEP=10,
+                serial, 2, RELSHIPP=25, MAR=5, SEX=1, AGEP=10,
                 PINCP=0.0, WAGP=0.0,
                 **_benefit_attrs(rng, 0.0, 10),
             ))
