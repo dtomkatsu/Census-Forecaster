@@ -49,7 +49,7 @@ import pandas as pd
 
 from tax_modeler.errors import ConfigError
 
-from ._fpl import hawaii_fpl
+from ._fpl import fpl_year_for, hawaii_fpl
 
 
 # 2024 HI Marketplace average silver-plan premium per individual (annual).
@@ -118,6 +118,7 @@ def with_ptc_overrides(
 def compute_aca_ptc_for_units(
     units: pd.DataFrame,
     *,
+    tax_year: int = 2024,
     params: Optional[AcaPtcParameters] = None,
     overrides: Optional[Mapping[str, object]] = None,
     out_col: str = "aca_ptc_amount",
@@ -129,6 +130,10 @@ def compute_aca_ptc_for_units(
     dependents), compute %FPL based on HHS Hawaii guidelines, look up
     applicable percentage, subtract expected contribution from benchmark
     silver premium.
+
+    ``tax_year`` selects the FPL table used for the %FPL computation
+    (default 2024). Pass the run's tax year on forward-projected runs so
+    the eligibility thresholds match the same-year income basis.
 
     Categorical exclusions (each tightens eligibility when the relevant
     column is present, populated by ``enrich_for_benefits``):
@@ -154,7 +159,7 @@ def compute_aca_ptc_for_units(
     hh_size = 1 + is_joint.astype(int) + n_dep
     income = df["income"].fillna(0).astype(float).to_numpy()
 
-    fpl = np.array([hawaii_fpl(2024, household_size=int(s)) for s in hh_size])
+    fpl = np.array([hawaii_fpl(fpl_year_for(tax_year), household_size=int(s)) for s in hh_size])
     fpl_ratio = np.where(fpl > 0, income / fpl, 0.0)
 
     applicable = np.array([_applicable_percentage(r) for r in fpl_ratio])

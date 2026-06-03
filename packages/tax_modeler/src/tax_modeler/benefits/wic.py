@@ -33,7 +33,7 @@ import pandas as pd
 
 from tax_modeler.errors import ConfigError
 
-from ._fpl import hawaii_fpl
+from ._fpl import fpl_year_for, hawaii_fpl
 
 
 _WIC_PER_PARTICIPANT_ANNUAL_2024 = 720.0    # ~$60/month USDA-FNS food cost
@@ -68,6 +68,7 @@ def with_wic_overrides(
 def compute_wic_for_units(
     units: pd.DataFrame,
     *,
+    tax_year: int = 2024,
     params: Optional[WicParameters] = None,
     overrides: Optional[Mapping[str, object]] = None,
     out_col: str = "wic_amount",
@@ -79,6 +80,10 @@ def compute_wic_for_units(
     Number of WIC participants per unit = number of dependents (each
     counted once as either an infant, child <5, or via the categorically
     eligible mother slot).
+
+    ``tax_year`` selects the FPL table used for the income test (default
+    2024). Pass the run's tax year on forward-projected runs so the
+    eligibility threshold matches the same-year income basis.
     """
     p = with_wic_overrides(params or hawaii_wic_parameters(), overrides)
     df = units.copy()
@@ -87,7 +92,7 @@ def compute_wic_for_units(
     n_dep = df["num_dependents"].fillna(0).astype(int).to_numpy()
     hh_size = 1 + is_joint.astype(int) + n_dep
     income = df["income"].fillna(0).astype(float).to_numpy()
-    fpl = np.array([hawaii_fpl(2024, household_size=int(s)) for s in hh_size])
+    fpl = np.array([hawaii_fpl(fpl_year_for(tax_year), household_size=int(s)) for s in hh_size])
     fpl_ratio = np.where(fpl > 0, income / fpl, 0.0)
 
     cap = p.income_fpl_cap * p.income_threshold_factor

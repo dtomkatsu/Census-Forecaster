@@ -608,11 +608,11 @@ def compute_poverty_impact(
     if "rxkids_hi" in scenarios:
         notes.append(
             "rxkids_hi scenario adds the rxkids_amount column as a "
-            "non-taxable cash transfer to SPM resources. Defaults model "
-            "a Medicaid-eligibility-gated variant ($500/mo prenatal × 9, "
-            "$125/mo postnatal per child 0-5 × 12, 80% take-up). See "
-            "RXKIDS_METHODOLOGY.md for parameter sourcing and the "
-            "universal-variant override recipe."
+            "non-taxable cash transfer to SPM resources. Statutory "
+            "eligibility: Medicaid (clause 1) OR income ≤ 300% FPL incl. "
+            "the expected unborn child (clause 2). Default payments: "
+            "$1,500 one-time prenatal, $500/mo × 6 postnatal, 80% take-up. "
+            "See RXKIDS_METHODOLOGY.md for parameter sourcing."
         )
 
     if "hi_eitc_revert_20_behavioral" in scenarios:

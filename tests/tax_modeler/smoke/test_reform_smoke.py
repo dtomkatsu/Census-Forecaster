@@ -16,6 +16,8 @@ import warnings
 import pytest
 
 from tax_modeler import Reform, ReformResult, TaxSystemRegistry, apply_reform
+from tax_modeler.benefits.medicaid_hi_quest import compute_medicaid_for_units
+from tax_modeler.reform.reform import _ensure_baseline_benefits
 from tax_modeler.errors import ConfigError
 
 
@@ -73,6 +75,51 @@ def test_benefit_overrides_no_longer_warn_in_phase3(taxed_units):
         apply_reform(taxed_units, reform, year=2026)
     benefit_warnings = [w for w in caught if "benefit modules" in str(w.message)]
     assert not benefit_warnings, "Phase 3 should not warn about benefit_overrides"
+
+
+def test_ensure_baseline_benefits_threads_run_year_fpl(taxed_units):
+    """Baseline benefit population uses the run's FPL table, not frozen 2024.
+
+    ``_ensure_baseline_benefits`` must thread ``tax_year`` into the FPL-based
+    Phase 5 modules so the column it populates matches a same-year direct
+    call. The 2028 FPL table is ~7% above 2024, so a forward-year baseline
+    weakly expands Medicaid eligibility and cannot fall below the 2024 total.
+    """
+    base_2024 = _ensure_baseline_benefits(
+        taxed_units, {"medicaid"}, tax_year=2024
+    )["medicaid_amount"].to_numpy()
+    base_2028 = _ensure_baseline_benefits(
+        taxed_units, {"medicaid"}, tax_year=2028
+    )["medicaid_amount"].to_numpy()
+
+    # Forward-year baseline equals a direct same-year module call (plumbing).
+    expected_2028 = compute_medicaid_for_units(
+        taxed_units, tax_year=2028
+    )["medicaid_amount"].to_numpy()
+    assert base_2028 == pytest.approx(expected_2028)
+
+    # Higher FPL thresholds weakly expand eligibility → totals don't shrink.
+    assert base_2028.sum() >= base_2024.sum()
+
+
+def test_apply_reform_threads_year_into_benefit_baseline(taxed_units):
+    """apply_reform plumbs its ``year`` into the benefit baseline + counterfactual.
+
+    A null-magnitude Medicaid override (pmpm pct = 1.0) leaves dollar values
+    unchanged, so the counterfactual ``medicaid_amount`` equals the same-year
+    baseline. Evaluated at 2028, that baseline must reflect the 2028 FPL
+    table — confirming the run year reaches the FPL test end-to-end.
+    """
+    reform = Reform(
+        name="medicaid_identity",
+        benefit_overrides={"medicaid": {"adult_pmpm_pct": 1.0}},
+    )
+    result = apply_reform(taxed_units, reform, year=2028)
+    cf_medicaid = result.counterfactual_units["medicaid_amount"].to_numpy()
+    expected_2028 = compute_medicaid_for_units(
+        taxed_units, tax_year=2028
+    )["medicaid_amount"].to_numpy()
+    assert cf_medicaid == pytest.approx(expected_2028)
 
 
 def test_empty_name_rejected():

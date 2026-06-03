@@ -47,7 +47,7 @@ import pandas as pd
 
 from tax_modeler.errors import ConfigError
 
-from ._fpl import hawaii_fpl
+from ._fpl import fpl_year_for, hawaii_fpl
 
 
 # USDA Food & Nutrition Service "National School Lunch Program Hawaii
@@ -138,7 +138,7 @@ def compute_school_lunch_for_units(
     income = df["income"].fillna(0).astype(float).to_numpy() if "income" in df.columns else (
         df["total_cash_income"].fillna(0).astype(float).to_numpy()
     )
-    fpl = np.array([hawaii_fpl(2024, household_size=int(s)) for s in hh_size])
+    fpl = np.array([hawaii_fpl(fpl_year_for(tax_year), household_size=int(s)) for s in hh_size])
     fpl_ratio = np.where(fpl > 0, income / fpl, 0.0)
 
     free_cap = p.free_fpl_ratio * p.income_threshold_factor

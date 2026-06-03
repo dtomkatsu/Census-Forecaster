@@ -78,6 +78,8 @@ _SUM_COLS: tuple[str, ...] = (
     "work_expense_amount",
     # Hypothetical programs
     "rxkids_amount",
+    "rxkids_prenatal_amount",
+    "rxkids_postnatal_amount",
     # Behavioral-response scenario columns (see
     # tax_modeler.scenarios.eitc_labor_response). Summed so the LFP-exit
     # resource loss aggregates correctly across multi-tax-unit SPM units.

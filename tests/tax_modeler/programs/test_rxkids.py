@@ -265,13 +265,110 @@ def test_rxkids_takeup_out_of_range_raises():
 def test_rxkids_defaults_match_hawaii_factory():
     """hawaii_rxkids_parameters() returns the canonical default set."""
     p = hawaii_rxkids_parameters()
-    # Universal unconditional variant: $1,500 one-time prenatal,
-    # $500/mo × 6 months postnatal, no income test.
+    # Statutory eligibility variant: $1,500 one-time prenatal,
+    # $500/mo × 6 months postnatal, 300% FPL income cap (+ Medicaid OR
+    # clause evaluated in compute_rxkids_for_units), +1 unborn child for
+    # the prenatal family-size test.
     assert p.prenatal_monthly == pytest.approx(1500.0)
     assert p.prenatal_months == 1
     assert p.postnatal_monthly_per_child == pytest.approx(500.0)
     assert p.postnatal_months == 6
     assert p.postnatal_age_cutoff == 1
-    assert p.income_fpl_cap == pytest.approx(10.0)
+    assert p.income_fpl_cap == pytest.approx(3.00)
+    assert p.prenatal_unborn_count == 1
     assert p.takeup_rate == pytest.approx(0.80)
     assert p.is_taxable is False
+
+
+# ---------------------------------------------------------------------------
+# Statutory eligibility: Medicaid (clause 1) OR 300% FPL incl. unborn (clause 2)
+# ---------------------------------------------------------------------------
+#
+# 2024 HI HHS FPL anchors used below:
+#   FPL(1)=16,770  FPL(2)=22,680  FPL(3)=28,590
+
+
+def test_rxkids_clause2_income_under_300pct_eligible():
+    """Clause 2: a postnatal unit at ~220% FPL (no Medicaid) is eligible;
+    the same unit at ~350% FPL is not."""
+    # HoH + 1 dependent → postnatal family size 2, FPL(2)=22,680.
+    eligible = _make_units([
+        {"num_dependents": 1, "num_qualifying_children": 1,
+         "income": 50_000.0, "medicaid_receives": False},  # 50k/22.68k ≈ 2.20
+    ])
+    ineligible = _make_units([
+        {"num_dependents": 1, "num_qualifying_children": 1,
+         "income": 80_000.0, "medicaid_receives": False},  # 80k/22.68k ≈ 3.53
+    ])
+    out_e = compute_rxkids_for_units(eligible, tax_year=2024)
+    out_i = compute_rxkids_for_units(ineligible, tax_year=2024)
+    assert float(out_e["rxkids_amount"].iloc[0]) > 0
+    assert float(out_i["rxkids_amount"].iloc[0]) == pytest.approx(0.0)
+
+
+def test_rxkids_clause1_medicaid_overrides_income_test():
+    """Clause 1: a unit above 300% FPL still qualifies if medicaid_receives
+    is True; the identical unit without Medicaid does not (proves the OR)."""
+    base_row = {"num_dependents": 1, "num_qualifying_children": 1,
+                "income": 80_000.0}  # ≈ 353% of FPL(2) — fails clause 2
+    on_medicaid = _make_units([{**base_row, "medicaid_receives": True}])
+    off_medicaid = _make_units([{**base_row, "medicaid_receives": False}])
+    out_on = compute_rxkids_for_units(on_medicaid, tax_year=2024)
+    out_off = compute_rxkids_for_units(off_medicaid, tax_year=2024)
+    assert float(out_on["rxkids_amount"].iloc[0]) > 0
+    assert float(out_off["rxkids_amount"].iloc[0]) == pytest.approx(0.0)
+
+
+def test_rxkids_prenatal_unborn_child_expands_eligibility():
+    """The 'including the expected unborn child' rule: a single expectant
+    filer above 300% at base size 1 becomes eligible once the unborn child
+    lifts the family-size threshold to size 2."""
+    # Single, 0 dependents (prenatal universe). income=60,000.
+    #   base size 1: 60k/FPL(1)=16,770 ≈ 3.58 > 3.0  → fails without unborn
+    #   size 2 (incl. unborn): 60k/FPL(2)=22,680 ≈ 2.65 ≤ 3.0 → eligible
+    units = _make_units([
+        {"filing_status": "single", "num_dependents": 0,
+         "num_qualifying_children": 0, "income": 60_000.0,
+         "medicaid_receives": False},
+    ])
+    with_unborn = compute_rxkids_for_units(units, tax_year=2024)  # default +1
+    without_unborn = compute_rxkids_for_units(
+        units, tax_year=2024, params=RxKidsHIParams(prenatal_unborn_count=0),
+    )
+    assert float(with_unborn["rxkids_amount"].iloc[0]) > 0
+    assert float(with_unborn["rxkids_prenatal_amount"].iloc[0]) > 0
+    assert float(without_unborn["rxkids_amount"].iloc[0]) == pytest.approx(0.0)
+
+
+def test_rxkids_postnatal_does_not_get_unborn_increment():
+    """The unborn increment must apply to the prenatal arm ONLY. A postnatal
+    unit just above 300% at its real size stays ineligible — proving its
+    family size was not inflated by an unborn child."""
+    # HoH + 1 dependent → postnatal size 2, FPL(2)=22,680. income=75,000.
+    #   real size 2: 75k/22.68k ≈ 3.31 > 3.0 → ineligible (correct)
+    #   if unborn wrongly added (size 3): 75k/28.59k ≈ 2.62 ≤ 3.0 → would pass
+    units = _make_units([
+        {"num_dependents": 1, "num_qualifying_children": 1,
+         "income": 75_000.0, "medicaid_receives": False},
+    ])
+    out = compute_rxkids_for_units(units, tax_year=2024)
+    assert float(out["rxkids_postnatal_amount"].iloc[0]) == pytest.approx(0.0)
+    assert float(out["rxkids_amount"].iloc[0]) == pytest.approx(0.0)
+
+
+def test_rxkids_missing_medicaid_column_falls_back_to_clause2(caplog):
+    """If medicaid_receives is absent, the function applies clause 2 only
+    and warns. Income-eligible units still qualify; income-ineligible ones
+    cannot sneak in via the (unavailable) Medicaid clause."""
+    import logging
+
+    units = _make_units([
+        {"num_dependents": 1, "num_qualifying_children": 1, "income": 50_000.0},
+        {"num_dependents": 1, "num_qualifying_children": 1, "income": 90_000.0},
+    ])
+    assert "medicaid_receives" not in units.columns
+    with caplog.at_level(logging.WARNING):
+        out = compute_rxkids_for_units(units, tax_year=2024)
+    assert any("medicaid_receives" in r.message for r in caplog.records)
+    assert float(out["rxkids_amount"].iloc[0]) > 0       # clause 2 still works
+    assert float(out["rxkids_amount"].iloc[1]) == pytest.approx(0.0)

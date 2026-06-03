@@ -276,7 +276,7 @@ def _apply_housing_subsidy(units: pd.DataFrame, *, tax_year: int) -> pd.DataFram
     from tax_modeler.calibration.takeup_imputation import impute_takeup
 
     LOG.info("Computing housing-subsidy benefits + take-up imputation for TY %d", tax_year)
-    out = compute_housing_for_units(units)
+    out = compute_housing_for_units(units, tax_year=tax_year)
     try:
         target = AdminCaseload.load().target("housing", tax_year)
     except Exception as exc:
@@ -300,7 +300,7 @@ def _apply_childcare_subsidy(units: pd.DataFrame, *, tax_year: int) -> pd.DataFr
     from tax_modeler.calibration.takeup_imputation import impute_takeup
 
     LOG.info("Computing CCSP childcare-subsidy benefits + take-up imputation for TY %d", tax_year)
-    out = compute_childcare_for_units(units)
+    out = compute_childcare_for_units(units, tax_year=tax_year)
     try:
         target = AdminCaseload.load().target("childcare_subsidy", tax_year)
     except Exception as exc:
@@ -324,7 +324,7 @@ def _apply_wic(units: pd.DataFrame, *, tax_year: int) -> pd.DataFrame:
     from tax_modeler.calibration.takeup_imputation import impute_takeup
 
     LOG.info("Computing WIC benefits + take-up imputation for TY %d", tax_year)
-    out = compute_wic_for_units(units)
+    out = compute_wic_for_units(units, tax_year=tax_year)
     try:
         target = AdminCaseload.load().target("wic", tax_year)
     except Exception as exc:
@@ -347,7 +347,7 @@ def _apply_liheap(units: pd.DataFrame, *, tax_year: int) -> pd.DataFrame:
     from tax_modeler.calibration.takeup_imputation import impute_takeup
 
     LOG.info("Computing LIHEAP benefits + take-up imputation for TY %d", tax_year)
-    out = compute_liheap_for_units(units)
+    out = compute_liheap_for_units(units, tax_year=tax_year)
     try:
         target = AdminCaseload.load().target("liheap", tax_year)
     except Exception as exc:
@@ -991,9 +991,16 @@ def main(argv: Optional[list] = None) -> int:
 
     # 6c2. RxKids Hawaiʻi (hypothetical program). Adds rxkids_amount column
     #      used by the rxkids_hi expansion scenario in compute_poverty_impact.
+    #      Statutory eligibility is Medicaid (clause 1) OR ≤300% FPL incl.
+    #      unborn child (clause 2), so we compute the Medicaid receives flag
+    #      FIRST on the finalized income basis. medicaid_receives is not in
+    #      _SUM_COLS and Medicaid dollars are excluded from SPM resources, so
+    #      this does not affect the poverty rollup — it only gates RxKids.
     if args.apply_rxkids:
+        from tax_modeler.benefits.medicaid_hi_quest import compute_medicaid_for_units
         from tax_modeler.programs import compute_rxkids_for_units
         LOG.info("Computing RxKids Hawaiʻi benefit amounts for TY %d", args.tax_year)
+        units = compute_medicaid_for_units(units, tax_year=args.tax_year)
         units = compute_rxkids_for_units(units, tax_year=args.tax_year)
 
     # 6d. SPM-unit aggregation (default): roll the tax-unit-grained

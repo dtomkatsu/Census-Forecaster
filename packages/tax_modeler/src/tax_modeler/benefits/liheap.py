@@ -31,7 +31,7 @@ import pandas as pd
 
 from tax_modeler.errors import ConfigError
 
-from ._fpl import hawaii_fpl
+from ._fpl import fpl_year_for, hawaii_fpl
 
 
 _LIHEAP_BENEFIT_ANNUAL_2024 = 250.0
@@ -66,11 +66,17 @@ def with_liheap_overrides(
 def compute_liheap_for_units(
     units: pd.DataFrame,
     *,
+    tax_year: int = 2024,
     params: Optional[LiheapParameters] = None,
     overrides: Optional[Mapping[str, object]] = None,
     out_col: str = "liheap_amount",
 ) -> pd.DataFrame:
-    """Compute LIHEAP annual benefit per tax unit (flat amount if eligible)."""
+    """Compute LIHEAP annual benefit per tax unit (flat amount if eligible).
+
+    ``tax_year`` selects the FPL table used for the income test (default
+    2024). Pass the run's tax year on forward-projected runs so the
+    eligibility threshold matches the same-year income basis.
+    """
     p = with_liheap_overrides(params or hawaii_liheap_parameters(), overrides)
     df = units.copy()
 
@@ -78,7 +84,7 @@ def compute_liheap_for_units(
     n_dep = df["num_dependents"].fillna(0).astype(int).to_numpy()
     hh_size = 1 + is_joint.astype(int) + n_dep
     income = df["income"].fillna(0).astype(float).to_numpy()
-    fpl = np.array([hawaii_fpl(2024, household_size=int(s)) for s in hh_size])
+    fpl = np.array([hawaii_fpl(fpl_year_for(tax_year), household_size=int(s)) for s in hh_size])
     fpl_ratio = np.where(fpl > 0, income / fpl, 0.0)
 
     cap = p.income_fpl_cap * p.income_threshold_factor

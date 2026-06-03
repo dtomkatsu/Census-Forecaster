@@ -48,7 +48,7 @@ import pandas as pd
 
 from tax_modeler.errors import ConfigError
 
-from ._fpl import hawaii_fpl
+from ._fpl import fpl_year_for, hawaii_fpl
 
 
 # 2024 HUD Honolulu MSA 2BR Fair Market Rent annualized.
@@ -90,6 +90,7 @@ def with_housing_overrides(
 def compute_housing_for_units(
     units: pd.DataFrame,
     *,
+    tax_year: int = 2024,
     params: Optional[HousingParameters] = None,
     overrides: Optional[Mapping[str, object]] = None,
     out_col: str = "housing_subsidy_amount",
@@ -98,6 +99,10 @@ def compute_housing_for_units(
 
     benefit = max(0, FMR × payment_standard_pct − tenant_rent_pct × income)
     when the unit is below the income cap (proxied via FPL).
+
+    ``tax_year`` selects the FPL table used for the income test (default
+    2024). Pass the run's tax year on forward-projected runs so the
+    eligibility threshold matches the same-year income basis.
     """
     p = with_housing_overrides(params or hawaii_housing_parameters(), overrides)
     df = units.copy()
@@ -106,7 +111,7 @@ def compute_housing_for_units(
     n_dep = df["num_dependents"].fillna(0).astype(int).to_numpy()
     hh_size = 1 + is_joint.astype(int) + n_dep
     income = df["income"].fillna(0).astype(float).to_numpy()
-    fpl = np.array([hawaii_fpl(2024, household_size=int(s)) for s in hh_size])
+    fpl = np.array([hawaii_fpl(fpl_year_for(tax_year), household_size=int(s)) for s in hh_size])
     fpl_ratio = np.where(fpl > 0, income / fpl, 0.0)
 
     cap = p.income_fpl_cap * p.income_threshold_factor

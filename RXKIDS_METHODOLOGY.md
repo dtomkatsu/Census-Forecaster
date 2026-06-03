@@ -51,15 +51,18 @@ starting with diapers", with measurable material hardship reductions.
 
 ## 2. Hawaii adaptation
 
-This module models a **Hawaii-targeted variant** that defaults to a
-**Medicaid-eligibility-gated** design (138% FPL adult cap), in
-contrast to Flint's universal design. The narrow targeting brings the
-program cost into a politically tractable ~$8–15M range vs ~$110M for
-a universal Hawaii version scaled to all 15,535 annual births.
+This module models a **Hawaii-targeted variant** whose default
+eligibility follows the **statutory** two-clause test (see §3): a unit
+qualifies if it **either** (1) qualifies for benefits under the State's
+Medicaid (Med-QUEST) program, **or** (2) has family income ≤ **300% FPL**
+for a family of applicable size *including the expected unborn child(ren)*.
+This is substantially broader than a Medicaid-only (138% FPL) gate and
+sits between the Medicaid-targeted (~$8–15M) and fully-universal (~$110M)
+cost poles.
 
-The universal variant remains achievable by overriding
-`income_fpl_cap` to a high value — see the module docstring for the
-override recipe.
+A Medicaid-adult-only income variant remains achievable by overriding
+`income_fpl_cap=1.38`; an effectively-universal variant by setting a high
+cap (e.g. `10.0`). See the module docstring for override recipes.
 
 ### Hawaii context
 
@@ -80,48 +83,77 @@ override recipe.
 
 | Parameter | Default | Rationale |
 |---|---|---|
-| `prenatal_monthly` | $500 | Task-spec anchor; equivalent to a Hawaii-COL-scaled fraction of Flint's $1,500 one-time payment spread over 9 months. |
-| `postnatal_monthly_per_child` | $125 | Task-spec anchor (Flint $60/mo with Hawaii COL adjustment ~2×). Lower than Flint actual ($500/mo) to keep targeted variant cost low. |
-| `prenatal_months` | 9 | Full pregnancy. |
-| `postnatal_age_cutoff` | 5 | Spans the ARPA CTC eligibility age range (vs Flint's age-1 cutoff). Lets the program complement HI CTC scenarios. |
-| `income_fpl_cap` | 1.38 | Hawaii Medicaid adult expansion threshold (QUEST adults). |
+| `prenatal_monthly` | $1,500 | Flint's one-time prenatal payment (`prenatal_months=1`). |
+| `postnatal_monthly_per_child` | $500 | Flint's postnatal monthly payment. |
+| `prenatal_months` | 1 | One-time prenatal payment. |
+| `postnatal_months` | 6 | Flint's 6-month postnatal window (lower bound of the 6–12 mo range). |
+| `postnatal_age_cutoff` | 1 | Infants in their first year (Flint design). PUMS carries no sub-year age, so age 0 is the closest proxy. |
+| `income_fpl_cap` | **3.00** | Statutory clause 2: 300% FPL income test. |
+| `prenatal_unborn_count` | **1** | Statutory "including the expected unborn child" — adds 1 to the prenatal-arm family size (raises the FPL threshold). |
 | `takeup_rate` | 0.80 | Conservative vs Flint's observed 0.98; reflects year-1 ramp without hospital-partnership infrastructure. |
 | `is_taxable` | `False` | Match Flint design — charitable disbursement, not IRS-reported. Routes through SPM resources only. |
-| `prenatal_pregnancy_probability` | 0.12 | Hawaii Medicaid-financed births (~6,200/yr) ÷ Hawaii Medicaid-eligible adult women filing units (~50,000). Sensitivity: linear. |
-| `child_under_age_share` | 0.20 | ACS PUMS 2018-2022 Hawaii: ~20% of dependents 0-17 in Medicaid-eligible households are 0-5. |
+| `prenatal_pregnancy_probability` | 0.10 | All-Hawaii birth rate among single/HoH filers with no dependents: 15,535 births ÷ ~155,000 such filers × 50% women-share ≈ 0.10. Sensitivity: linear. |
+| `child_under_age_share` | 0.033 | Share of dependents 0-17 that are infants <6 months (the postnatal window): ~half the annual birth cohort ÷ ACS dependents 0-17. Sensitivity: linear. |
 
-### Estimated annual cost (default Medicaid-targeted)
+Plus the Medicaid clause, evaluated in `compute_rxkids_for_units` from the
+`medicaid_receives` column produced by `compute_medicaid_for_units` (the
+caller pre-attaches it).
 
-Working from the Hawaii synthetic-fixture eligibility share scaled to
-real PUMS weights:
+### Estimated annual cost (statutory eligibility)
 
-- **Prenatal**: ~5,000 eligible HoH/single women × 0.12 pregnancy ×
-  $4,500 × 0.80 take-up ≈ **$2.2M**
-- **Postnatal**: ~10,000 eligible HHs with kids × 0.5 effective kids 0-5
-  × $1,500/yr × 0.80 take-up ≈ **$6M**
-- **Total**: ~$8–15M/yr (highly sensitive to take-up and eligibility-cap
-  assumptions)
+The 300%-FPL-OR-Medicaid gate is far more inclusive than the legacy 138%
+"Medicaid variant," so the modeled cost lands materially above the old
+~$8–15M back-of-envelope and below the ~$110M fully-universal figure. The
+authoritative figure is produced by `forecast_rxkids_2028.py` (see §10),
+which weights the per-unit expected benefit by the PUMS household weight on
+the real PUMS frame; the ranges below are only order-of-magnitude poles.
 
-For a **universal Flint-equivalent variant**:
+For reference, a **universal Flint-equivalent variant**:
 
 - 15,535 births × $1,500 prenatal × 0.95 take-up = $22.1M
 - 15,535 births × $500/mo × 12 × 0.95 = $88.5M
 - **Total: ~$111M/yr**
 
-## 3. Eligibility approximation
+## 3. Statutory eligibility (Medicaid OR 300% FPL incl. unborn)
+
+A unit is eligible if it satisfies **either** clause:
+
+- **Clause 1 — Medicaid.** Any member qualifies for benefits under the
+  State's Medicaid (Med-QUEST) program. Implemented by reusing the
+  `medicaid_receives` boolean from
+  `tax_modeler.benefits.compute_medicaid_for_units` (all categorical
+  pathways: 138% adult, 196% pregnant, 313% children, 100% aged). The
+  caller pre-attaches this column; if it is absent the module applies
+  clause 2 only and logs a warning.
+- **Clause 2 — 300% FPL.** `income / FPL(applicable_size) <=
+  income_fpl_cap` (default 3.00).
+
+### "Including the expected unborn child(ren)"
+
+The statute sizes the family *including the expected unborn child*. For
+the **prenatal arm only**, the FPL family size is incremented by
+`prenatal_unborn_count` (default +1). A larger family size raises the FPL
+dollar threshold, so expectant filers near the margin qualify who would
+not at their base size. The **postnatal arm uses the plain family size**
+(the child is already in `num_dependents`) — the increment must not be
+double-applied. The two arms therefore use **separate FPL ratios**.
+
+The income test uses the FPL table for the run's `tax_year`
+(`benefits/_fpl.py`), so forward-projected incomes are tested against
+same-year thresholds (see §7 caveat 4).
 
 PUMS does not observe pregnancy and the tax-unit frame does not carry
-individual child ages. The module uses two probabilistic adjustments
-to bridge this gap.
+individual child ages, so each arm applies a probabilistic adjustment.
 
 ### Prenatal universe
 
 - Proxy: filers with `filing_status in {single, head_of_household}`
-  AND `num_dependents == 0` AND `income <= income_fpl_cap × FPL`.
+  AND `num_dependents == 0` AND (clause 1 OR clause 2 at prenatal size).
 - Pregnancy probability: `prenatal_pregnancy_probability` per
-  eligible filer per year (default 0.12).
+  eligible filer per year (default 0.10).
 - Per-unit expected amount:
   `pregnancy_prob × prenatal_monthly × prenatal_months × takeup_rate`.
+- Emitted as `rxkids_prenatal_amount`.
 
 This is a **probabilistic** payment per unit, not deterministic. The
 weighted state total recovers the right population-level expectation;
@@ -130,16 +162,23 @@ payments.
 
 ### Postnatal universe
 
-- Proxy: filers with `num_dependents > 0` AND income test passed.
+- Proxy: filers with `num_dependents > 0` AND (clause 1 OR clause 2 at
+  postnatal size).
 - Effective children under cutoff:
   `num_dependents × child_under_age_share`.
 - Per-unit amount:
-  `n_kids_under_cutoff × postnatal_monthly_per_child × 12 × takeup_rate`.
+  `n_kids_under_cutoff × postnatal_monthly_per_child × postnatal_months
+  × takeup_rate`.
+- Emitted as `rxkids_postnatal_amount`.
 
 The `child_under_age_share` is the key approximation. A unit with
-1 dependent doesn't deterministically have a child under 6 — but
-across all eligible units the weighted total approximates the
+1 dependent doesn't deterministically have an infant under the cutoff —
+but across all eligible units the weighted total approximates the
 correct postnatal population.
+
+The combined `rxkids_amount = rxkids_prenatal_amount +
+rxkids_postnatal_amount` is what feeds SPM resources; the two subtotals
+let the cost report split program outlay by arm.
 
 ## 4. SPM resource accounting
 
@@ -212,13 +251,12 @@ Projected Hawaii impact under default Medicaid-targeted parameters:
 | Annual cost | ~$25-30M (single-city) | ~$8-15M (targeted) / ~$111M (universal) |
 | Persons lifted out of poverty | Not yet published | Reported per `--apply-rxkids` run |
 
-Hawaii's projected per-family payments are lower than Flint actuals
-because (a) Flint's universal design uses a larger one-time prenatal
-payment and (b) Flint's postnatal payment ($500/mo) exceeds the
-Hawaii default ($125/mo). The Hawaii model is structured so that
-advocates can override parameters to model the Flint-equivalent
-universal program — see the universal-variant override recipe in the
-module docstring.
+The Hawaii model now matches Flint's per-payment amounts ($1,500
+one-time prenatal, $500/mo postnatal); the difference from Flint is the
+eligibility gate (statutory Medicaid-OR-300%-FPL vs Flint's universal
+no-test design) and the conservative 0.80 take-up. Advocates can override
+parameters to model the Flint-equivalent universal program — see the
+override recipe in the module docstring.
 
 ## 7. Limitations & caveats
 
@@ -234,10 +272,13 @@ module docstring.
    transfers slightly reduce maternal labor supply (small effect,
    ~1-3 pp) but plausibly increase fertility on the margin. Neither
    is modeled.
-4. **Default uses 2024 FPL for all years 2022-2025** — Hawaii FPL
-   grew ~10% over the span; treating eligibility as 2024-anchored
-   biases eligibility ~5% high for 2022 and ~5% low for 2025.
-   Material bias is small relative to the take-up uncertainty.
+4. **FPL is year-aware (`benefits/_fpl.py`)** — published 2024 and 2025
+   HHS Hawaii tables, with CPI-projected forward years 2026–2028 (~2.3%/yr
+   off the 2025 base, per CBO Jan 2025). `compute_rxkids_for_units` and
+   `compute_medicaid_for_units` take a `tax_year` and test eligibility
+   against that year's table, so a 2028 projection ages incomes AND
+   thresholds coherently. The 2026–2028 inflator is an estimate; replace
+   with a real HHS table when published.
 5. **No admin-caseload anchor** — because RxKids is hypothetical for
    Hawaii, there's no IRS or DHS caseload to take-up-calibrate
    against (unlike SNAP, WIC, EITC). Take-up is set via the
@@ -265,8 +306,9 @@ Key facts feeding this methodology:
   design + hospital partnership are the take-up drivers.
 - Hawaii **15,535 annual births (2022)** with ~40% Medicaid-financed
   → ~6,200 Medicaid births/yr.
-- Hawaii Medicaid adult expansion threshold **138% FPL** — used as
-  default `income_fpl_cap`.
+- Hawaii Medicaid adult expansion threshold **138% FPL** — one of the
+  Med-QUEST pathways feeding the clause-1 `medicaid_receives` test. The
+  default `income_fpl_cap` is **3.00** (statutory clause 2), not 1.38.
 - Modeling cash as **non-taxable resource** (added to SPM resources,
   not money income) matches Flint program structure and is the
   Census-recommended treatment for charitable cash disbursements
@@ -278,7 +320,13 @@ Cached research notes: `/tmp/rxkids-research.md` (session-scoped).
 
 Tests at `tests/tax_modeler/programs/test_rxkids.py` cover:
 
-- High-income units excluded (`income > 138% FPL × FPL` → zero)
+- Clause 2: income ≤ 300% FPL eligible; > 300% (no Medicaid) excluded
+- Clause 1: Medicaid receipt qualifies a unit above 300% FPL (proves OR)
+- Unborn-size rule: an expectant filer above 300% at base size becomes
+  eligible once the unborn child lifts the family-size threshold
+- Postnatal arm does **not** get the unborn increment (no double-count)
+- Missing `medicaid_receives` column ⇒ clause-2-only fallback + warning
+- High-income units excluded
 - Postnatal amount scales linearly with `num_dependents`
 - Non-taxable treatment: SPM resources increase by exactly
   `rxkids_amount`, while `total_cash_income` is unchanged
@@ -313,3 +361,70 @@ Key columns on `by_state.csv` for RxKids analysis:
 - `persons_lifted_rxkids_hi` — state total lift
 - `persons_lifted_rxkids_hi_hoh` — HoH (single-mother proxy) lift
 - `poverty_rate_hoh_baseline`, `poverty_rate_rxkids_hi_hoh`
+
+## 10. Cost of implementation (2028)
+
+`forecast_rxkids_2028.py` (repo root) estimates the **annual fiscal
+outlay** of the program — distinct from the poverty *lift* scored by
+`poverty_impact_report.py`.
+
+### Cost identity
+
+Program cost = the weighted sum of the expected RxKids benefit:
+
+```
+cost = Σ_SPM  rxkids_amount × weight
+```
+
+at **SPM-unit grain**, using the **WGTP-derived household weight** — the
+correct fiscal weight. (The tax-unit `weight` is edited by the EITC
+by-children reweight lever in the revenue path; the SPM-grain weight from
+`aggregate_to_spm_units` is independent of that and is the right basis for
+a fiscal total.) The prenatal/postnatal subtotals
+(`rxkids_prenatal_amount`, `rxkids_postnatal_amount`) are summed the same
+way and reported separately.
+
+### Forward projection
+
+1. Load PUMS with replicate weights; attach SPM unit IDs.
+2. `project_tax_units_forward(target_year=2028)` ages incomes (WGTP weights
+   carried forward unchanged).
+3. FPL thresholds are taken at `tax_year=2028` (§7 caveat 4), so income and
+   thresholds are on one coherent basis.
+4. Compute `medicaid_receives` (clause 1) then the RxKids benefit, and
+   aggregate to SPM units.
+
+### Uncertainty
+
+- **Sampling 90% CI** — SDR (Fay method, factor 4.0) over the 80 PUMS
+  household replicate weights `weight_r01..weight_r80`, reusing
+  `poverty.impact._sdr_se_from_replicates`. Captures ACS sampling error
+  only. (n/a on the synthetic fixture, which has no replicate weights.)
+- **Assumption band** — a one-at-a-time sweep over the three soft,
+  unanchored parameters: `takeup_rate` (0.60–0.95),
+  `prenatal_pregnancy_probability` (±25%), `child_under_age_share` (±25%).
+  The cost is linear in each, so the band brackets parameter risk.
+
+### Caveats specific to the 2028 run
+
+- Federal EITC/CTC parameter tables fall back to TY2025 for years > 2025.
+  **Immaterial here** — RxKids is non-taxable and never touches AGI /
+  EITC / CTC.
+- Pregnancy incidence and child-age share are held at base-year values
+  (no 2028 birth-trend adjustment); the assumption band brackets this.
+- The 2026–2028 FPL inflator is a CPI projection, not a published table.
+
+### Outputs (`reports/rxkids_2028/`)
+
+- `cost_by_state.csv` — total + prenatal/postnatal subtotals, SDR SE, 90% CI.
+- `cost_by_county.csv` — per-county cost + SE.
+- `spm_units.parquet` — SPM-grain frame.
+- `summary.txt` — headline cost, subtotals, sampling CI, assumption band.
+
+Run:
+```bash
+.venv/bin/python forecast_rxkids_2028.py \
+    --tax-year 2028 \
+    --pums-data-dir packages/data/raw/pums \
+    --out reports/rxkids_2028/
+```

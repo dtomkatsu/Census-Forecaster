@@ -149,6 +149,34 @@ def test_housing_runs(taxed_units):
     assert (df["housing_subsidy_amount"] >= 0).all()
 
 
+def test_aca_ptc_default_tax_year_matches_2024(taxed_units):
+    """ACA PTC's defaulted tax_year (2024) keeps existing callers stable."""
+    default = compute_aca_ptc_for_units(taxed_units)["aca_ptc_amount"]
+    explicit = compute_aca_ptc_for_units(taxed_units, tax_year=2024)["aca_ptc_amount"]
+    assert default.equals(explicit)
+
+
+def test_aca_ptc_accepts_forward_tax_year(taxed_units):
+    """A forward-projected tax_year threads into the %FPL test without error."""
+    df = compute_aca_ptc_for_units(taxed_units, tax_year=2028)
+    assert "aca_ptc_amount" in df.columns
+    assert (df["aca_ptc_amount"] >= 0).all()
+
+
+def test_housing_default_tax_year_matches_2024(taxed_units):
+    """Housing's defaulted tax_year (2024) keeps existing callers stable."""
+    default = compute_housing_for_units(taxed_units)["housing_subsidy_amount"]
+    explicit = compute_housing_for_units(taxed_units, tax_year=2024)["housing_subsidy_amount"]
+    assert default.equals(explicit)
+
+
+def test_housing_accepts_forward_tax_year(taxed_units):
+    """A forward-projected tax_year threads into the FPL income proxy."""
+    df = compute_housing_for_units(taxed_units, tax_year=2028)
+    assert "housing_subsidy_amount" in df.columns
+    assert (df["housing_subsidy_amount"] >= 0).all()
+
+
 def test_housing_subsidy_decreases_with_income(taxed_units):
     """Tenant rent rises with income → subsidy falls. On any non-trivial
     fixture, the lowest-income eligible unit's subsidy should be >= the

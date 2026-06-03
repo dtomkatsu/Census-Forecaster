@@ -300,12 +300,20 @@ class ReformResult:
     )
 
 
-def _ensure_baseline_benefits(units: pd.DataFrame, programs: set[str]) -> pd.DataFrame:
+def _ensure_baseline_benefits(
+    units: pd.DataFrame, programs: set[str], *, tax_year: int = 2024
+) -> pd.DataFrame:
     """Populate baseline benefit columns on ``units`` for any program in ``programs``.
 
     Idempotent: existing columns are left alone. Used so that benefit
     deltas can be computed cleanly even when the caller hasn't already
     run the benefit modules on their baseline frame.
+
+    ``tax_year`` is threaded into the FPL-based Phase 5 modules (ACA PTC,
+    Medicaid, WIC, LIHEAP, childcare, housing) so eligibility tests use
+    same-year FPL thresholds on forward-projected runs. Modules clamp to
+    the earliest published FPL year via ``fpl_year_for``; the 2024 default
+    preserves the prior frozen-FPL behavior.
     """
     df = units
     if "snap" in programs and "snap_amount" not in df.columns:
@@ -319,25 +327,26 @@ def _ensure_baseline_benefits(units: pd.DataFrame, programs: set[str]) -> pd.Dat
             compute_ssi_hi_supplement_for_units,
         )
         df = compute_ssi_hi_supplement_for_units(df)
-    # Phase 5
+    # Phase 5 — FPL-based eligibility; thread the run's tax_year so income
+    # tests use same-year FPL thresholds (fpl_year_for clamps pre-2024).
     if "aca_ptc" in programs and "aca_ptc_amount" not in df.columns:
         from tax_modeler.benefits.aca_ptc import compute_aca_ptc_for_units
-        df = compute_aca_ptc_for_units(df)
+        df = compute_aca_ptc_for_units(df, tax_year=tax_year)
     if "medicaid" in programs and "medicaid_amount" not in df.columns:
         from tax_modeler.benefits.medicaid_hi_quest import compute_medicaid_for_units
-        df = compute_medicaid_for_units(df)
+        df = compute_medicaid_for_units(df, tax_year=tax_year)
     if "wic" in programs and "wic_amount" not in df.columns:
         from tax_modeler.benefits.wic import compute_wic_for_units
-        df = compute_wic_for_units(df)
+        df = compute_wic_for_units(df, tax_year=tax_year)
     if "liheap" in programs and "liheap_amount" not in df.columns:
         from tax_modeler.benefits.liheap import compute_liheap_for_units
-        df = compute_liheap_for_units(df)
+        df = compute_liheap_for_units(df, tax_year=tax_year)
     if "childcare" in programs and "childcare_amount" not in df.columns:
         from tax_modeler.benefits.childcare import compute_childcare_for_units
-        df = compute_childcare_for_units(df)
+        df = compute_childcare_for_units(df, tax_year=tax_year)
     if "housing" in programs and "housing_subsidy_amount" not in df.columns:
         from tax_modeler.benefits.housing import compute_housing_for_units
-        df = compute_housing_for_units(df)
+        df = compute_housing_for_units(df, tax_year=tax_year)
     # Hawaii state credits
     if "hi_eitc" in programs and "hi_eitc_amount" not in df.columns:
         from tax_modeler.credits.hi_eitc import compute_hi_eitc_for_units
@@ -354,11 +363,17 @@ def _ensure_baseline_benefits(units: pd.DataFrame, programs: set[str]) -> pd.Dat
 def _apply_benefit_overrides(
     baseline_df: pd.DataFrame,
     overrides: Mapping[str, Mapping[str, Any]],
+    *,
+    tax_year: int = 2024,
 ) -> tuple[pd.DataFrame, dict[str, float]]:
     """Compute counterfactual benefit columns and return per-program $M deltas.
 
     Returns ``(counterfactual_df, deltas)`` where ``deltas`` maps program
     name to the weighted dollar change vs baseline (in millions).
+
+    ``tax_year`` is threaded into the FPL-based Phase 5 modules so the
+    counterfactual eligibility tests use the same same-year FPL thresholds
+    as the baseline (see :func:`_ensure_baseline_benefits`).
     """
     df = baseline_df.copy()
     deltas: dict[str, float] = {}
@@ -432,14 +447,16 @@ def _apply_benefit_overrides(
     if "aca_ptc" in overrides:
         from tax_modeler.benefits.aca_ptc import compute_aca_ptc_for_units
         cf = compute_aca_ptc_for_units(
-            df, overrides=overrides["aca_ptc"], out_col="_cf_aca_ptc_amount"
+            df, tax_year=tax_year,
+            overrides=overrides["aca_ptc"], out_col="_cf_aca_ptc_amount"
         )
         _record("aca_ptc", "aca_ptc_amount", cf["_cf_aca_ptc_amount"].to_numpy())
 
     if "medicaid" in overrides:
         from tax_modeler.benefits.medicaid_hi_quest import compute_medicaid_for_units
         cf = compute_medicaid_for_units(
-            df, overrides=overrides["medicaid"],
+            df, tax_year=tax_year,
+            overrides=overrides["medicaid"],
             out_col="_cf_medicaid_amount",
             receives_col="_cf_medicaid_receives",
         )
@@ -449,28 +466,32 @@ def _apply_benefit_overrides(
     if "wic" in overrides:
         from tax_modeler.benefits.wic import compute_wic_for_units
         cf = compute_wic_for_units(
-            df, overrides=overrides["wic"], out_col="_cf_wic_amount"
+            df, tax_year=tax_year,
+            overrides=overrides["wic"], out_col="_cf_wic_amount"
         )
         _record("wic", "wic_amount", cf["_cf_wic_amount"].to_numpy())
 
     if "liheap" in overrides:
         from tax_modeler.benefits.liheap import compute_liheap_for_units
         cf = compute_liheap_for_units(
-            df, overrides=overrides["liheap"], out_col="_cf_liheap_amount"
+            df, tax_year=tax_year,
+            overrides=overrides["liheap"], out_col="_cf_liheap_amount"
         )
         _record("liheap", "liheap_amount", cf["_cf_liheap_amount"].to_numpy())
 
     if "childcare" in overrides:
         from tax_modeler.benefits.childcare import compute_childcare_for_units
         cf = compute_childcare_for_units(
-            df, overrides=overrides["childcare"], out_col="_cf_childcare_amount"
+            df, tax_year=tax_year,
+            overrides=overrides["childcare"], out_col="_cf_childcare_amount"
         )
         _record("childcare", "childcare_amount", cf["_cf_childcare_amount"].to_numpy())
 
     if "housing" in overrides:
         from tax_modeler.benefits.housing import compute_housing_for_units
         cf = compute_housing_for_units(
-            df, overrides=overrides["housing"], out_col="_cf_housing_amount"
+            df, tax_year=tax_year,
+            overrides=overrides["housing"], out_col="_cf_housing_amount"
         )
         _record("housing", "housing_subsidy_amount", cf["_cf_housing_amount"].to_numpy())
 
@@ -526,7 +547,10 @@ def apply_reform(
         The :class:`Reform` to apply.
     year:
         Tax year for which to materialize both baseline and scenario
-        :class:`TaxSystemConfig` objects.
+        :class:`TaxSystemConfig` objects. Also threaded into the FPL-based
+        Phase 5 benefit modules (ACA PTC, Medicaid, WIC, LIHEAP, childcare,
+        housing) so eligibility income tests use same-year FPL thresholds
+        rather than the frozen 2024 default.
     baseline_factory:
         Optional ``year -> TaxSystemConfig`` factory for the baseline.
         Defaults to ``TaxSystemRegistry.get_act46_system`` (current law).
@@ -563,7 +587,9 @@ def apply_reform(
         )
 
     if benefit_overrides:
-        baseline_units = _ensure_baseline_benefits(units, set(benefit_overrides))
+        baseline_units = _ensure_baseline_benefits(
+            units, set(benefit_overrides), tax_year=year
+        )
     else:
         baseline_units = units
 
@@ -574,7 +600,7 @@ def apply_reform(
     benefit_deltas: Mapping[str, float] = MappingProxyType({})
     if benefit_overrides:
         counterfactual_units, deltas = _apply_benefit_overrides(
-            baseline_units, benefit_overrides
+            baseline_units, benefit_overrides, tax_year=year
         )
         benefit_deltas = MappingProxyType(deltas)
 

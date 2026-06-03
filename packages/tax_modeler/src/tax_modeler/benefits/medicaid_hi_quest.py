@@ -41,7 +41,7 @@ import pandas as pd
 
 from tax_modeler.errors import ConfigError
 
-from ._fpl import hawaii_fpl
+from ._fpl import fpl_year_for, hawaii_fpl
 
 
 # 2024 HI Med-QUEST PMPM (annualized × 12). State Plan Amendment + CMS-64
@@ -89,6 +89,7 @@ def with_medicaid_overrides(
 def compute_medicaid_for_units(
     units: pd.DataFrame,
     *,
+    tax_year: int = 2024,
     params: Optional[MedicaidParameters] = None,
     overrides: Optional[Mapping[str, object]] = None,
     out_col: str = "medicaid_amount",
@@ -105,6 +106,10 @@ def compute_medicaid_for_units(
     The dollar value is summed over all eligible household members:
     ``adult_pmpm × n_adults_eligible + child_pmpm × n_children_eligible
     + aged_pmpm × n_aged_eligible``.
+
+    ``tax_year`` selects the FPL table used for the income tests (default
+    2024). Pass the run's tax year on forward-projected runs so the
+    eligibility thresholds match the aged income basis.
     """
     p = with_medicaid_overrides(params or hawaii_medicaid_parameters(), overrides)
     df = units.copy()
@@ -113,7 +118,7 @@ def compute_medicaid_for_units(
     n_dep = df["num_dependents"].fillna(0).astype(int).to_numpy()
     hh_size = 1 + is_joint.astype(int) + n_dep
     income = df["income"].fillna(0).astype(float).to_numpy()
-    fpl = np.array([hawaii_fpl(2024, household_size=int(s)) for s in hh_size])
+    fpl = np.array([hawaii_fpl(fpl_year_for(tax_year), household_size=int(s)) for s in hh_size])
     fpl_ratio = np.where(fpl > 0, income / fpl, 0.0)
 
     # Categorical eligibility checks
