@@ -64,6 +64,9 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 PUMS_CONSTRUCTION_YEAR = 2022
 WORKBOOK_NAME = "rxkids_2028_cost_and_impact.xlsx"
 PDF_NAME = "rxkids_2028_cost_and_impact.pdf"
+# Full Flint-design postnatal window. The base run uses the 6-month lower
+# bound; this prices the optional extension to the full 12 months.
+EXTENDED_POSTNATAL_MONTHS = 12
 
 _TEAL = (31, 111, 139)
 _DARK = (31, 59, 77)
@@ -316,6 +319,11 @@ def _write_workbook(path: Path, *, ctx: dict) -> None:
         ]
     rows += [
         ("", None, None),
+        (f"POTENTIAL — extend postnatal {ctx['base_postnatal_months']}→"
+         f"{ctx['ext_postnatal_months']} months (optional)", None, None),
+        ("  Additional cost (+6 months)", ctx["additional_cost"], money_fmt),
+        ("  Total cost (12-month design)", ctx["ext_total"], money_fmt),
+        ("", None, None),
         ("HOUSEHOLD REACH", None, None),
         ("Families reached (weighted)", ctx["reached_total"], money_fmt),
         ("  Prenatal (expectant filers)", ctx["reached_prenatal"], money_fmt),
@@ -508,6 +516,18 @@ def _write_pdf(path: Path, *, ctx: dict) -> None:
            f"{money(ctx['band']['min'])} - {money(ctx['band']['max'])}")
     pdf.ln(1)
 
+    section(f"Potential option - extend postnatal {ctx['base_postnatal_months']}"
+            f"-{ctx['ext_postnatal_months']} months")
+    pdf.set_font("Helvetica", "I", 8.5)
+    pdf.set_text_color(*_GREY)
+    pdf.multi_cell(0, 4, _ascii(
+        "The program may opt to extend postnatal payments to the full 12 "
+        "months (Flint's upper bound). Priced here as an optional add-on:"))
+    pdf.set_text_color(0, 0, 0)
+    kv("Additional cost (+6 months)", money(ctx["additional_cost"]))
+    kv("Total cost (12-month design)", money(ctx["ext_total"]))
+    pdf.ln(1)
+
     section("Household reach")
     kv("Families reached (weighted)", f"{ctx['reached_total']:,.0f}")
     kv("Avg benefit per family reached", money(ctx["avg_benefit"]))
@@ -581,7 +601,8 @@ def main(argv: Optional[list] = None) -> int:
     base_units, persons = _load(pir, args)
 
     LOG.info("Projecting income + RxKids to TY %d", ty)
-    units = _apply_rxkids(_project(pir, base_units, ty), tax_year=ty)
+    projected = _project(pir, base_units, ty)
+    units = _apply_rxkids(projected, tax_year=ty)
     frame = aggregate_to_spm_units(units, persons)
     LOG.info("Aggregated %d tax units -> %d SPM units", len(units), len(frame))
 
@@ -590,6 +611,18 @@ def main(argv: Optional[list] = None) -> int:
     prenatal_cost, _ = _cost_with_sdr(frame, "rxkids_prenatal_amount")
     postnatal_cost, _ = _cost_with_sdr(frame, "rxkids_postnatal_amount")
     moe = 1.645 * total_se
+
+    # ---- Potential option: extend postnatal payments to the full 12 months.
+    #      The program may or may not opt in; we price the additional 6 months
+    #      as an optional add-on (postnatal is linear in months). ----
+    ext_units = _apply_rxkids(
+        projected, tax_year=ty,
+        overrides={"postnatal_months": EXTENDED_POSTNATAL_MONTHS},
+    )
+    ext_frame = aggregate_to_spm_units(ext_units, persons)
+    ext_total = _weighted_cost(ext_frame, "rxkids_amount")
+    ext_postnatal = _weighted_cost(ext_frame, "rxkids_postnatal_amount")
+    additional_cost = ext_total - total_cost
 
     reached_total = _reached(frame, "rxkids_amount")
     reached_prenatal = _reached(frame, "rxkids_prenatal_amount")
@@ -651,6 +684,11 @@ def main(argv: Optional[list] = None) -> int:
         "The assumption band is a one-at-a-time sweep over the three soft, unanchored "
         "parameters (take-up, pregnancy incidence, infant share) — cost is linear in each.",
         "",
+        "The base run prices the 6-month postnatal window (Flint's lower bound). The "
+        "'potential' line prices the optional extension to the full 12 months — the "
+        "program may or may not opt in. Postnatal cost is linear in months, so the "
+        "additional 6 months roughly equals the base postnatal arm again.",
+        "",
         "Caveats: 2026-2028 FPL is CPI-projected off the 2025 HHS table; pregnancy "
         "incidence and infant share are held at base-year values.",
         "",
@@ -661,6 +699,10 @@ def main(argv: Optional[list] = None) -> int:
         "tax_year": ty,
         "cost_total": total_cost, "cost_prenatal": prenatal_cost,
         "cost_postnatal": postnatal_cost, "cost_se": total_se, "moe": moe,
+        "base_postnatal_months": int(p.postnatal_months),
+        "ext_postnatal_months": EXTENDED_POSTNATAL_MONTHS,
+        "ext_total": ext_total, "ext_postnatal": ext_postnatal,
+        "additional_cost": additional_cost,
         "reached_total": reached_total, "reached_prenatal": reached_prenatal,
         "reached_postnatal": reached_postnatal, "avg_benefit": avg_benefit,
         "quintiles": quintiles, "band": band, "county_rows": county_rows,
@@ -684,6 +726,8 @@ def main(argv: Optional[list] = None) -> int:
         "cost_total_se_$": round(total_se, 0),
         "cost_total_ci90_low_$": round(total_cost - moe, 0),
         "cost_total_ci90_high_$": round(total_cost + moe, 0),
+        "potential_additional_6mo_cost_$": round(additional_cost, 0),
+        "potential_total_12mo_cost_$": round(ext_total, 0),
         "families_reached": round(reached_total, 0),
         "avg_benefit_per_family_$": round(avg_benefit, 0),
     }]).to_csv(args.out / "cost_by_state.csv", index=False)
@@ -698,6 +742,8 @@ def main(argv: Optional[list] = None) -> int:
         print(f"  Sampling 90% CI            : ${total_cost - moe:,.0f} – ${total_cost + moe:,.0f}")
     if band is not None:
         print(f"  Assumption band            : ${band['min']:,.0f} – ${band['max']:,.0f}")
+    print(f"  POTENTIAL +6 months        : +${additional_cost:>15,.0f}"
+          f"  (12-mo total ${ext_total:,.0f})")
     print(f"  Families reached           : {reached_total:>16,.0f}")
     print(f"  Avg benefit per family     : ${avg_benefit:>15,.0f}")
     print("\n  Benefit received by income quintile:")

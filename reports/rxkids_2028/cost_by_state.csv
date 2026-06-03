@@ -1,2 +1,2 @@
-geography,tax_year,cost_total_$,cost_prenatal_$,cost_postnatal_$,cost_total_se_$,cost_total_ci90_low_$,cost_total_ci90_high_$,families_reached,avg_benefit_per_family_$
-Hawaii,2028,52545043.0,36396480.0,16148563.0,1353324.0,50318825.0,54771261.0,306411.0,171.0
+geography,tax_year,cost_total_$,cost_prenatal_$,cost_postnatal_$,cost_total_se_$,cost_total_ci90_low_$,cost_total_ci90_high_$,potential_additional_6mo_cost_$,potential_total_12mo_cost_$,families_reached,avg_benefit_per_family_$
+Hawaii,2028,52545043.0,36396480.0,16148563.0,1353324.0,50318825.0,54771261.0,16148563.0,68693606.0,306411.0,171.0
