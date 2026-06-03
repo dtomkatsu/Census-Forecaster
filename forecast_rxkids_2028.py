@@ -63,6 +63,22 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 PUMS_CONSTRUCTION_YEAR = 2022
 WORKBOOK_NAME = "rxkids_2028_cost_and_impact.xlsx"
+PDF_NAME = "rxkids_2028_cost_and_impact.pdf"
+
+_TEAL = (31, 111, 139)
+_DARK = (31, 59, 77)
+_GREY = (90, 90, 90)
+_LIGHT = (235, 242, 245)
+
+
+def _ascii(s) -> str:
+    """fpdf2 core fonts are latin-1; map the few non-latin-1 glyphs we use."""
+    return (
+        str(s)
+        .replace("ʻ", "'").replace("–", "-").replace("—", "-")
+        .replace("≤", "<=").replace("→", "->").replace("×", "x")
+        .encode("latin-1", "replace").decode("latin-1")
+    )
 
 # One-at-a-time assumption sweep. Cost is linear in each, so low/high values
 # bracket the band.
@@ -89,6 +105,8 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                    help="Skip SDR sampling standard errors even on real PUMS.")
     p.add_argument("--no-assumption-band", action="store_true", default=False,
                    help="Skip the parameter assumption-band sweep.")
+    p.add_argument("--no-pdf", action="store_true", default=False,
+                   help="Skip the one-page PDF summary (write only the workbook + CSVs).")
     p.add_argument("-v", "--verbose", action="store_true")
     return p.parse_args(argv)
 
@@ -389,6 +407,158 @@ def _write_workbook(path: Path, *, ctx: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# PDF (one-page shareable)
+# ---------------------------------------------------------------------------
+
+
+def _quintile_chart_png(quintiles: list[dict]):
+    """Render a benefit-share-by-quintile bar chart to an in-memory PNG."""
+    if not quintiles:
+        return None
+    import io
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    qs = [r["quintile"] for r in quintiles]
+    shares = [r["share_of_benefit_pct"] for r in quintiles]
+    fig, ax = plt.subplots(figsize=(6.4, 2.5))
+    ax.bar(qs, shares, color="#1F6F8B")
+    ax.set_ylabel("Share of benefit (%)")
+    ax.set_xlabel("Income quintile (Q1 = lowest income)")
+    for i, v in enumerate(shares):
+        ax.text(i, v + 0.6, f"{v:.0f}%", ha="center", fontsize=8)
+    ax.set_ylim(0, max(shares + [1]) * 1.18)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    fig.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=150)
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def _pdf_table(pdf, *, headers, widths_frac, rows) -> None:
+    """Draw a simple bordered table; first column left-aligned, rest right."""
+    widths = [pdf.epw * f for f in widths_frac]
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_fill_color(*_TEAL)
+    pdf.set_text_color(255, 255, 255)
+    for h, w in zip(headers, widths):
+        pdf.cell(w, 6, _ascii(h), fill=True, align="C")
+    pdf.ln()
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Helvetica", "", 9)
+    fill = False
+    for row in rows:
+        pdf.set_fill_color(*_LIGHT)
+        for j, (val, w) in enumerate(zip(row, widths)):
+            pdf.cell(w, 6, _ascii(val), border="B", fill=fill,
+                     align="L" if j == 0 else "R")
+        pdf.ln()
+        fill = not fill
+
+
+def _write_pdf(path: Path, *, ctx: dict) -> None:
+    """One-page analyst-facing PDF mirroring the workbook headline."""
+    from fpdf import FPDF
+
+    def money(x):
+        return f"${x:,.0f}"
+
+    pdf = FPDF(format="A4")
+    pdf.set_auto_page_break(auto=True, margin=12)
+    pdf.add_page()
+
+    pdf.set_text_color(*_DARK)
+    pdf.set_font("Helvetica", "B", 15)
+    pdf.cell(0, 9, _ascii(
+        f"RxKids Hawaiʻi - Cost & Benefits by Income Quintile, TY {ctx['tax_year']}"),
+        new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.set_text_color(*_GREY)
+    pdf.multi_cell(0, 5, _ascii(
+        "Statutory eligibility: Medicaid (clause 1) OR income <= 300% FPL "
+        "incl. expected unborn child (clause 2)"))
+    pdf.ln(1)
+
+    def section(title):
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.set_text_color(*_TEAL)
+        pdf.cell(0, 7, _ascii(title), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(0, 0, 0)
+
+    def kv(label, value, indent=0):
+        pdf.set_font("Helvetica", "", 10)
+        pdf.cell(95, 6, _ascii("   " * indent + label))
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.cell(0, 6, _ascii(value), new_x="LMARGIN", new_y="NEXT")
+
+    section("Fiscal cost (annual)")
+    kv("Total program cost", money(ctx["cost_total"]))
+    kv("Prenatal arm", money(ctx["cost_prenatal"]), 1)
+    kv("Postnatal arm", money(ctx["cost_postnatal"]), 1)
+    if ctx["cost_se"] > 0:
+        kv("Sampling 90% CI",
+           f"{money(ctx['cost_total'] - ctx['moe'])} - {money(ctx['cost_total'] + ctx['moe'])}")
+    if ctx.get("band"):
+        kv("Assumption band",
+           f"{money(ctx['band']['min'])} - {money(ctx['band']['max'])}")
+    pdf.ln(1)
+
+    section("Household reach")
+    kv("Families reached (weighted)", f"{ctx['reached_total']:,.0f}")
+    kv("Avg benefit per family reached", money(ctx["avg_benefit"]))
+    pdf.ln(2)
+
+    chart = _quintile_chart_png(ctx["quintiles"])
+    if chart is not None:
+        section("Benefit received by income quintile")
+        pdf.image(chart, w=pdf.epw * 0.72)
+        pdf.ln(2)
+        _pdf_table(
+            pdf,
+            headers=["Quintile", "Avg income", "Families", "Reached",
+                     "Total benefit", "Share"],
+            widths_frac=[0.14, 0.20, 0.17, 0.16, 0.20, 0.13],
+            rows=[[
+                r["quintile"], money(r["avg_income"]), f"{r['families']:,.0f}",
+                f"{r['families_reached']:,.0f}", money(r["total_benefit_$"]),
+                f"{r['share_of_benefit_pct']:.1f}%",
+            ] for r in ctx["quintiles"]],
+        )
+        pdf.ln(3)
+
+    if ctx["county_rows"]:
+        section("Cost by county")
+        _pdf_table(
+            pdf,
+            headers=["County", "Cost total", "Prenatal", "Postnatal", "Reached"],
+            widths_frac=[0.30, 0.18, 0.17, 0.17, 0.18],
+            rows=[[
+                r["county"], money(r["cost_total"]), money(r["cost_prenatal"]),
+                money(r["cost_postnatal"]), f"{r['reached']:,.0f}",
+            ] for r in ctx["county_rows"]],
+        )
+        pdf.ln(3)
+
+    pdf.set_font("Helvetica", "I", 7.5)
+    pdf.set_text_color(*_GREY)
+    pdf.multi_cell(0, 4, _ascii(
+        "Cost = weighted sum of the expected RxKids benefit (take-up- and "
+        "pregnancy-probability-adjusted) at SPM-unit grain on the household "
+        "(WGTP) weight. Benefits-by-quintile ranks SPM units on summed income "
+        "into population-equal fifths. Sampling CI is ACS sampling error (SDR, "
+        "80 replicate weights); the assumption band sweeps take-up, pregnancy "
+        "incidence, and infant share. 2026-2028 FPL is CPI-projected off the "
+        "2025 HHS table. Full methodology: RXKIDS_METHODOLOGY.md."))
+
+    pdf.output(str(path))
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -500,6 +670,10 @@ def main(argv: Optional[list] = None) -> int:
     # ---- Write outputs ----
     workbook_path = args.out / WORKBOOK_NAME
     _write_workbook(workbook_path, ctx=ctx)
+    pdf_path = None
+    if not args.no_pdf:
+        pdf_path = args.out / PDF_NAME
+        _write_pdf(pdf_path, ctx=ctx)
     pd.DataFrame(ctx["quintiles"]).to_csv(args.out / "benefits_by_income_quintile.csv", index=False)
     pd.DataFrame(county_rows).to_csv(args.out / "cost_by_county.csv", index=False)
     pd.DataFrame([{
@@ -532,7 +706,10 @@ def main(argv: Optional[list] = None) -> int:
               f"benefit ${row['total_benefit_$']:>14,.0f}  "
               f"({row['share_of_benefit_pct']:>5.1f}% of total)")
     print(f"\n  Workbook: {workbook_path}")
-    LOG.info("Wrote workbook + CSVs + parquet to %s", args.out)
+    if pdf_path is not None:
+        print(f"  PDF     : {pdf_path}")
+    LOG.info("Wrote workbook + %sCSVs + parquet to %s",
+             "PDF + " if pdf_path else "", args.out)
     return 0
 
 
