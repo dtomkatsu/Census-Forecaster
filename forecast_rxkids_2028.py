@@ -341,21 +341,43 @@ def _project(pir, base_units, year: int) -> pd.DataFrame:
     )
 
 
+def _magi_proxy(units: pd.DataFrame) -> pd.Series:
+    """Per-tax-unit MAGI proxy for the eligibility income test.
+
+    Medicaid/CHIP and ACA test eligibility on Modified Adjusted Gross Income.
+    The model's ``income`` is gross cash income that counts only the 85%
+    taxable portion of Social Security; MAGI counts **100%**. We add back the
+    non-taxable SS (``ssp_full`` − ``ssp``) for the primary and secondary
+    filers. Above-the-line deductions (IRA/HSA/SE-tax/etc.) are not observable
+    in PUMS, so MAGI is approximated as gross income + the SS add-back — a
+    standard survey-based MAGI proxy. (Tax-exempt interest is likewise not
+    separable in PUMS.)
+    """
+    magi = units["income"].fillna(0).astype(float).copy()
+    for pre in ("primary", "secondary"):
+        full = units.get(f"{pre}_ssp_full")
+        taxable = units.get(f"{pre}_ssp")
+        if full is not None and taxable is not None:
+            magi = magi + (full.fillna(0) - taxable.fillna(0)).clip(lower=0)
+    return magi
+
+
 def _attach_family_grain(units: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
-    """Attach SPM-family income + size (summed across the tax units that share
-    an SPM unit) for the FPL eligibility test. Returns (frame, kwargs). Tax
-    units with no SPM unit fall back to their own tax-unit values."""
+    """Attach SPM-family MAGI + size (summed across the tax units that share an
+    SPM unit) for the FPL eligibility test. Returns (frame, kwargs). Tax units
+    with no SPM unit fall back to their own tax-unit values."""
     if "spm_unit_id" not in units.columns:
         return units, {}
     out = units.copy()
+    out["_magi"] = _magi_proxy(out)
     is_joint = (out["filing_status"] == "married_filing_jointly").astype(int)
     persons_in_tu = 1 + is_joint + out["num_dependents"].fillna(0).clip(lower=0).astype(int)
     out["_fam_persons_tmp"] = persons_in_tu
     grp = out.groupby("spm_unit_id", dropna=False)
-    fam_income = grp["income"].transform("sum")
+    fam_income = grp["_magi"].transform("sum")
     fam_size = grp["_fam_persons_tmp"].transform("sum")
     null_spm = out["spm_unit_id"].isna()
-    out["_fam_income"] = fam_income.where(~null_spm, out["income"])
+    out["_fam_income"] = fam_income.where(~null_spm, out["_magi"])
     out["_fam_size"] = fam_size.where(~null_spm, persons_in_tu)
     out = out.drop(columns=["_fam_persons_tmp"])
     return out, {"family_income_col": "_fam_income", "family_size_col": "_fam_size"}

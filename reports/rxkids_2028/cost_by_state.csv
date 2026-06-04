@@ -1,2 +1,2 @@
 geography,tax_year,cost_total_$,cost_prenatal_$,cost_postnatal_$,cost_total_se_$,cost_total_ci90_low_$,cost_total_ci90_high_$,potential_additional_6mo_cost_$,potential_total_12mo_cost_$,first_year_total_$,first_year_prenatal_$,first_year_postnatal_$,first_year_pct_of_steady,eligible_families,expected_recipients,expected_pregnancies,expected_infants,avg_benefit_per_recipient_$
-Hawaii,2028,46073699.0,15357900.0,30715799.0,2719345.0,41600377.0,50547021.0,30715799.0,76789498.0,19268476.0,8318862.0,10949614.0,41.8,80867.0,20477.0,10239.0,10239.0,2250.0
+Hawaii,2028,45436189.0,15145396.0,30290792.0,2690895.0,41009667.0,49862710.0,30290792.0,75726981.0,19001863.0,8203756.0,10798107.0,41.8,79842.0,20194.0,10097.0,10097.0,2250.0

@@ -406,9 +406,11 @@ payment design: each eligible birth draws a one-time $1,500 prenatal payment
 but $500/mo × 6 = $3,000 postnatal — same recipients, double the per-birth
 amount.
 
-Eligibility is tested at **SPM-family grain** (income + size summed across
-the tax units in an SPM unit), not per tax unit — testing per filing unit
-split a household's income across small units and overstated cost by ~15%.
+Eligibility is tested on **MAGI at SPM-family grain** (MAGI + size summed
+across the tax units in an SPM unit), not per tax unit — testing per filing
+unit split a household's income across small units and overstated cost by
+~15%. The income concept is a MAGI proxy (100% of Social Security, per
+Medicaid/ACA rules); see §10.
 
 #### Scenarios (take-up + behavioral fertility)
 
@@ -505,11 +507,16 @@ is reported).
 - Federal EITC/CTC parameter tables fall back to TY2025 for years > 2025.
   **Immaterial here** — RxKids is non-taxable and never touches AGI /
   EITC / CTC.
-- Income is tested at **SPM-family grain** (income + persons summed across
-  the tax units in an SPM unit), which corrects the prior per-tax-unit test
-  that overstated eligibility by ~15%. Residual: SPM units approximate but
-  do not exactly equal the statutory "family," and the concept is cash
-  income, not MAGI.
+- Income is tested at **SPM-family grain** (MAGI + persons summed across the
+  tax units in an SPM unit), which corrects the prior per-tax-unit test that
+  overstated eligibility by ~15%. The income concept is a **MAGI proxy**
+  (`_magi_proxy`): gross income with 100% of Social Security counted (the
+  model's `income` counts only the 85% taxable portion), matching Medicaid/
+  ACA MAGI rules. Above-the-line deductions and tax-exempt interest are not
+  observable in PUMS, so MAGI ≈ gross + SS add-back (a standard survey-based
+  proxy). Switching cash income → MAGI lowered the estimate ~1.4% (counting
+  full SS pushes some multigenerational families over 300% FPL). Residual:
+  SPM units approximate but do not exactly equal the statutory "family."
 - Pregnancy incidence and child-age share are held at base-year values
   (no 2028 birth-trend adjustment); the assumption band brackets this.
 - The 2026–2028 FPL inflator is a CPI projection, not a published table.

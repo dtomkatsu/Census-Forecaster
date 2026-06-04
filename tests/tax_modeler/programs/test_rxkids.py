@@ -370,6 +370,28 @@ def test_rxkids_medicaid_pregnancy_pathway_binds_below_196():
     assert float(out["rxkids_postnatal_amount"].iloc[0]) == pytest.approx(0.0)
 
 
+def test_magi_proxy_adds_back_nontaxable_social_security():
+    """The forecast's MAGI proxy counts 100% of Social Security: it adds the
+    non-taxable 15% (ssp_full − ssp) back onto the model's gross income."""
+    import sys
+    from pathlib import Path
+    repo_root = Path(__file__).resolve().parents[3]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    import forecast_rxkids_2028 as fc
+
+    df = pd.DataFrame({
+        "income": [50_000.0],          # already includes 0.85 × SS = 8,500
+        "primary_ssp": [8_500.0],      # 85% taxable portion
+        "primary_ssp_full": [10_000.0],
+        "secondary_ssp": [0.0],
+        "secondary_ssp_full": [0.0],
+    })
+    magi = fc._magi_proxy(df)
+    # MAGI adds back the non-taxable 15% (1,500) → 51,500.
+    assert float(magi.iloc[0]) == pytest.approx(51_500.0)
+
+
 def test_rxkids_family_grain_income_test():
     """When family-grain columns are supplied, the FPL test uses household
     income/size, not the tax unit's. A unit income-eligible at its own small
