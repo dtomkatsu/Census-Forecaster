@@ -67,6 +67,11 @@ PDF_NAME = "rxkids_2028_cost_and_impact.pdf"
 # Full Flint-design postnatal window. The base run uses the 6-month lower
 # bound; this prices the optional extension to the full 12 months.
 EXTENDED_POSTNATAL_MONTHS = 12
+# Prenatal take-up as a fraction of postnatal (newborn) take-up. Flint
+# observed ~90% prenatal enrollment vs ~98% of newborns (≈0.92). Applied so
+# the prenatal arm runs below the postnatal/newborn rate; at the Flint-mature
+# --takeup-rate 0.98 this recovers Flint's observed ~0.90 prenatal rate.
+PRENATAL_TAKEUP_RATIO = 0.92
 
 _TEAL = (31, 111, 139)
 _DARK = (31, 59, 77)
@@ -425,6 +430,7 @@ def _assumption_band(
     def _corner(takeup, child_mult):
         return _cost_for({
             "takeup_rate": takeup,
+            "prenatal_takeup_rate": round(takeup * PRENATAL_TAKEUP_RATIO, 4),
             "child_under_age_share": float(np.clip(base.child_under_age_share * child_mult, 0.0, 1.0)),
         })
 
@@ -829,8 +835,10 @@ def main(argv: Optional[list] = None) -> int:
     projected = _project(pir, base_units, ty)
 
     fert = max(0.0, args.fertility_response)
-    calib = {"takeup_rate": args.takeup_rate}
-    LOG.info("Take-up %.2f, fertility response %+.0f%%", args.takeup_rate, 100 * fert)
+    pre_takeup = round(args.takeup_rate * PRENATAL_TAKEUP_RATIO, 4)
+    calib = {"takeup_rate": args.takeup_rate, "prenatal_takeup_rate": pre_takeup}
+    LOG.info("Take-up: postnatal %.2f / prenatal %.2f; fertility response %+.0f%%",
+             args.takeup_rate, pre_takeup, 100 * fert)
 
     units = _apply_rxkids(projected, tax_year=ty, overrides=calib)
     frame = _apply_fertility(aggregate_to_spm_units(units, persons), fert)
@@ -919,8 +927,10 @@ def main(argv: Optional[list] = None) -> int:
         ("Medicaid OR-clause", "on", "Clause 1: medicaid_receives from compute_medicaid_for_units"),
         ("Prenatal payment", f"${p.prenatal_monthly:,.0f} × {p.prenatal_months}", "One-time per pregnancy"),
         ("Postnatal payment", f"${p.postnatal_monthly_per_child:,.0f}/mo × {p.postnatal_months}", "Per infant under cutoff"),
-        ("Take-up rate", args.takeup_rate,
-         "Combined eligibility×claim (Flint observed 0.98); swept for the band"),
+        ("Take-up — postnatal (newborn)", args.takeup_rate,
+         "Flint observed 0.98; swept for the band"),
+        ("Take-up — prenatal", pre_takeup,
+         f"{PRENATAL_TAKEUP_RATIO:.2f}× postnatal (Flint: ~90% prenatal vs 98% newborn)"),
         ("Fertility response", f"{100 * fert:+.0f}%",
          "Induced eligible-birth increase (Flint ~+10%); scales both arms"),
         ("Birth rate / dependent", p.child_under_age_share,

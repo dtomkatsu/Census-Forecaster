@@ -133,11 +133,19 @@ Reference scenarios by delivery channel (override with `--takeup-rate`):
 | Flint-mature (hospital partnership) | Flint observed | 0.98 |
 | Standalone application | WIC pregnant/children | ~0.60 |
 
-Two structural notes: (1) 0.90 is the **steady-state** rate — the launch-year
-ramp (§10) separately models lower year-1 enrollment; (2) the assumption band
-already sweeps take-up, so this uncertainty is reflected in the reported
-range. *(Take-up figures above are standard IRS/USDA/CMS estimates; see §8
-for sourcing.)*
+**Arm-specific take-up.** Mothers enroll prenatally at a lower rate than
+newborns are enrolled (Flint: ~90% prenatal vs ~98% of newborns). The model
+sets postnatal (newborn) take-up = `takeup_rate` and prenatal take-up =
+`takeup_rate × 0.92` (`PRENATAL_TAKEUP_RATIO`). So the **0.90 default →
+postnatal 0.90 / prenatal 0.83**, and the Flint scenario (`--takeup-rate
+0.98`) → 0.98 / 0.90, recovering Flint's observed arm rates. (The library
+default leaves the two arms uniform; the forecast applies the split.)
+
+Three structural notes: (1) take-up here is the **steady-state** rate — the
+launch-year ramp (§10) separately models lower year-1 enrollment; (2) the
+assumption band sweeps the postnatal rate (and scales prenatal with it), so
+this uncertainty is in the reported range; (3) take-up figures are standard
+IRS/USDA/CMS/RxKids estimates (see §8 for sourcing).
 
 ### Estimated annual cost (statutory eligibility)
 
@@ -202,9 +210,10 @@ Each eligible birth draws one prenatal and one postnatal payment:
   `num_dependents > 0` AND (clause 1 OR clause 2).
 
 Both are **probabilistic** per unit, not deterministic; the weighted state
-total recovers the right population-level expectation. Because both use the
-same births and eligibility, the prenatal arm is exactly **half** the
-postnatal arm (the $1,500 vs $3,000 per-birth payment ratio).
+total recovers the right population-level expectation. At a uniform take-up
+the prenatal arm is exactly **half** the postnatal arm (the $1,500 vs $3,000
+per-birth payment ratio); with the default arm-specific take-up (§2) it is a
+bit less than half (lower prenatal enrollment).
 
 The combined `rxkids_amount = rxkids_prenatal_amount +
 rxkids_postnatal_amount` is what feeds SPM resources; the two subtotals
@@ -477,18 +486,19 @@ way and reported separately.
 
 | | Value |
 |---|---|
-| **Steady-state annual cost** | **~$54M** (prenatal ~$18M + postnatal ~$36M) |
-| Sampling 90% CI | ~$50M–$59M |
-| **Assumption band (joint corners)** | **~$33M–$69M** |
-| Expected recipients / year | ~24,200 (≈12,100 pregnancies + 12,100 infants) |
-| Avg benefit per recipient | ~$2,250 |
-| First fiscal year (launch, 12-mo ramp) | ~$23M (42% of steady) |
-| Optional +6-month postnatal | +~$36M (12-month-design total ~$91M) |
+| **Steady-state annual cost** | **~$53M** (prenatal ~$17M + postnatal ~$36M) |
+| Sampling 90% CI | ~$49M–$57M |
+| **Assumption band (joint corners)** | **~$32M–$68M** |
+| Expected recipients / year | ~23,200 (≈11,100 pregnancies + 12,100 infants) |
+| Avg benefit per recipient | ~$2,280 |
+| First fiscal year (launch, 12-mo ramp) | ~$22M (42% of steady) |
+| Optional +6-month postnatal | +~$36M (12-month-design total ~$89M) |
 
-Default take-up is **0.90** (see §2). Postnatal is ~2× prenatal purely by
-payment design: each eligible birth draws a one-time $1,500 prenatal payment
-but $500/mo × 6 = $3,000 postnatal — same recipients, double the per-birth
-amount.
+Take-up is **arm-specific** (see §2): postnatal/newborn **0.90**, prenatal
+**0.83** (0.92 × postnatal, from Flint's ~90% prenatal vs ~98% newborn). So
+postnatal is a bit *more* than 2× prenatal — the 2× per-birth payment ratio
+($3,000 vs $1,500) plus the lower prenatal take-up. (Single-rate runs, e.g.
+the library default, keep both arms equal → prenatal exactly half.)
 
 Eligibility is tested on the **MAGI household ≈ the tax unit** (filer +
 spouse + tax dependents, the family concept Medicaid uses — 42 CFR 435.603),
@@ -504,16 +514,17 @@ filing relatives whose income MAGI excludes) and NOT the physical household
 The headline above is the **conservative** default (90% take-up, no
 behavioral response). Two Flint-observed assumptions raise it:
 
-| Scenario | Take-up | Fertility | Steady-state cost | Band |
+| Scenario | Take-up (post/pre) | Fertility | Steady-state cost | Band |
 |---|---|---|---|---|
-| Conservative (default) | 0.90 | — | **~$54M** | ~$33–69M |
-| **Flint-equivalent** | 0.98 | +10% | **~$65M** | ~$39–83M |
+| Conservative (default) | 0.90 / 0.83 | — | **~$53M** | ~$32–68M |
+| **Flint-equivalent** | 0.98 / 0.90 | +10% | **~$63M** | ~$38–81M |
 
-`--takeup-rate 0.98 --fertility-response 0.10` produces the Flint scenario.
-Take-up scales both arms linearly; the **fertility response**
+`--takeup-rate 0.98 --fertility-response 0.10` produces the Flint scenario —
+which sets postnatal take-up to 0.98 and prenatal to 0.98 × 0.92 ≈ 0.90,
+recovering Flint's *observed* arm rates exactly. The **fertility response**
 (`_apply_fertility`) models the ~10% post-launch birth rise documented in the
 *Rx Kids Flint Birth Report (2026)* as a uniform +10% on eligible births
-(×1.10 on both arms). From the 0.90 default: $54M × (0.98/0.90) × 1.10 ≈ $65M.
+(×1.10 on both arms): ~$53M × (take-up lift) × 1.10 ≈ $63M.
 It is a real upside risk a static model would miss, but **off by default**:
 Flint's rise may blend a conception response with in-migration of pregnant
 residents into eligible areas, and Hawaiʻi's island geography would see far
