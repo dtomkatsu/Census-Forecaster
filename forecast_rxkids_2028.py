@@ -362,38 +362,35 @@ def _magi_proxy(units: pd.DataFrame) -> pd.Series:
     return magi
 
 
-def _attach_family_grain(units: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
-    """Attach SPM-family MAGI + size (summed across the tax units that share an
-    SPM unit) for the FPL eligibility test. Returns (frame, kwargs). Tax units
-    with no SPM unit fall back to their own tax-unit values."""
-    if "spm_unit_id" not in units.columns:
-        return units, {}
+def _attach_magi_household(units: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """Attach the MAGI household income + size for the FPL eligibility test.
+
+    Medicaid/ACA define the eligibility household by tax-filing relationships
+    (42 CFR 435.603) — filer + spouse + claimed tax dependents — which the
+    model's TAX UNIT approximates. Because the statute anchors eligibility to
+    the State's Medicaid program (clause 1), the 300% FPL test (clause 2) uses
+    the same MAGI-household grain: each tax unit is tested on its own MAGI at
+    its own size, NOT pooled with cohabiting partners / separate filers (the
+    SPM resource-sharing family would over-pool income relative to MAGI rules).
+    """
     out = units.copy()
     out["_magi"] = _magi_proxy(out)
     is_joint = (out["filing_status"] == "married_filing_jointly").astype(int)
-    persons_in_tu = 1 + is_joint + out["num_dependents"].fillna(0).clip(lower=0).astype(int)
-    out["_fam_persons_tmp"] = persons_in_tu
-    grp = out.groupby("spm_unit_id", dropna=False)
-    fam_income = grp["_magi"].transform("sum")
-    fam_size = grp["_fam_persons_tmp"].transform("sum")
-    null_spm = out["spm_unit_id"].isna()
-    out["_fam_income"] = fam_income.where(~null_spm, out["_magi"])
-    out["_fam_size"] = fam_size.where(~null_spm, persons_in_tu)
-    out = out.drop(columns=["_fam_persons_tmp"])
-    return out, {"family_income_col": "_fam_income", "family_size_col": "_fam_size"}
+    out["_magi_size"] = 1 + is_joint + out["num_dependents"].fillna(0).clip(lower=0).astype(int)
+    return out, {"family_income_col": "_magi", "family_size_col": "_magi_size"}
 
 
 def _apply_rxkids(units: pd.DataFrame, *, tax_year: int, overrides: Optional[dict] = None) -> pd.DataFrame:
     """Medicaid flag (clause 1) then RxKids expected benefit on a tax-unit frame.
 
-    Eligibility (both clauses) is tested at SPM-family grain — family income and
-    size summed across the tax units in an SPM unit — not per tax unit, which
-    would split a household's income and overstate eligibility.
+    Eligibility (both clauses) is tested on the MAGI household ≈ the tax unit
+    (filer + spouse + tax dependents), the family concept Medicaid uses —
+    consistent with the statute's clause-1 Medicaid anchor.
     """
     from tax_modeler.benefits.medicaid_hi_quest import compute_medicaid_for_units
     from tax_modeler.programs import compute_rxkids_for_units
 
-    out, fam = _attach_family_grain(units)
+    out, fam = _attach_magi_household(units)
     out = compute_medicaid_for_units(out, tax_year=tax_year, **fam)
     out = compute_rxkids_for_units(out, tax_year=tax_year, overrides=overrides, **fam)
     return out

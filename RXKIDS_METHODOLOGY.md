@@ -393,24 +393,27 @@ way and reported separately.
 
 | | Value |
 |---|---|
-| **Steady-state annual cost** | **~$46M** (prenatal ~$15M + postnatal ~$31M) |
-| Sampling 90% CI | ~$43M–$49M |
-| **Assumption band (joint corners)** | **~$28M–$59M** |
-| Expected recipients / year | ~20,500 (≈10,200 pregnancies + 10,200 infants) |
+| **Steady-state annual cost** | **~$54M** (prenatal ~$18M + postnatal ~$36M) |
+| Sampling 90% CI | ~$50M–$59M |
+| **Assumption band (joint corners)** | **~$33M–$69M** |
+| Expected recipients / year | ~24,200 (≈12,100 pregnancies + 12,100 infants) |
 | Avg benefit per recipient | ~$2,250 |
-| First fiscal year (launch, 12-mo ramp) | ~$19M (42% of steady) |
-| Optional +6-month postnatal | +~$31M (12-month-design total ~$77M) |
+| First fiscal year (launch, 12-mo ramp) | ~$23M (42% of steady) |
+| Optional +6-month postnatal | +~$36M (12-month-design total ~$91M) |
 
 Default take-up is **0.90** (see §2). Postnatal is ~2× prenatal purely by
 payment design: each eligible birth draws a one-time $1,500 prenatal payment
 but $500/mo × 6 = $3,000 postnatal — same recipients, double the per-birth
 amount.
 
-Eligibility is tested on **MAGI at SPM-family grain** (MAGI + size summed
-across the tax units in an SPM unit), not per tax unit — testing per filing
-unit split a household's income across small units and overstated cost by
-~15%. The income concept is a MAGI proxy (100% of Social Security, per
-Medicaid/ACA rules); see §10.
+Eligibility is tested on the **MAGI household ≈ the tax unit** (filer +
+spouse + tax dependents, the family concept Medicaid uses — 42 CFR 435.603),
+on a **MAGI income proxy** (100% of Social Security, per Medicaid/ACA rules).
+Because the statute anchors eligibility to Medicaid (clause 1), the 300% FPL
+test (clause 2) uses the same MAGI-household grain — NOT the broader SPM
+resource-sharing family (which would pool cohabiting partners / separately-
+filing relatives whose income MAGI excludes) and NOT the physical household
+(which would count unrelated roommates). See §10.
 
 #### Scenarios (take-up + behavioral fertility)
 
@@ -419,25 +422,25 @@ behavioral response). Two Flint-observed assumptions raise it:
 
 | Scenario | Take-up | Fertility | Steady-state cost | Band |
 |---|---|---|---|---|
-| Conservative (default) | 0.90 | — | **~$46M** | ~$28–59M |
-| **Flint-equivalent** | 0.98 | +10% | **~$55M** | ~$33–70M |
+| Conservative (default) | 0.90 | — | **~$54M** | ~$33–69M |
+| **Flint-equivalent** | 0.98 | +10% | **~$65M** | ~$39–83M |
 
 `--takeup-rate 0.98 --fertility-response 0.10` produces the Flint scenario.
 Take-up scales both arms linearly; the **fertility response**
 (`_apply_fertility`) models Flint's documented ~10% post-launch birth rise
 as a uniform +10% on eligible births (×1.10 on both arms). From the 0.90
-default: $46M × (0.98/0.90) × 1.10 ≈ $55M. The fertility response is a real
+default: $54M × (0.98/0.90) × 1.10 ≈ $65M. The fertility response is a real
 upside risk a static model would miss; it is off by default and surfaced as
 an explicit scenario.
 
 ### Eligible base vs recipients
 
-"Eligible families" (~306k weighted) is the population clearing the
-income/Medicaid test — NOT the recipient count. Actual **expected
-recipients** (pregnancies + infants) are ~21,500/yr, recovered by dividing
+"Eligible families" (~96k weighted, families with a child clearing the
+income/Medicaid test) is NOT the recipient count. Actual **expected
+recipients** (pregnancies + infants) are ~24,200/yr, recovered by dividing
 each arm's expected-dollar column by its full per-recipient payment
 ($1,500 prenatal, $3,000 postnatal). Report recipients, not the eligible
-base, to avoid a ~15× overstatement.
+base.
 
 ### Coherent arms (no birth-anchor needed)
 
@@ -450,24 +453,22 @@ universe, which overcounted pregnancies ~2× and required a runtime
 
 ### Eligible-birth cross-check
 
-The model's implied eligible births can be checked against external Hawaii
-birth statistics (decomposing eligibility by clause, household grain):
-
-| Eligibility path | Eligible births | Share of 15,535 |
-|---|---|---|
-| 300% FPL only (clause 2) | ~10,600 | 68% |
-| Medicaid only (clause 1) | ~11,400 | 73% |
-| Both (OR) | ~11,400 | **73%** |
+The model implies **~13,400 eligible births** (= 12,089 infant recipients ÷
+0.90 take-up) = **~86% of Hawaii's 15,535 annual births**, on the MAGI-
+household grain.
 
 - **External anchor:** Hawaii Medicaid-financed births ≈ 40% (~6,200) — a
-  *floor* (the pregnancy pathway sits at 196% FPL). The model's 73% is
-  comfortably above it, as it should be: the program's gate (≤300% FPL OR
-  Medicaid/CHIP) is far broader than the pregnancy-Medicaid threshold, and
-  ~73% is in line with national ≤300%-FPL birth shares adjusted for Hawaii's
-  high-cost dollar thresholds.
-- The income-grain fix moved this fraction from an implausible **87%**
-  (tax-unit grain) down to a defensible **73%** — corroborating that
-  per-tax-unit testing was overstating eligibility.
+  *floor* (the pregnancy-Medicaid pathway sits at 196% FPL). The model's 86%
+  is well above it, as it should be: the gate (≤300% FPL OR Medicaid/CHIP) is
+  far broader than the pregnancy threshold.
+- **Why ~86% (vs ~73% under the SPM-family grain)?** The MAGI household is a
+  **narrower income unit** — it excludes cohabiting-partner and extended-
+  family income that the SPM resource-sharing family pools in. On the narrow
+  (MAGI-correct) unit, more births fall under 300% FPL. This is higher than a
+  *Census-family-income* benchmark (~60–65% nationally) would suggest, but
+  that benchmark uses a broader income unit; the two are not directly
+  comparable. The 86% is internally consistent with MAGI rules, which is the
+  basis the Medicaid-anchored statute implies.
 - **Nuance:** clause 1 (Medicaid) is *broader* than clause 2 here because
   `medicaid_receives` includes the children's CHIP-equivalent pathway at
   **313% FPL** — slightly above the 300% income clause. That ~5pp is the
@@ -507,16 +508,22 @@ is reported).
 - Federal EITC/CTC parameter tables fall back to TY2025 for years > 2025.
   **Immaterial here** — RxKids is non-taxable and never touches AGI /
   EITC / CTC.
-- Income is tested at **SPM-family grain** (MAGI + persons summed across the
-  tax units in an SPM unit), which corrects the prior per-tax-unit test that
-  overstated eligibility by ~15%. The income concept is a **MAGI proxy**
-  (`_magi_proxy`): gross income with 100% of Social Security counted (the
-  model's `income` counts only the 85% taxable portion), matching Medicaid/
-  ACA MAGI rules. Above-the-line deductions and tax-exempt interest are not
-  observable in PUMS, so MAGI ≈ gross + SS add-back (a standard survey-based
-  proxy). Switching cash income → MAGI lowered the estimate ~1.4% (counting
-  full SS pushes some multigenerational families over 300% FPL). Residual:
-  SPM units approximate but do not exactly equal the statutory "family."
+- **Eligibility unit = MAGI household ≈ tax unit.** Medicaid/ACA define the
+  household by tax-filing relationships (42 CFR 435.603) — filer + spouse +
+  tax dependents — and the statute anchors clause 1 to Medicaid, so the 300%
+  FPL test (clause 2) uses the same grain. Each tax unit is tested on its own
+  MAGI at its own size. We do **not** pool to the SPM resource-sharing family
+  (which would count cohabiting-partner / extended-family income that MAGI
+  excludes — over-pooling that understates eligibility ~15%) nor to the
+  physical household (which would count unrelated roommates). The income is a
+  **MAGI proxy** (`_magi_proxy`): gross income with 100% of Social Security
+  counted (the model's `income` counts only the 85% taxable portion), per
+  Medicaid/ACA rules. Above-the-line deductions and tax-exempt interest are
+  not observable in PUMS, so MAGI ≈ gross + SS add-back (a standard survey-
+  based proxy). Residual: PUMS tax units approximate but do not perfectly
+  match the MAGI-household composition rules; if the bill defines "family"
+  more broadly than MAGI, the SPM-family grain (~$45M) is the alternative —
+  a ~$9M / ~18% lever.
 - Pregnancy incidence and child-age share are held at base-year values
   (no 2028 birth-trend adjustment); the assumption band brackets this.
 - The 2026–2028 FPL inflator is a CPI projection, not a published table.
