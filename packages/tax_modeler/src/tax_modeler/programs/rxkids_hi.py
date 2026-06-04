@@ -185,11 +185,22 @@ class RxKidsHIParams:
     """
 
     takeup_rate: float = 0.90
-    """Fraction of eligible units that actually claim.
+    """Postnatal (newborn) take-up — the fraction of eligible newborns claimed.
 
     Default 0.90 — below Flint's observed 0.98 (universal design + hospital
     partnership) to reflect weaker year-1 infrastructure in Hawaii, but
     above a deeply conservative floor. Set 0.98 for the Flint-observed rate.
+    Also the prenatal rate unless ``prenatal_takeup_rate`` is set.
+    """
+
+    prenatal_takeup_rate: Optional[float] = None
+    """Prenatal-arm take-up; falls back to ``takeup_rate`` when ``None``.
+
+    Mothers enroll prenatally at a lower rate than newborns are enrolled
+    (Flint: ~90% prenatal vs ~98% of newborns), because some are reached only
+    after birth. ``None`` (the library default) keeps both arms uniform; the
+    forecast sets this to ``takeup_rate × a Flint-anchored ratio`` so the
+    prenatal arm runs a few points below the postnatal/newborn rate.
     """
 
     is_taxable: bool = False
@@ -291,10 +302,19 @@ def compute_rxkids_for_units(
         raise ConfigError(
             f"takeup_rate must be in [0.0, 1.0], got {p.takeup_rate}"
         )
+    if p.prenatal_takeup_rate is not None and not 0.0 <= p.prenatal_takeup_rate <= 1.0:
+        raise ConfigError(
+            f"prenatal_takeup_rate must be in [0.0, 1.0], got {p.prenatal_takeup_rate}"
+        )
     if p.postnatal_age_cutoff < 0:
         raise ConfigError(
             f"postnatal_age_cutoff must be >= 0, got {p.postnatal_age_cutoff}"
         )
+
+    # Arm-specific take-up: postnatal (newborn) is takeup_rate; prenatal falls
+    # back to it unless set lower (mothers enroll prenatally at a lower rate).
+    post_takeup = p.takeup_rate
+    pre_takeup = p.prenatal_takeup_rate if p.prenatal_takeup_rate is not None else p.takeup_rate
 
     df = units.copy()
 
@@ -371,7 +391,7 @@ def compute_rxkids_for_units(
     postnatal_amount = np.where(
         postnatal_eligible,
         birth_events * p.postnatal_monthly_per_child * p.postnatal_months
-        * p.takeup_rate,
+        * post_takeup,
         0.0,
     )
 
@@ -382,7 +402,7 @@ def compute_rxkids_for_units(
     )
     prenatal_amount = np.where(
         prenatal_eligible,
-        birth_events * p.prenatal_monthly * p.prenatal_months * p.takeup_rate,
+        birth_events * p.prenatal_monthly * p.prenatal_months * pre_takeup,
         0.0,
     )
 

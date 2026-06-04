@@ -275,7 +275,28 @@ def test_rxkids_defaults_match_hawaii_factory():
     assert p.income_fpl_cap == pytest.approx(3.00)
     assert p.pregnant_fpl_cap == pytest.approx(1.96)
     assert p.takeup_rate == pytest.approx(0.90)
+    assert p.prenatal_takeup_rate is None  # library default: arms uniform
     assert p.is_taxable is False
+
+
+def test_rxkids_arm_specific_takeup():
+    """A lower prenatal_takeup_rate scales only the prenatal arm; the postnatal
+    arm stays on takeup_rate. (Mothers enroll prenatally at a lower rate than
+    newborns are enrolled — Flint ~90% vs ~98%.)"""
+    units = _make_units([
+        {"num_dependents": 2, "num_qualifying_children": 2, "income": 30_000.0,
+         "medicaid_receives": False},
+    ])
+    uniform = compute_rxkids_for_units(units, tax_year=2024)  # both arms 0.90
+    split = compute_rxkids_for_units(
+        units, tax_year=2024,
+        params=RxKidsHIParams(takeup_rate=0.90, prenatal_takeup_rate=0.828),
+    )
+    # Postnatal arm unchanged; prenatal arm scaled by 0.828/0.90 = 0.92.
+    assert float(split["rxkids_postnatal_amount"].iloc[0]) == pytest.approx(
+        float(uniform["rxkids_postnatal_amount"].iloc[0]))
+    assert float(split["rxkids_prenatal_amount"].iloc[0]) == pytest.approx(
+        float(uniform["rxkids_prenatal_amount"].iloc[0]) * (0.828 / 0.90))
 
 
 # ---------------------------------------------------------------------------

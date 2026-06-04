@@ -90,13 +90,62 @@ cap (e.g. `10.0`). See the module docstring for override recipes.
 | `postnatal_age_cutoff` | 1 | Infants in their first year (Flint design). PUMS carries no sub-year age, so age 0 is the closest proxy. |
 | `income_fpl_cap` | **3.00** | Statutory clause 2: 300% FPL income test (at family size). |
 | `pregnant_fpl_cap` | **1.96** | Clause 1 prenatal Medicaid pregnancy pathway (196% FPL). Subsumed by the 300% income test at default; binds only if the income cap is set below 196%. |
-| `takeup_rate` | 0.90 | Below Flint's observed 0.98 (universal design + hospital partnership) to reflect weaker year-1 Hawaii infrastructure. |
+| `takeup_rate` | 0.90 | Anchored by *delivery channel* (clinic-enrolled, sub-Flint) — see "Take-up rate — how it is anchored" below. |
 | `is_taxable` | `False` | Match Flint design — charitable disbursement, not IRS-reported. Routes through SPM resources only. |
 | `child_under_age_share` | 0.066 | **Annual qualifying-birth rate per dependent (a FLOW)** — the common driver of BOTH arms: Hawaii births 15,535 ÷ ACS dependents 0-17 ≈ 233,000. Must be the full annual birth cohort, NOT a <6-month stock (a stock basis understates ~2×). Sensitivity: linear (scales total cost). |
 
 Plus the Medicaid clause, evaluated in `compute_rxkids_for_units` from the
 `medicaid_receives` column produced by `compute_medicaid_for_units` (the
 caller pre-attaches it).
+
+### Take-up rate — how it is anchored
+
+`takeup_rate` (default **0.90**) is the single most important and least
+data-anchored input — it scales the whole estimate linearly. It is set by
+analogy, not by an administrative caseload (no Hawaiʻi RxKids exists). The
+key principle: **take-up is driven primarily by the *delivery channel*, not
+the benefit type.**
+
+- **Tax-delivered** benefits (EITC, CTC) have take-up limited by tax-filing
+  friction — non-filers, complexity, awareness. EITC ≈ 78% overall / ~85%
+  for families with children; CTC ≈ 90% among filers.
+- **Clinically enrolled / "prescribed"** benefits — RxKids' actual design in
+  Flint (enroll at a prenatal-care visit, disbursed via GiveDirectly) — clear
+  that friction because nearly every pregnant person has prenatal contact.
+  Flint observed **98%** of eligible newborns. The same perinatal channel
+  drives high take-up in WIC-infants (~90%+) and Medicaid-for-pregnant-women
+  (~90%+).
+- **Application-based** standalone programs sit lower (WIC pregnant/children
+  ~55–65%; SNAP ~82%).
+
+So **EITC/CTC are the right anchor only if Hawaiʻi delivers RxKids as a tax
+credit.** For a Flint-style clinic-enrolled cash program, the perinatal
+analogs (WIC-infants, Medicaid-pregnant, Flint itself) put steady-state
+take-up at **~0.85–0.98**, which is why the 0.90 default is justified — and
+why EITC/CTC should be treated as a *floor*, not the central estimate.
+
+Reference scenarios by delivery channel (override with `--takeup-rate`):
+
+| Delivery design | Take-up anchor | Rate |
+|---|---|---|
+| Refundable tax credit | EITC/CTC families | ~0.85 |
+| **Clinic-enrolled, maturing (default)** | Perinatal analogs, sub-Flint | **0.90** |
+| Flint-mature (hospital partnership) | Flint observed | 0.98 |
+| Standalone application | WIC pregnant/children | ~0.60 |
+
+**Arm-specific take-up.** Mothers enroll prenatally at a lower rate than
+newborns are enrolled (Flint: ~90% prenatal vs ~98% of newborns). The model
+sets postnatal (newborn) take-up = `takeup_rate` and prenatal take-up =
+`takeup_rate × 0.92` (`PRENATAL_TAKEUP_RATIO`). So the **0.90 default →
+postnatal 0.90 / prenatal 0.83**, and the Flint scenario (`--takeup-rate
+0.98`) → 0.98 / 0.90, recovering Flint's observed arm rates. (The library
+default leaves the two arms uniform; the forecast applies the split.)
+
+Three structural notes: (1) take-up here is the **steady-state** rate — the
+launch-year ramp (§10) separately models lower year-1 enrollment; (2) the
+assumption band sweeps the postnatal rate (and scales prenatal with it), so
+this uncertainty is in the reported range; (3) take-up figures are standard
+IRS/USDA/CMS/RxKids estimates (see §8 for sourcing).
 
 ### Estimated annual cost (statutory eligibility)
 
@@ -161,9 +210,10 @@ Each eligible birth draws one prenatal and one postnatal payment:
   `num_dependents > 0` AND (clause 1 OR clause 2).
 
 Both are **probabilistic** per unit, not deterministic; the weighted state
-total recovers the right population-level expectation. Because both use the
-same births and eligibility, the prenatal arm is exactly **half** the
-postnatal arm (the $1,500 vs $3,000 per-birth payment ratio).
+total recovers the right population-level expectation. At a uniform take-up
+the prenatal arm is exactly **half** the postnatal arm (the $1,500 vs $3,000
+per-birth payment ratio); with the default arm-specific take-up (§2) it is a
+bit less than half (lower prenatal enrollment).
 
 The combined `rxkids_amount = rxkids_prenatal_amount +
 rxkids_postnatal_amount` is what feeds SPM resources; the two subtotals
@@ -306,6 +356,49 @@ Key facts feeding this methodology:
   Census-recommended treatment for charitable cash disbursements
   (Census P60-280 §III).
 
+### Updated literature review (data collected 2026-06)
+
+A second, more thorough pass through the RxKids evidence base
+(`rxkids.org/about`, `/impact`, `/dashboard`, `/research/publications`):
+
+**Program design (validates the model's parameters):**
+- Payments: **$1,500 prenatal + $500/mo for 6 *or* 12 months** — the
+  duration is set per community by funds raised. (Confirms our payment
+  amounts and the modeled 6-vs-12-month option.)
+- **Universal, residency-based, no income test** in Michigan. (Confirms
+  Michigan offers no income-eligibility-grain precedent — the Hawaiʻi
+  income test is the bill's own design.)
+
+**Take-up (empirical anchor for `takeup_rate`):**
+- **98% of eligible newborns** enrolled (Jan 2024–Sept 2025); **>90% of
+  mothers enroll prenatally** — "far exceeds WIC and SNAP." This is the
+  direct evidence for the delivery-channel anchoring (§2) and shows the
+  0.90 default is *conservative* vs Flint. It also distinguishes the arms:
+  **postnatal ~0.98, prenatal ~0.90** (a possible model refinement).
+- Dashboard (May 2026): **$41.77M disbursed, 11,751 families, 8,936 births**
+  (~$3,553/family *to date* — a mid-stream snapshot, not the lifetime
+  per-birth entitlement, so consistent with our ~$4,500 6-month per-birth).
+
+**Fertility response (sources the +10% scenario):**
+- **"Births rise nearly 10% following launch"** — *Rx Kids Flint Birth
+  Report (2026)*. This is the basis for `--fertility-response 0.10`.
+  **Caveat:** Flint's rise may blend a conception response with in-migration
+  of pregnant residents into eligible areas; Hawaiʻi (island geography)
+  would see far less migration, so the transferable fertility effect is
+  uncertain — keep it an explicit, off-by-default scenario.
+
+**Health/economic outcomes (enable a gross-vs-net framing):**
+- *Lancet Public Health (2026)*, Richterman & Thirumurthy: **18% fewer
+  preterm births, 27% fewer low-birthweight births.**
+- *JAMA Network Open (2025)*, Hanna et al.: improved adequate prenatal care.
+- *JAMA Pediatrics (2026)*, Agarwal et al.: ~**32% fewer infant-maltreatment
+  investigations.**
+- *Upjohn Institute (2025)*, Bartik et al.: **$0.60–$3.00 returned per $1**
+  to the state economy.
+- These are **offsets/benefits, not cost inputs** — the gross program cost
+  (~$54M) is partly offset by downstream health savings and economic return.
+  A Hawaiʻi-scaled net-cost estimate is a natural extension (not yet built).
+
 Cached research notes: `/tmp/rxkids-research.md` (session-scoped).
 
 ## 9. Verification
@@ -393,18 +486,19 @@ way and reported separately.
 
 | | Value |
 |---|---|
-| **Steady-state annual cost** | **~$54M** (prenatal ~$18M + postnatal ~$36M) |
-| Sampling 90% CI | ~$50M–$59M |
-| **Assumption band (joint corners)** | **~$33M–$69M** |
-| Expected recipients / year | ~24,200 (≈12,100 pregnancies + 12,100 infants) |
-| Avg benefit per recipient | ~$2,250 |
-| First fiscal year (launch, 12-mo ramp) | ~$23M (42% of steady) |
-| Optional +6-month postnatal | +~$36M (12-month-design total ~$91M) |
+| **Steady-state annual cost** | **~$53M** (prenatal ~$17M + postnatal ~$36M) |
+| Sampling 90% CI | ~$49M–$57M |
+| **Assumption band (joint corners)** | **~$32M–$68M** |
+| Expected recipients / year | ~23,200 (≈11,100 pregnancies + 12,100 infants) |
+| Avg benefit per recipient | ~$2,280 |
+| First fiscal year (launch, 12-mo ramp) | ~$22M (42% of steady) |
+| Optional +6-month postnatal | +~$36M (12-month-design total ~$89M) |
 
-Default take-up is **0.90** (see §2). Postnatal is ~2× prenatal purely by
-payment design: each eligible birth draws a one-time $1,500 prenatal payment
-but $500/mo × 6 = $3,000 postnatal — same recipients, double the per-birth
-amount.
+Take-up is **arm-specific** (see §2): postnatal/newborn **0.90**, prenatal
+**0.83** (0.92 × postnatal, from Flint's ~90% prenatal vs ~98% newborn). So
+postnatal is a bit *more* than 2× prenatal — the 2× per-birth payment ratio
+($3,000 vs $1,500) plus the lower prenatal take-up. (Single-rate runs, e.g.
+the library default, keep both arms equal → prenatal exactly half.)
 
 Eligibility is tested on the **MAGI household ≈ the tax unit** (filer +
 spouse + tax dependents, the family concept Medicaid uses — 42 CFR 435.603),
@@ -420,18 +514,21 @@ filing relatives whose income MAGI excludes) and NOT the physical household
 The headline above is the **conservative** default (90% take-up, no
 behavioral response). Two Flint-observed assumptions raise it:
 
-| Scenario | Take-up | Fertility | Steady-state cost | Band |
+| Scenario | Take-up (post/pre) | Fertility | Steady-state cost | Band |
 |---|---|---|---|---|
-| Conservative (default) | 0.90 | — | **~$54M** | ~$33–69M |
-| **Flint-equivalent** | 0.98 | +10% | **~$65M** | ~$39–83M |
+| Conservative (default) | 0.90 / 0.83 | — | **~$53M** | ~$32–68M |
+| **Flint-equivalent** | 0.98 / 0.90 | +10% | **~$63M** | ~$38–81M |
 
-`--takeup-rate 0.98 --fertility-response 0.10` produces the Flint scenario.
-Take-up scales both arms linearly; the **fertility response**
-(`_apply_fertility`) models Flint's documented ~10% post-launch birth rise
-as a uniform +10% on eligible births (×1.10 on both arms). From the 0.90
-default: $54M × (0.98/0.90) × 1.10 ≈ $65M. The fertility response is a real
-upside risk a static model would miss; it is off by default and surfaced as
-an explicit scenario.
+`--takeup-rate 0.98 --fertility-response 0.10` produces the Flint scenario —
+which sets postnatal take-up to 0.98 and prenatal to 0.98 × 0.92 ≈ 0.90,
+recovering Flint's *observed* arm rates exactly. The **fertility response**
+(`_apply_fertility`) models the ~10% post-launch birth rise documented in the
+*Rx Kids Flint Birth Report (2026)* as a uniform +10% on eligible births
+(×1.10 on both arms): ~$53M × (take-up lift) × 1.10 ≈ $63M.
+It is a real upside risk a static model would miss, but **off by default**:
+Flint's rise may blend a conception response with in-migration of pregnant
+residents into eligible areas, and Hawaiʻi's island geography would see far
+less migration — so the transferable effect is uncertain.
 
 ### Eligible base vs recipients
 
