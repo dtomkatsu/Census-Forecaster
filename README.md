@@ -104,6 +104,16 @@ The `0.30` weight blends the BLS-derived growth rate against the ACS trend ensem
 | `census_forecaster.backtest` | Walk-forward harness for tuning constants and quoting realised MAPE |
 | `census_forecaster.moe` | Census MOE → SE conversions and propagation (sum/ratio/proportion) |
 
+## Policy analyses (Hawaiʻi)
+
+The `tax_modeler` package builds on the forecaster to score Hawaiʻi tax/benefit
+proposals. Self-contained analyses with their own entry guides:
+
+| Analysis | Start here |
+|---|---|
+| **RxKids Hawaiʻi** — cost of a prenatal/infant cash program | **[`RXKIDS_GUIDE.md`](RXKIDS_GUIDE.md)** → [`RXKIDS_METHODOLOGY.md`](RXKIDS_METHODOLOGY.md) |
+| SB 3125 CD1 — EITC/CTC reform | [`SB3125_CD1_FORECAST.md`](SB3125_CD1_FORECAST.md) |
+
 ## Design principles
 
 * **MOE-aware variance.** ACS publishes 90% margins of error; this package converts at the boundary (Z=1.645) and propagates correctly through the projection.
