@@ -94,6 +94,8 @@ def compute_medicaid_for_units(
     overrides: Optional[Mapping[str, object]] = None,
     out_col: str = "medicaid_amount",
     receives_col: str = "medicaid_receives",
+    family_income_col: Optional[str] = None,
+    family_size_col: Optional[str] = None,
 ) -> pd.DataFrame:
     """Compute Hawaii Med-QUEST in-kind benefit + receives flag.
 
@@ -118,8 +120,22 @@ def compute_medicaid_for_units(
     n_dep = df["num_dependents"].fillna(0).astype(int).to_numpy()
     hh_size = 1 + is_joint.astype(int) + n_dep
     income = df["income"].fillna(0).astype(float).to_numpy()
-    fpl = np.array([hawaii_fpl(fpl_year_for(tax_year), household_size=int(s)) for s in hh_size])
-    fpl_ratio = np.where(fpl > 0, income / fpl, 0.0)
+
+    # Income/size basis for the FPL test. Use family-grain columns (income and
+    # persons summed across tax units in a household / SPM unit) when supplied;
+    # otherwise the tax-unit grain. Per-tax-unit testing splits a household's
+    # income across small units and overstates eligibility.
+    if (
+        family_income_col is not None and family_size_col is not None
+        and family_income_col in df.columns and family_size_col in df.columns
+    ):
+        test_income = df[family_income_col].fillna(0).astype(float).to_numpy()
+        test_size = df[family_size_col].fillna(0).clip(lower=1).astype(int).to_numpy()
+    else:
+        test_income = income
+        test_size = hh_size
+    fpl = np.array([hawaii_fpl(fpl_year_for(tax_year), household_size=int(s)) for s in test_size])
+    fpl_ratio = np.where(fpl > 0, test_income / fpl, 0.0)
 
     # Categorical eligibility checks
     adult_cap = p.adult_expansion_fpl_cap * p.income_threshold_factor

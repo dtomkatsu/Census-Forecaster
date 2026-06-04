@@ -403,13 +403,17 @@ way and reported separately.
 
 | | Value |
 |---|---|
-| **Steady-state annual cost** | **~$48M** (prenatal ~$16M + postnatal ~$32M) |
-| Sampling 90% CI | ~$46M–$51M |
-| **Assumption band (joint corners)** | **~$27M–$72M** |
-| Expected recipients / year | ~21,500 (≈10,800 pregnancies + 10,800 infants) |
+| **Steady-state annual cost** | **~$41M** (prenatal ~$14M + postnatal ~$27M) |
+| Sampling 90% CI | ~$38M–$44M |
+| **Assumption band (joint corners)** | **~$23M–$61M** |
+| Expected recipients / year | ~18,200 (≈9,100 pregnancies + 9,100 infants) |
 | Avg benefit per recipient | ~$2,250 |
-| First fiscal year (launch, 12-mo ramp) | ~$20M (42% of steady) |
-| Optional +6-month postnatal | +~$32M (12-month-design total ~$81M) |
+| First fiscal year (launch, 12-mo ramp) | ~$17M (42% of steady) |
+| Optional +6-month postnatal | +~$27M (12-month-design total ~$68M) |
+
+Eligibility is tested at **SPM-family grain** (income + size summed across
+the tax units in an SPM unit), not per tax unit — testing per filing unit
+split a household's income across small units and overstated cost by ~15%.
 
 ### Eligible base vs recipients
 
@@ -429,6 +433,32 @@ runtime so expected pregnancies = `PREG_PER_BIRTH` × the eligible-birth
 count implied by the postnatal arm (default 1.0 = one prenatal claim per
 eligible birth). This makes the two arms coherent: each eligible birth
 draws one $1,500 prenatal + one $3,000 postnatal payment.
+
+### Eligible-birth cross-check
+
+The model's implied eligible births can be checked against external Hawaii
+birth statistics (decomposing eligibility by clause, household grain):
+
+| Eligibility path | Eligible births | Share of 15,535 |
+|---|---|---|
+| 300% FPL only (clause 2) | ~10,600 | 68% |
+| Medicaid only (clause 1) | ~11,400 | 73% |
+| Both (OR) | ~11,400 | **73%** |
+
+- **External anchor:** Hawaii Medicaid-financed births ≈ 40% (~6,200) — a
+  *floor* (the pregnancy pathway sits at 196% FPL). The model's 73% is
+  comfortably above it, as it should be: the program's gate (≤300% FPL OR
+  Medicaid/CHIP) is far broader than the pregnancy-Medicaid threshold, and
+  ~73% is in line with national ≤300%-FPL birth shares adjusted for Hawaii's
+  high-cost dollar thresholds.
+- The income-grain fix moved this fraction from an implausible **87%**
+  (tax-unit grain) down to a defensible **73%** — corroborating that
+  per-tax-unit testing was overstating eligibility.
+- **Nuance:** clause 1 (Medicaid) is *broader* than clause 2 here because
+  `medicaid_receives` includes the children's CHIP-equivalent pathway at
+  **313% FPL** — slightly above the 300% income clause. That ~5pp is the
+  Medicaid clause's only marginal contribution and rests on treating
+  CHIP-313% as "Medicaid" (a policy reading; see §4).
 
 ### Launch (first fiscal year)
 
@@ -463,9 +493,11 @@ is reported).
 - Federal EITC/CTC parameter tables fall back to TY2025 for years > 2025.
   **Immaterial here** — RxKids is non-taxable and never touches AGI /
   EITC / CTC.
-- Income is tested at **tax-unit grain** against FPL, not household/MAGI
-  grain — a household split across filing units is tested per small unit,
-  which tends to **overstate** eligibility. This is a known open item.
+- Income is tested at **SPM-family grain** (income + persons summed across
+  the tax units in an SPM unit), which corrects the prior per-tax-unit test
+  that overstated eligibility by ~15%. Residual: SPM units approximate but
+  do not exactly equal the statutory "family," and the concept is cash
+  income, not MAGI.
 - Pregnancy incidence and child-age share are held at base-year values
   (no 2028 birth-trend adjustment); the assumption band brackets this.
 - The 2026–2028 FPL inflator is a CPI projection, not a published table.

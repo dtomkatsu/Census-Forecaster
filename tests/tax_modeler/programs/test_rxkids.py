@@ -356,6 +356,25 @@ def test_rxkids_postnatal_does_not_get_unborn_increment():
     assert float(out["rxkids_amount"].iloc[0]) == pytest.approx(0.0)
 
 
+def test_rxkids_family_grain_income_test():
+    """When family-grain columns are supplied, the FPL test uses household
+    income/size, not the tax unit's. A unit income-eligible at its own small
+    tax-unit size is excluded once the larger household income is tested."""
+    units = _make_units([
+        {"num_dependents": 1, "num_qualifying_children": 1, "income": 40_000.0,
+         "medicaid_receives": False, "fam_inc": 120_000.0, "fam_size": 3},
+    ])
+    # Tax-unit grain: 40k / FPL(2)=22,680 ≈ 1.76× → eligible.
+    tu = compute_rxkids_for_units(units, tax_year=2024)
+    assert float(tu["rxkids_amount"].iloc[0]) > 0
+    # Family grain: 120k / FPL(3)=28,590 ≈ 4.2× → ineligible.
+    fam = compute_rxkids_for_units(
+        units, tax_year=2024,
+        family_income_col="fam_inc", family_size_col="fam_size",
+    )
+    assert float(fam["rxkids_amount"].iloc[0]) == pytest.approx(0.0)
+
+
 def test_rxkids_missing_medicaid_column_falls_back_to_clause2(caplog):
     """If medicaid_receives is absent, the function applies clause 2 only
     and warns. Income-eligible units still qualify; income-ineligible ones

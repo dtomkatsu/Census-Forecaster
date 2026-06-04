@@ -323,13 +323,39 @@ def _project(pir, base_units, year: int) -> pd.DataFrame:
     )
 
 
+def _attach_family_grain(units: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """Attach SPM-family income + size (summed across the tax units that share
+    an SPM unit) for the FPL eligibility test. Returns (frame, kwargs). Tax
+    units with no SPM unit fall back to their own tax-unit values."""
+    if "spm_unit_id" not in units.columns:
+        return units, {}
+    out = units.copy()
+    is_joint = (out["filing_status"] == "married_filing_jointly").astype(int)
+    persons_in_tu = 1 + is_joint + out["num_dependents"].fillna(0).clip(lower=0).astype(int)
+    out["_fam_persons_tmp"] = persons_in_tu
+    grp = out.groupby("spm_unit_id", dropna=False)
+    fam_income = grp["income"].transform("sum")
+    fam_size = grp["_fam_persons_tmp"].transform("sum")
+    null_spm = out["spm_unit_id"].isna()
+    out["_fam_income"] = fam_income.where(~null_spm, out["income"])
+    out["_fam_size"] = fam_size.where(~null_spm, persons_in_tu)
+    out = out.drop(columns=["_fam_persons_tmp"])
+    return out, {"family_income_col": "_fam_income", "family_size_col": "_fam_size"}
+
+
 def _apply_rxkids(units: pd.DataFrame, *, tax_year: int, overrides: Optional[dict] = None) -> pd.DataFrame:
-    """Medicaid flag (clause 1) then RxKids expected benefit on a tax-unit frame."""
+    """Medicaid flag (clause 1) then RxKids expected benefit on a tax-unit frame.
+
+    Eligibility (both clauses) is tested at SPM-family grain — family income and
+    size summed across the tax units in an SPM unit — not per tax unit, which
+    would split a household's income and overstate eligibility.
+    """
     from tax_modeler.benefits.medicaid_hi_quest import compute_medicaid_for_units
     from tax_modeler.programs import compute_rxkids_for_units
 
-    out = compute_medicaid_for_units(units, tax_year=tax_year)
-    out = compute_rxkids_for_units(out, tax_year=tax_year, overrides=overrides)
+    out, fam = _attach_family_grain(units)
+    out = compute_medicaid_for_units(out, tax_year=tax_year, **fam)
+    out = compute_rxkids_for_units(out, tax_year=tax_year, overrides=overrides, **fam)
     return out
 
 

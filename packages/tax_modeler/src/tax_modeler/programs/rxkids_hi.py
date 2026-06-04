@@ -268,6 +268,8 @@ def compute_rxkids_for_units(
     overrides: Optional[Mapping[str, object]] = None,
     out_col: str = "rxkids_amount",
     medicaid_col: str = "medicaid_receives",
+    family_income_col: Optional[str] = None,
+    family_size_col: Optional[str] = None,
 ) -> pd.DataFrame:
     """Compute the annual RxKids Hawaiʻi benefit amount per tax unit.
 
@@ -333,6 +335,22 @@ def compute_rxkids_for_units(
     hh_size = 1 + is_joint.astype(int) + n_dep
     income = df["income"].fillna(0).astype(float).to_numpy()
 
+    # Income/size basis for the FPL test. The statute uses *family* income for
+    # a *family* of applicable size. If the caller supplies family-grain columns
+    # (income and persons summed across the tax units that share a household /
+    # SPM unit), use those — testing per tax unit at tax-unit size would split a
+    # household's income across small units and overstate eligibility. Falls
+    # back to tax-unit grain when the columns are absent.
+    if (
+        family_income_col is not None and family_size_col is not None
+        and family_income_col in df.columns and family_size_col in df.columns
+    ):
+        test_income = df[family_income_col].fillna(0).astype(float).to_numpy()
+        base_size = df[family_size_col].fillna(0).clip(lower=1).astype(int).to_numpy()
+    else:
+        test_income = income
+        base_size = hh_size
+
     # ---- Clause 1: Medicaid receipt ----
     # The statute makes anyone who "qualifies for benefits under the
     # State's Medicaid program" eligible, independent of the 300% FPL
@@ -361,8 +379,8 @@ def compute_rxkids_for_units(
     # counted in num_dependents). Hence two separate FPL ratios. The
     # run's tax_year selects the FPL table so forward-projected incomes
     # are tested against same-year thresholds.
-    postnatal_size = hh_size
-    prenatal_size = hh_size + max(0, int(p.prenatal_unborn_count))
+    postnatal_size = base_size
+    prenatal_size = base_size + max(0, int(p.prenatal_unborn_count))
 
     fpl_yr = fpl_year_for(tax_year)
     fpl_postnatal = np.array(
@@ -372,11 +390,11 @@ def compute_rxkids_for_units(
         [hawaii_fpl(fpl_yr, household_size=int(s)) for s in prenatal_size]
     )
     income_eligible_postnatal = (
-        np.where(fpl_postnatal > 0, income / fpl_postnatal, np.inf)
+        np.where(fpl_postnatal > 0, test_income / fpl_postnatal, np.inf)
         <= p.income_fpl_cap
     )
     income_eligible_prenatal = (
-        np.where(fpl_prenatal > 0, income / fpl_prenatal, np.inf)
+        np.where(fpl_prenatal > 0, test_income / fpl_prenatal, np.inf)
         <= p.income_fpl_cap
     )
 
