@@ -689,12 +689,14 @@ def _write_pdf(path: Path, *, ctx: dict) -> None:
     pdf.ln(1)
 
     def section(title):
+        pdf.set_x(pdf.l_margin)  # a preceding multi_cell can leave x at the right edge
         pdf.set_font("Helvetica", "B", 11)
         pdf.set_text_color(*_TEAL)
         pdf.cell(0, 7, _ascii(title), new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(0, 0, 0)
 
     def kv(label, value, indent=0):
+        pdf.set_x(pdf.l_margin)  # always start the row at the left margin
         pdf.set_font("Helvetica", "", 10)
         pdf.cell(95, 6, _ascii("   " * indent + label))
         pdf.set_font("Helvetica", "B", 10)
@@ -782,16 +784,19 @@ def _write_pdf(path: Path, *, ctx: dict) -> None:
         )
         pdf.ln(3)
 
+    pdf.set_x(pdf.l_margin)
     pdf.set_font("Helvetica", "I", 7.5)
     pdf.set_text_color(*_GREY)
     pdf.multi_cell(0, 4, _ascii(
-        "Cost = weighted sum of the expected RxKids benefit (take-up- and "
-        "pregnancy-probability-adjusted) at SPM-unit grain on the household "
-        "(WGTP) weight. Benefits-by-quintile ranks SPM units on summed income "
-        "into population-equal fifths. Sampling CI is ACS sampling error (SDR, "
-        "80 replicate weights); the assumption band sweeps take-up, pregnancy "
-        "incidence, and infant share. 2026-2028 FPL is CPI-projected off the "
-        "2025 HHS table. Full methodology: RXKIDS_METHODOLOGY.md."))
+        "Both arms are driven by birth events (dependents x annual birth rate); "
+        "each eligible birth draws one prenatal + one postnatal payment. Cost = "
+        "the take-up-adjusted benefit weighted by the household (WGTP) weight. "
+        "Eligibility is tested on MAGI at the tax-unit (MAGI-household) grain, "
+        "the family Medicaid uses. Benefits-by-quintile rank SPM units on summed "
+        "income into population-equal fifths. Sampling CI is ACS sampling error "
+        "(SDR, 80 replicate weights); the assumption band sweeps take-up and the "
+        "birth rate. 2026-2028 FPL is CPI-projected off the 2025 HHS table. Full "
+        "methodology: RXKIDS_METHODOLOGY.md."))
 
     pdf.output(str(path))
 
@@ -930,9 +935,16 @@ def main(argv: Optional[list] = None) -> int:
     notes = [
         f"RxKids Hawaiʻi — methodology notes (TY {ty})",
         "",
-        "Cost = Σ (expected RxKids benefit × household weight) at SPM-unit grain. The "
-        "benefit is already take-up- and pregnancy-probability-adjusted, so it is an "
-        "expected annual dollar amount per unit, not a literal payment.",
+        "Both arms are driven by birth events (num_dependents × the annual birth "
+        "rate per dependent); each eligible birth draws one prenatal + one postnatal "
+        "payment. Cost = the take-up-adjusted benefit weighted by the household (WGTP) "
+        "weight, summed to SPM-unit grain. Per-unit amounts are expectations, not "
+        "literal payments.",
+        "",
+        "Eligibility is tested on MAGI (gross income with 100% of Social Security) at "
+        "the tax-unit / MAGI-household grain — the family Medicaid defines (42 CFR "
+        "435.603) — consistent with the statute's clause-1 Medicaid anchor. If the bill "
+        "defines 'family' more broadly, the SPM-family grain (~$45M) is the alternative.",
         "",
         "Household impact here is the distribution of RxKids benefits RECEIVED across "
         "weighted income quintiles (SPM units ranked on summed income). This view does not "
@@ -941,16 +953,16 @@ def main(argv: Optional[list] = None) -> int:
         "stop at TY2025 — out of scope for this run.",
         "",
         "Sampling 90% CI is ACS sampling error only (SDR over 80 PUMS replicate weights). "
-        "The assumption band is a one-at-a-time sweep over the three soft, unanchored "
-        "parameters (take-up, pregnancy incidence, infant share) — cost is linear in each.",
+        "The assumption band is the joint (all-low/all-high corner) sweep over the two "
+        "soft, unanchored drivers — take-up and the birth rate — cost is linear in each.",
         "",
         "The base run prices the 6-month postnatal window (Flint's lower bound). The "
         "'potential' line prices the optional extension to the full 12 months — the "
         "program may or may not opt in. Postnatal cost is linear in months, so the "
         "additional 6 months roughly equals the base postnatal arm again.",
         "",
-        "Caveats: 2026-2028 FPL is CPI-projected off the 2025 HHS table; pregnancy "
-        "incidence and infant share are held at base-year values.",
+        "Caveats: 2026-2028 FPL is CPI-projected off the 2025 HHS table; the birth rate "
+        "is held at the base-year value (no 2028 birth-trend adjustment).",
         "",
         "Full methodology: RXKIDS_METHODOLOGY.md (program origin, parameter sourcing, "
         "eligibility approximations, limitations).",
