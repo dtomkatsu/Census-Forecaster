@@ -415,6 +415,24 @@ Eligibility is tested at **SPM-family grain** (income + size summed across
 the tax units in an SPM unit), not per tax unit — testing per filing unit
 split a household's income across small units and overstated cost by ~15%.
 
+#### Scenarios (take-up + behavioral fertility)
+
+The headline above is the **conservative** default (80% take-up, no
+behavioral response). Two Flint-observed assumptions raise it:
+
+| Scenario | Take-up | Fertility | Steady-state cost | Band |
+|---|---|---|---|---|
+| Conservative (default) | 0.80 | — | **~$41M** | ~$23–61M |
+| **Flint-equivalent** | 0.98 | +10% | **~$55M** | ~$33–70M |
+
+`--takeup-rate 0.98 --fertility-response 0.10` produces the Flint scenario.
+Take-up scales both arms (×0.98/0.80 = 1.225); the **fertility response**
+(`_apply_fertility`) models Flint's documented ~10% post-launch birth rise
+as a uniform +10% on eligible births (×1.10 on both arms). The two compound:
+$41M × 1.225 × 1.10 ≈ $55M. The fertility response is a real upside risk a
+static model would miss; it is off by default and surfaced as an explicit
+scenario.
+
 ### Eligible base vs recipients
 
 "Eligible families" (~306k weighted) is the population clearing the
