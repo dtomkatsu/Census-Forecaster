@@ -22,21 +22,21 @@ Eligibility (statutory — clause 1 OR clause 2)
       benefits under the State's Medicaid (Med-QUEST) program. Reuses the
       ``medicaid_receives`` boolean from
       ``tax_modeler.benefits.compute_medicaid_for_units``; the caller
-      pre-attaches that column. (If absent, the module falls back to
-      clause 2 only and warns.)
+      pre-attaches that column. For the prenatal arm, the pregnant-women
+      pathway (``pregnant_fpl_cap``, 196% FPL) is also honored. (If the
+      flag is absent the module falls back to clause 2 only and warns.)
     * **Clause 2 — 300% FPL.** Family income ≤ 300% FPL for a family of
-      applicable size *including the expected unborn child(ren)*. The
-      unborn increment (``prenatal_unborn_count``, default +1) raises the
-      FPL family size — and therefore the dollar threshold — for the
-      prenatal arm ONLY. The postnatal arm uses the plain family size.
-    * Prenatal arm: ``single`` / ``head_of_household`` filers with
-      ``num_dependents == 0`` (filer is "expecting", not yet a parent of
-      record). Because PUMS does not observe pregnancy, we apply
-      ``prenatal_pregnancy_probability`` per eligible filer.
-    * Postnatal arm: units with ``num_dependents > 0``. Because individual
-      child ages are not on the tax-unit frame, ``child_under_age_share``
-      converts ``num_dependents`` into an effective count of children
-      under ``postnatal_age_cutoff``.
+      applicable size *including the expected unborn child*. The income
+      test runs at family size; a birth's family includes the child either
+      way (the unborn child pre-birth equals the newborn dependent in the
+      cross-section), so one family-size test serves both arms.
+
+Both arms are driven by the same **birth events** — ``num_dependents ×
+child_under_age_share`` (the annual birth-rate per dependent). A first
+birth appears as the newborn dependent in the PUMS cross-section, so this
+captures first AND repeat births across ALL filing statuses (married
+couples included), not just a single/HoH-no-dependent proxy. Each eligible
+birth draws one prenatal and one postnatal payment.
 
 Payment structure (defaults below; override for alternative designs)
     * Prenatal: ``prenatal_monthly`` × ``prenatal_months``
@@ -67,24 +67,17 @@ Universal variant (advocacy framing)
                                         # as one-shot)
             prenatal_months=1,
             postnatal_monthly_per_child=500.0,
-            postnatal_age_cutoff=1,    # under-1s only (Flint design)
             income_fpl_cap=10.0,        # effectively universal
             takeup_rate=0.95,
-            prenatal_pregnancy_probability=0.04,  # birth rate among all
-                                                  # women of childbearing age
         )
 
 Caveats
 -------
-* PUMS does not observe pregnancy → prenatal payments are
-  probabilistic. The ``prenatal_pregnancy_probability`` parameter is the
-  expected annual pregnancy rate among eligible filers; defaults are
-  calibrated from Hawaii Medicaid-financed birth counts.
-* PUMS tax-unit frame does not carry individual child ages → postnatal
-  payments rely on ``child_under_age_share`` (default 0.066 = Hawaii
-  annual births ÷ dependents 0-17). This is the annual birth FLOW per
-  dependent, matched to the full per-birth postnatal entitlement.
-  Sensitivity: linear in this share.
+* PUMS does not observe pregnancy or individual child ages → both arms are
+  probabilistic, driven by ``child_under_age_share`` (default 0.066 =
+  Hawaii annual births ÷ dependents 0-17), the annual birth FLOW per
+  dependent. Population totals are reliable; per-unit amounts are
+  expectations, not literal payments. Sensitivity: linear in this share.
 * The Flint RxKids program is universal (no income/Medicaid test). The
   default parameters here model a Medicaid-eligibility-gated variant
   for cost reasons. Override ``income_fpl_cap`` to a high value to
@@ -120,13 +113,6 @@ from ..benefits._fpl import fpl_year_for, hawaii_fpl
 LOG = logging.getLogger(__name__)
 
 
-# All-Hawaii birth rate among single/HoH filers with no dependents.
-# 15,535 total births (CDC NVSR 73-02) ÷ ~155,000 single+HoH filers with
-# no current dependents (ACS PUMS Hawaii) × 50% women-share ≈ 0.10.
-# Used for the universal (unconditional) variant where all expectant
-# mothers are eligible regardless of income.
-_DEFAULT_PREGNANCY_PROBABILITY = 0.10
-
 # Annual qualifying-birth rate per dependent (FLOW, not a point-in-time
 # stock). The postnatal payment is the full per-birth entitlement
 # (postnatal_monthly_per_child × postnatal_months, e.g. $500 × 6 = $3,000),
@@ -139,11 +125,6 @@ _DEFAULT_PREGNANCY_PROBABILITY = 0.10
 # Interpretation: n_dep × this rate ≈ the family's expected qualifying
 # births this year; summed over the population it recovers total births.
 _DEFAULT_CHILD_UNDER_AGE_SHARE = 0.066
-
-# Single / head-of-household women aged 18-44 are the prenatal-eligible
-# universe. Conservatively assume ~50% of these filers are women (PUMS
-# tax-unit frame doesn't carry primary-filer sex). The 0.50 women-share
-# is already baked into _DEFAULT_PREGNANCY_PROBABILITY above.
 
 
 @dataclass(frozen=True)
@@ -192,14 +173,15 @@ class RxKidsHIParams:
     adult-expansion-only income test.
     """
 
-    prenatal_unborn_count: int = 1
-    """Expected unborn children added to family size for the prenatal test.
+    pregnant_fpl_cap: float = 1.96
+    """Medicaid pregnant-women pathway FPL cap (clause 1, prenatal arm).
 
-    The statute sizes the family "including the expected unborn child or
-    children." For the prenatal arm only, the FPL family size is
-    incremented by this count (default 1), raising the dollar threshold
-    and expanding eligibility for expectant filers. The postnatal arm
-    leaves family size unchanged (the child is already in num_dependents).
+    Hawaii Med-QUEST covers pregnant women up to 196% FPL. For the prenatal
+    arm, a family at or below this ratio qualifies via the Medicaid
+    pregnancy pathway even if the general ``medicaid_receives`` flag (which
+    is built from the adult/child pathways) does not fire. At the default
+    ``income_fpl_cap=3.00`` this is subsumed by the income test; it only
+    binds when the income cap is set below 196% FPL.
     """
 
     takeup_rate: float = 0.90
@@ -218,24 +200,16 @@ class RxKidsHIParams:
     therefore interact with EITC/CTC phase-outs — currently not modeled.
     """
 
-    prenatal_pregnancy_probability: float = _DEFAULT_PREGNANCY_PROBABILITY
-    """Probability that an eligible woman is pregnant in a given year.
-
-    Calibrated from Hawaii Medicaid-financed births / Medicaid adult
-    women. Use ~0.04 for a universal-program variant (all women
-    aged 18-44).
-    """
-
     child_under_age_share: float = _DEFAULT_CHILD_UNDER_AGE_SHARE
     """Annual qualifying-birth rate per dependent (a FLOW, default 0.066).
 
     Converts ``num_dependents`` into the family's expected number of
-    qualifying births this year, since PUMS does not carry individual
-    child ages on the tax-unit frame. Because the postnatal payment is the
-    full per-birth entitlement (``postnatal_monthly_per_child`` ×
-    ``postnatal_months``), this must be the full annual birth cohort per
-    dependent (≈ births ÷ dependents 0-17), NOT a <6-month stock share —
-    otherwise the postnatal arm is understated ~2×. Sensitivity: linear.
+    qualifying births this year — the common driver of BOTH arms (each
+    birth draws a prenatal and a postnatal payment), since PUMS does not
+    carry individual child ages on the tax-unit frame. Because the
+    payments are full per-birth entitlements, this must be the full annual
+    birth cohort per dependent (≈ births ÷ dependents 0-17), NOT a
+    <6-month stock share. Sensitivity: linear (scales total cost).
     """
 
 
@@ -280,26 +254,26 @@ def compute_rxkids_for_units(
     Statutory eligibility (clause 1 OR clause 2)
     --------------------------------------------
     * **Clause 1 — Medicaid**: ``medicaid_col`` (default
-      ``"medicaid_receives"``) is True. The caller must pre-attach this
-      column via ``tax_modeler.benefits.compute_medicaid_for_units``; if it
-      is missing the function falls back to clause 2 only and logs a
-      warning.
-    * **Clause 2 — 300% FPL**: ``income / FPL(applicable_size) <=
-      income_fpl_cap`` (default 3.00). For the prenatal arm the applicable
-      family size includes the expected unborn child(ren)
-      (``prenatal_unborn_count``, default +1); the postnatal arm uses the
-      plain family size. ``tax_year`` selects the FPL table.
+      ``"medicaid_receives"``) is True; the prenatal arm additionally
+      honors the Medicaid pregnant-women pathway (``pregnant_fpl_cap``,
+      196% FPL). The caller must pre-attach ``medicaid_col`` via
+      ``tax_modeler.benefits.compute_medicaid_for_units``; if it is missing
+      the function falls back to clause 2 only and logs a warning.
+    * **Clause 2 — 300% FPL**: ``income / FPL(family_size) <=
+      income_fpl_cap`` (default 3.00), tested at family size. A birth's
+      family includes the child either way, so one family-size test serves
+      both arms. ``tax_year`` selects the FPL table.
 
-    Arms
-    ----
-    * **Prenatal**: filing_status in {single, head_of_household} AND
-      ``num_dependents == 0`` AND (clause 1 OR clause 2 at prenatal size).
-      Amount = ``prenatal_pregnancy_probability × prenatal_monthly ×
-      prenatal_months × takeup_rate``.
-    * **Postnatal**: ``num_dependents > 0`` AND (clause 1 OR clause 2 at
-      postnatal size). Amount = ``n_children_under_cutoff ×
-      postnatal_monthly_per_child × postnatal_months × takeup_rate`` where
-      ``n_children_under_cutoff = child_under_age_share × num_dependents``.
+    Arms (both driven by birth events = ``num_dependents × child_under_age_share``)
+    -------------------------------------------------------------------------------
+    * **Postnatal**: ``num_dependents > 0`` AND (clause 1 OR clause 2).
+      Amount = ``birth_events × postnatal_monthly_per_child ×
+      postnatal_months × takeup_rate``.
+    * **Prenatal**: ``num_dependents > 0`` AND (clause 1 incl. pregnancy
+      pathway OR clause 2). Amount = ``birth_events × prenatal_monthly ×
+      prenatal_months × takeup_rate``. Captures first and repeat births
+      across all filing statuses (each birth's newborn appears as a
+      dependent in the cross-section).
 
     Notes
     -----
@@ -316,11 +290,6 @@ def compute_rxkids_for_units(
     if not 0.0 <= p.takeup_rate <= 1.0:
         raise ConfigError(
             f"takeup_rate must be in [0.0, 1.0], got {p.takeup_rate}"
-        )
-    if not 0.0 <= p.prenatal_pregnancy_probability <= 1.0:
-        raise ConfigError(
-            "prenatal_pregnancy_probability must be in [0.0, 1.0], "
-            f"got {p.prenatal_pregnancy_probability}"
         )
     if p.postnatal_age_cutoff < 0:
         raise ConfigError(
@@ -371,68 +340,49 @@ def compute_rxkids_for_units(
         )
         medicaid_eligible = np.zeros(len(df), dtype=bool)
 
-    # ---- Clause 2: 300% FPL income test ----
-    # The family is sized "including the expected unborn child(ren)" for
-    # the prenatal arm only — a larger family size raises the FPL dollar
-    # threshold and expands eligibility for expectant filers. The
-    # postnatal arm uses the plain family size (the child is already
-    # counted in num_dependents). Hence two separate FPL ratios. The
-    # run's tax_year selects the FPL table so forward-projected incomes
-    # are tested against same-year thresholds.
-    postnatal_size = base_size
-    prenatal_size = base_size + max(0, int(p.prenatal_unborn_count))
-
+    # ---- Clause 2: 300% FPL income test (at family size) ----
+    # The run's tax_year selects the FPL table so forward-projected incomes
+    # are tested against same-year thresholds. A birth's family size includes
+    # the child either way ("the expected unborn child" pre-birth equals the
+    # newborn dependent post-birth), so a single family-size test serves both
+    # arms.
     fpl_yr = fpl_year_for(tax_year)
-    fpl_postnatal = np.array(
-        [hawaii_fpl(fpl_yr, household_size=int(s)) for s in postnatal_size]
+    fpl_base = np.array(
+        [hawaii_fpl(fpl_yr, household_size=int(s)) for s in base_size]
     )
-    fpl_prenatal = np.array(
-        [hawaii_fpl(fpl_yr, household_size=int(s)) for s in prenatal_size]
-    )
-    income_eligible_postnatal = (
-        np.where(fpl_postnatal > 0, test_income / fpl_postnatal, np.inf)
-        <= p.income_fpl_cap
-    )
-    income_eligible_prenatal = (
-        np.where(fpl_prenatal > 0, test_income / fpl_prenatal, np.inf)
-        <= p.income_fpl_cap
-    )
+    fpl_ratio = np.where(fpl_base > 0, test_income / fpl_base, np.inf)
+    income_eligible = fpl_ratio <= p.income_fpl_cap
+    # Clause 1 pregnancy pathway: Med-QUEST covers pregnant women to 196% FPL.
+    # Lets the prenatal arm qualify via Medicaid pregnancy coverage even when
+    # the income cap is set below that (subsumed at the 300% default).
+    preg_medicaid_eligible = fpl_ratio <= p.pregnant_fpl_cap
 
-    # ---- Prenatal ----
-    # Single / HoH filers with no current dependents are the proxy
-    # universe for "pregnant filer not yet claiming children". Eligible
-    # via Medicaid (clause 1) OR the 300% FPL test sized with the unborn
-    # child (clause 2).
-    prenatal_filing_eligible = np.isin(
-        filing_status, ("single", "head_of_household")
-    )
-    prenatal_eligible = (
-        prenatal_filing_eligible
-        & (n_dep == 0)
-        & (medicaid_eligible | income_eligible_prenatal)
-    )
-    prenatal_per_unit = (
-        p.prenatal_pregnancy_probability
-        * p.prenatal_monthly * p.prenatal_months
-        * p.takeup_rate
-    )
-    prenatal_amount = np.where(prenatal_eligible, prenatal_per_unit, 0.0)
+    # ---- Birth events: the common driver of both arms ----
+    # n_dep × the annual birth-rate-per-dependent estimates the family's
+    # qualifying births this year. A first birth shows up as the newborn
+    # dependent in the cross-section, so this captures first AND repeat
+    # births across ALL filing statuses (married couples included) — not
+    # just the single/HoH-no-dependent proxy used previously.
+    birth_events = n_dep.astype(float) * p.child_under_age_share
+    has_birth = n_dep > 0
 
-    # ---- Postnatal ----
-    # Number of dependents that are children under the age cutoff.
-    # PUMS tax-unit frame does not carry individual child ages — use the
-    # configured age-share to scale num_dependents. Eligible via Medicaid
-    # (clause 1) OR the 300% FPL test (clause 2).
-    n_kids_under_cutoff = np.minimum(
-        n_dep.astype(float),
-        n_dep.astype(float) * p.child_under_age_share,
-    )
-    postnatal_eligible = (medicaid_eligible | income_eligible_postnatal) & (n_dep > 0)
+    # Postnatal: eligible via Medicaid (adult/child pathways) OR 300% FPL.
+    postnatal_eligible = (medicaid_eligible | income_eligible) & has_birth
     postnatal_amount = np.where(
         postnatal_eligible,
-        n_kids_under_cutoff
-        * p.postnatal_monthly_per_child * p.postnatal_months
+        birth_events * p.postnatal_monthly_per_child * p.postnatal_months
         * p.takeup_rate,
+        0.0,
+    )
+
+    # Prenatal: same births, paid during pregnancy. Eligible via Medicaid
+    # (incl. the 196% pregnancy pathway) OR 300% FPL.
+    prenatal_eligible = (
+        (medicaid_eligible | preg_medicaid_eligible | income_eligible) & has_birth
+    )
+    prenatal_amount = np.where(
+        prenatal_eligible,
+        birth_events * p.prenatal_monthly * p.prenatal_months * p.takeup_rate,
         0.0,
     )
 

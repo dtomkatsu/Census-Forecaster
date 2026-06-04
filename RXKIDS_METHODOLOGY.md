@@ -88,12 +88,11 @@ cap (e.g. `10.0`). See the module docstring for override recipes.
 | `prenatal_months` | 1 | One-time prenatal payment. |
 | `postnatal_months` | 6 | Flint's 6-month postnatal window (lower bound of the 6–12 mo range). |
 | `postnatal_age_cutoff` | 1 | Infants in their first year (Flint design). PUMS carries no sub-year age, so age 0 is the closest proxy. |
-| `income_fpl_cap` | **3.00** | Statutory clause 2: 300% FPL income test. |
-| `prenatal_unborn_count` | **1** | Statutory "including the expected unborn child" — adds 1 to the prenatal-arm family size (raises the FPL threshold). |
+| `income_fpl_cap` | **3.00** | Statutory clause 2: 300% FPL income test (at family size). |
+| `pregnant_fpl_cap` | **1.96** | Clause 1 prenatal Medicaid pregnancy pathway (196% FPL). Subsumed by the 300% income test at default; binds only if the income cap is set below 196%. |
 | `takeup_rate` | 0.90 | Below Flint's observed 0.98 (universal design + hospital partnership) to reflect weaker year-1 Hawaii infrastructure. |
 | `is_taxable` | `False` | Match Flint design — charitable disbursement, not IRS-reported. Routes through SPM resources only. |
-| `prenatal_pregnancy_probability` | 0.066 (raw) → **birth-anchored at runtime** | Annual pregnancy rate per eligible prenatal-universe filer. A flat raw rate overcounts (it implies more pregnancies than Hawaii has eligible births), so `forecast_rxkids_2028.py` rescales it so total expected pregnancies = the eligible-birth count implied by the postnatal arm (one prenatal claim per eligible birth). Sensitivity: linear. |
-| `child_under_age_share` | 0.066 | **Annual qualifying-birth rate per dependent (a FLOW)**: Hawaii births 15,535 ÷ ACS dependents 0-17 ≈ 233,000. Because the postnatal payment is the full per-birth entitlement ($500 × 6 = $3,000), the basis must be the full annual birth cohort, NOT a <6-month stock — a stock basis understates the arm ~2×. Sensitivity: linear. |
+| `child_under_age_share` | 0.066 | **Annual qualifying-birth rate per dependent (a FLOW)** — the common driver of BOTH arms: Hawaii births 15,535 ÷ ACS dependents 0-17 ≈ 233,000. Must be the full annual birth cohort, NOT a <6-month stock (a stock basis understates ~2×). Sensitivity: linear (scales total cost). |
 
 Plus the Medicaid clause, evaluated in `compute_rxkids_for_units` from the
 `medicaid_receives` column produced by `compute_medicaid_for_units` (the
@@ -125,57 +124,46 @@ A unit is eligible if it satisfies **either** clause:
   pathways: 138% adult, 196% pregnant, 313% children, 100% aged). The
   caller pre-attaches this column; if it is absent the module applies
   clause 2 only and logs a warning.
-- **Clause 2 — 300% FPL.** `income / FPL(applicable_size) <=
-  income_fpl_cap` (default 3.00).
-
-### "Including the expected unborn child(ren)"
-
-The statute sizes the family *including the expected unborn child*. For
-the **prenatal arm only**, the FPL family size is incremented by
-`prenatal_unborn_count` (default +1). A larger family size raises the FPL
-dollar threshold, so expectant filers near the margin qualify who would
-not at their base size. The **postnatal arm uses the plain family size**
-(the child is already in `num_dependents`) — the increment must not be
-double-applied. The two arms therefore use **separate FPL ratios**.
+- **Clause 2 — 300% FPL.** `income / FPL(family_size) <= income_fpl_cap`
+  (default 3.00), tested at family size. A birth's family includes the
+  child either way (the unborn child pre-birth equals the newborn
+  dependent in the cross-section), so a single family-size test serves
+  both arms — no separate "+unborn" increment is needed. For the prenatal
+  arm, clause 1 additionally honors the Medicaid **pregnancy pathway**
+  (`pregnant_fpl_cap`, 196% FPL); at the 300% default this is subsumed.
 
 The income test uses the FPL table for the run's `tax_year`
 (`benefits/_fpl.py`), so forward-projected incomes are tested against
 same-year thresholds (see §7 caveat 4).
 
-PUMS does not observe pregnancy and the tax-unit frame does not carry
-individual child ages, so each arm applies a probabilistic adjustment.
+### Both arms are birth-driven
 
-### Prenatal universe
+PUMS does not observe pregnancy or individual child ages, so both arms are
+driven by the same **birth events**:
 
-- Proxy: filers with `filing_status in {single, head_of_household}`
-  AND `num_dependents == 0` AND (clause 1 OR clause 2 at prenatal size).
-- Pregnancy probability: `prenatal_pregnancy_probability` per eligible
-  filer per year (raw 0.066, **birth-anchored at runtime** — see §10 — so
-  total expected pregnancies = eligible births, not ~2× births).
-- Per-unit expected amount:
-  `pregnancy_prob × prenatal_monthly × prenatal_months × takeup_rate`.
-- Emitted as `rxkids_prenatal_amount`.
+> `birth_events = num_dependents × child_under_age_share`
 
-This is a **probabilistic** payment per unit, not deterministic. The
-weighted state total recovers the right population-level expectation;
-individual-unit amounts are average expectations rather than literal
-payments.
+— the family's expected qualifying births this year. A first birth shows up
+as the newborn dependent in the PUMS cross-section, so this captures **first
+AND repeat births across ALL filing statuses** (married couples included),
+not just a single/HoH-no-dependent proxy. (The earlier model restricted the
+prenatal arm to childless single/HoH filers, which excluded married
+first-time parents and repeat pregnancies — a distributional error this
+unification fixes; it left the *total* unchanged.)
 
-### Postnatal universe
+Each eligible birth draws one prenatal and one postnatal payment:
 
-- Proxy: filers with `num_dependents > 0` AND (clause 1 OR clause 2 at
-  postnatal size).
-- Effective children under cutoff:
-  `num_dependents × child_under_age_share`.
-- Per-unit amount:
-  `n_kids_under_cutoff × postnatal_monthly_per_child × postnatal_months
-  × takeup_rate`.
-- Emitted as `rxkids_postnatal_amount`.
+- **Prenatal** (`rxkids_prenatal_amount`): `birth_events × prenatal_monthly
+  × prenatal_months × takeup_rate`, gated on `num_dependents > 0` AND
+  (clause 1 incl. pregnancy pathway OR clause 2).
+- **Postnatal** (`rxkids_postnatal_amount`): `birth_events ×
+  postnatal_monthly_per_child × postnatal_months × takeup_rate`, gated on
+  `num_dependents > 0` AND (clause 1 OR clause 2).
 
-The `child_under_age_share` is the key approximation. A unit with
-1 dependent doesn't deterministically have an infant under the cutoff —
-but across all eligible units the weighted total approximates the
-correct postnatal population.
+Both are **probabilistic** per unit, not deterministic; the weighted state
+total recovers the right population-level expectation. Because both use the
+same births and eligibility, the prenatal arm is exactly **half** the
+postnatal arm (the $1,500 vs $3,000 per-birth payment ratio).
 
 The combined `rxkids_amount = rxkids_prenatal_amount +
 rxkids_postnatal_amount` is what feeds SPM resources; the two subtotals
@@ -261,12 +249,11 @@ override recipe in the module docstring.
 
 ## 7. Limitations & caveats
 
-1. **Pregnancy not observable on PUMS** — prenatal eligibility is
-   probabilistic and the rate is **birth-anchored at runtime** (§10) so the
-   state total matches eligible births. Unit-level amounts are expectations,
-   not literal payments. The prenatal universe excludes married first-time
-   expectant parents and repeat pregnancies — distributionally imperfect,
-   but the birth-anchor keeps the state total right.
+1. **Pregnancy not observable on PUMS** — both arms are probabilistic,
+   driven by birth events (`num_dependents × child_under_age_share`). This
+   captures first and repeat births across all filing statuses (married
+   included), so the prenatal arm is now distributionally correct, not just
+   right in total. Unit-level amounts are expectations, not literal payments.
 2. **Per-child ages not on tax-unit frame** — postnatal counts depend on
    `child_under_age_share`, which must be the annual birth FLOW per
    dependent (~0.066), matched to the full per-birth entitlement. Using a
@@ -327,9 +314,12 @@ Tests at `tests/tax_modeler/programs/test_rxkids.py` cover:
 
 - Clause 2: income ≤ 300% FPL eligible; > 300% (no Medicaid) excluded
 - Clause 1: Medicaid receipt qualifies a unit above 300% FPL (proves OR)
-- Unborn-size rule: an expectant filer above 300% at base size becomes
-  eligible once the unborn child lifts the family-size threshold
-- Postnatal arm does **not** get the unborn increment (no double-count)
+- Birth-driven arms: a married (MFJ) family with a child draws a prenatal
+  payment (previously excluded); a childless filer draws nothing
+- Prenatal arm = exactly half the postnatal arm (per-birth payment ratio)
+- Medicaid pregnancy pathway (196% FPL) binds the prenatal arm when the
+  income cap is set below 196%
+- Family-grain income test (household income/size, not per tax unit)
 - Missing `medicaid_receives` column ⇒ clause-2-only fallback + warning
 - High-income units excluded
 - Postnatal amount scales linearly with `num_dependents`
@@ -447,15 +437,14 @@ each arm's expected-dollar column by its full per-recipient payment
 ($1,500 prenatal, $3,000 postnatal). Report recipients, not the eligible
 base, to avoid a ~15× overstatement.
 
-### Birth-anchoring the prenatal arm
+### Coherent arms (no birth-anchor needed)
 
-A flat `prenatal_pregnancy_probability` applied to the whole single/HoH-no-
-dependent universe produces **more expected pregnancies than Hawaii has
-eligible births** (~2× total births). The forecast rescales the rate at
-runtime so expected pregnancies = `PREG_PER_BIRTH` × the eligible-birth
-count implied by the postnatal arm (default 1.0 = one prenatal claim per
-eligible birth). This makes the two arms coherent: each eligible birth
-draws one $1,500 prenatal + one $3,000 postnatal payment.
+Both arms are driven by the same birth events (§3), so prenatal expected
+pregnancies = postnatal eligible births by construction — each eligible
+birth draws one $1,500 prenatal + one $3,000 postnatal payment. (An earlier
+model used a flat pregnancy probability over a single/HoH-no-dependent
+universe, which overcounted pregnancies ~2× and required a runtime
+"birth-anchor" rescale; the unified birth-driven arms remove that machinery.)
 
 ### Eligible-birth cross-check
 
@@ -502,9 +491,9 @@ is reported).
   `poverty.impact._sdr_se_from_replicates`. Captures ACS sampling error
   only (~±5%) and badly understates total uncertainty.
 - **Assumption band (joint corners)** — the all-low and all-high corners
-  of `takeup_rate` (0.60–0.95), `prenatal_pregnancy_probability` (±25%),
-  and `child_under_age_share` (±25%). The arms are separable, so the joint
-  corners (not a one-at-a-time sweep) give the true outer envelope.
+  of `takeup_rate` (swept around the assumed central value) and
+  `child_under_age_share` (±25%, the birth rate driving both arms). Cost is
+  monotone in each, so the joint corners give the true outer envelope.
 - **Overall MOE — treat as ±30–40%.** The estimate is dominated by
   **specification** uncertainty, not sampling. RxKids has no admin caseload
   to calibrate against, so the soft pregnancy-incidence and infant-share

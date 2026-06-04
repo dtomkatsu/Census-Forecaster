@@ -67,10 +67,6 @@ PDF_NAME = "rxkids_2028_cost_and_impact.pdf"
 # Full Flint-design postnatal window. The base run uses the 6-month lower
 # bound; this prices the optional extension to the full 12 months.
 EXTENDED_POSTNATAL_MONTHS = 12
-# Expected eligible pregnancies per eligible birth, used to birth-anchor the
-# prenatal arm (1.0 = one prenatal claim per eligible birth). Slightly above
-# 1 would account for miscarriage; 1.0 is the conservative coherence anchor.
-PREG_PER_BIRTH = 1.0
 
 _TEAL = (31, 111, 139)
 _DARK = (31, 59, 77)
@@ -91,7 +87,6 @@ def _ascii(s) -> str:
 # bracket the band.
 _SWEEP = {
     "takeup_rate": [0.60, 0.95],
-    "prenatal_pregnancy_probability_mult": [0.75, 1.25],
     "child_under_age_share_mult": [0.75, 1.25],
 }
 
@@ -383,18 +378,16 @@ def _apply_rxkids(units: pd.DataFrame, *, tax_year: int, overrides: Optional[dic
 
 
 def _assumption_band(
-    units, persons, *, tax_year: int, base_cost: float, base_preg_prob: float,
+    units, persons, *, tax_year: int, base_cost: float,
     central_takeup: float, fertility: float = 0.0,
 ) -> dict:
-    """Joint (factorial-corner) assumption band over the three soft parameters.
+    """Joint (factorial-corner) assumption band over the two soft parameters.
 
-    take-up scales both arms, pregnancy-probability scales only prenatal, and
-    infant-share scales only postnatal — and cost is monotone increasing in
-    each. So the true min/max sit at the all-low and all-high corners, NOT at
-    any one-at-a-time perturbation (which would understate the range). We price
-    those two corners directly. ``base_preg_prob`` is the birth-anchored
-    pregnancy probability; the take-up sweep brackets ``central_takeup`` (mostly
-    downside, since it is capped at 1.0); ``fertility`` scales both corners.
+    take-up and the birth-rate (``child_under_age_share``) both scale total
+    cost, and cost is monotone increasing in each, so the true min/max sit at
+    the all-low and all-high corners — not a one-at-a-time perturbation. The
+    take-up sweep brackets ``central_takeup`` (mostly downside, since it is
+    capped at 1.0); ``fertility`` scales both corners.
     """
     from tax_modeler.poverty.spm_aggregation import aggregate_to_spm_units
     from tax_modeler.programs import hawaii_rxkids_parameters
@@ -402,7 +395,6 @@ def _assumption_band(
     base = hawaii_rxkids_parameters()
     tk_low = max(0.40, central_takeup * 0.80)
     tk_high = min(1.0, central_takeup * 1.02)
-    pm = _SWEEP["prenatal_pregnancy_probability_mult"]
     cm = _SWEEP["child_under_age_share_mult"]
     fmul = 1.0 + max(0.0, fertility)
 
@@ -411,17 +403,16 @@ def _assumption_band(
         cost = _weighted_cost(aggregate_to_spm_units(u, persons), "rxkids_amount", "weight")
         return cost * fmul
 
-    def _corner(takeup, preg_mult, child_mult):
+    def _corner(takeup, child_mult):
         return _cost_for({
             "takeup_rate": takeup,
-            "prenatal_pregnancy_probability": float(np.clip(base_preg_prob * preg_mult, 0.0, 1.0)),
             "child_under_age_share": float(np.clip(base.child_under_age_share * child_mult, 0.0, 1.0)),
         })
 
-    low = _corner(tk_low, min(pm), min(cm))
-    high = _corner(tk_high, max(pm), max(cm))
+    low = _corner(tk_low, min(cm))
+    high = _corner(tk_high, max(cm))
     return {"min": low, "max": high, "base": base_cost,
-            "takeup_range": [tk_low, tk_high], "mult_range": [min(pm), max(pm)]}
+            "takeup_range": [tk_low, tk_high], "mult_range": [min(cm), max(cm)]}
 
 
 # ---------------------------------------------------------------------------
@@ -814,31 +805,8 @@ def main(argv: Optional[list] = None) -> int:
     projected = _project(pir, base_units, ty)
 
     fert = max(0.0, args.fertility_response)
-    base_ov = {"takeup_rate": args.takeup_rate}
-
-    # ---- Prenatal birth-anchor calibration ----
-    # The raw prenatal arm applies a flat pregnancy probability to the whole
-    # single/HoH-no-dependent universe, which produces more expected pregnancies
-    # than Hawaii has eligible births. Anchor it so expected pregnancies =
-    # PREG_PER_BIRTH × the eligible-birth count implied by the postnatal arm
-    # (one prenatal claim per eligible birth). pregnancy_probability is linear,
-    # so a single scale on the raw rate is exact. (Take-up cancels in the ratio.)
-    raw_frame = aggregate_to_spm_units(
-        _apply_rxkids(projected, tax_year=ty, overrides=base_ov), persons)
-    raw_preg, raw_inf, _ = _expected_recipients(
-        raw_frame, pre_payment=pre_payment, post_payment=post_payment,
-    )
-    calib_preg_prob = p.prenatal_pregnancy_probability
-    if raw_preg > 0:
-        calib_preg_prob = p.prenatal_pregnancy_probability * (raw_inf * PREG_PER_BIRTH / raw_preg)
-    calib = {**base_ov, "prenatal_pregnancy_probability": calib_preg_prob}
-    LOG.info(
-        "Prenatal birth-anchor: pregnancy prob %.4f -> %.4f "
-        "(raw pregnancies %.0f vs eligible infants %.0f); take-up %.2f, "
-        "fertility response %+.0f%%",
-        p.prenatal_pregnancy_probability, calib_preg_prob, raw_preg, raw_inf,
-        args.takeup_rate, 100 * fert,
-    )
+    calib = {"takeup_rate": args.takeup_rate}
+    LOG.info("Take-up %.2f, fertility response %+.0f%%", args.takeup_rate, 100 * fert)
 
     units = _apply_rxkids(projected, tax_year=ty, overrides=calib)
     frame = _apply_fertility(aggregate_to_spm_units(units, persons), fert)
@@ -919,13 +887,11 @@ def main(argv: Optional[list] = None) -> int:
     if not args.no_assumption_band:
         LOG.info("Running assumption-band sweep")
         band = _assumption_band(units, persons, tax_year=ty, base_cost=total_cost,
-                                base_preg_prob=calib_preg_prob,
                                 central_takeup=args.takeup_rate, fertility=fert)
 
     # ---- Assemble context ----
     assumptions = [
         ("Eligibility cap (income_fpl_cap)", f"{p.income_fpl_cap:.2f}× FPL", "Clause 2: 300% FPL income test"),
-        ("Prenatal unborn count", p.prenatal_unborn_count, "Family-size increment for the prenatal FPL test"),
         ("Medicaid OR-clause", "on", "Clause 1: medicaid_receives from compute_medicaid_for_units"),
         ("Prenatal payment", f"${p.prenatal_monthly:,.0f} × {p.prenatal_months}", "One-time per pregnancy"),
         ("Postnatal payment", f"${p.postnatal_monthly_per_child:,.0f}/mo × {p.postnatal_months}", "Per infant under cutoff"),
@@ -933,11 +899,10 @@ def main(argv: Optional[list] = None) -> int:
          "Combined eligibility×claim (Flint observed 0.98); swept for the band"),
         ("Fertility response", f"{100 * fert:+.0f}%",
          "Induced eligible-birth increase (Flint ~+10%); scales both arms"),
-        ("Pregnancy probability (anchored)", round(calib_preg_prob, 4),
-         f"Birth-anchored from raw {p.prenatal_pregnancy_probability} so expected "
-         f"pregnancies = eligible births; swept ±25%"),
-        ("Child-under-age share", p.child_under_age_share,
-         "Annual births ÷ dependents (FLOW); postnatal infant proxy; swept ±25%"),
+        ("Birth rate / dependent", p.child_under_age_share,
+         "Annual births ÷ dependents (FLOW); drives both arms; swept ±25%"),
+        ("Pregnancy Medicaid pathway", f"{p.pregnant_fpl_cap:.2f}× FPL",
+         "Clause 1 prenatal pathway (196% FPL); subsumed by the 300% income test"),
         ("FPL table year", ty, "benefits/_fpl.py (2025 published; 2026-28 CPI-projected)"),
         ("Tax treatment", "non-taxable", "Added to SPM resources only; no AGI/EITC/CTC interaction"),
         ("Fiscal weight", "WGTP (household)", "SPM-grain household weight; not the EITC-reweighted tax-unit weight"),
