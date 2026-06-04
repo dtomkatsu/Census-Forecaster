@@ -114,8 +114,8 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                    help="Skip the parameter assumption-band sweep.")
     p.add_argument("--no-pdf", action="store_true", default=False,
                    help="Skip the one-page PDF summary (write only the workbook + CSVs).")
-    p.add_argument("--takeup-rate", type=float, default=0.80,
-                   help="Combined eligibility×claim take-up. Default 0.80 "
+    p.add_argument("--takeup-rate", type=float, default=0.90,
+                   help="Combined eligibility×claim take-up. Default 0.90 "
                         "(conservative); set 0.98 for the Flint-observed rate.")
     p.add_argument("--fertility-response", type=float, default=0.0,
                    help="Induced increase in eligible births from the cash "

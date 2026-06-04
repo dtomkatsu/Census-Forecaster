@@ -43,9 +43,9 @@ Payment structure (defaults below; override for alternative designs)
       (default $1,500 × 1 = $1,500 per pregnancy)
     * Postnatal: ``postnatal_monthly_per_child`` × ``n_children`` ×
       ``postnatal_months`` (default $500/mo × eligible kids × 6 = $3,000)
-    * Take-up: ``takeup_rate`` (default 0.80; Flint observed 0.98 under
-      universal design + hospital partnership — Hawaii conservatively
-      models 0.80 in absence of analogous infrastructure)
+    * Take-up: ``takeup_rate`` (default 0.90; Flint observed 0.98 under
+      universal design + hospital partnership — Hawaii models 0.90 in
+      absence of analogous infrastructure)
 
 Tax treatment
     * ``is_taxable = False`` (default). Flint program is structured as
@@ -202,12 +202,12 @@ class RxKidsHIParams:
     leaves family size unchanged (the child is already in num_dependents).
     """
 
-    takeup_rate: float = 0.80
+    takeup_rate: float = 0.90
     """Fraction of eligible units that actually claim.
 
-    Default 0.80 — conservative relative to Flint's observed 0.98 under
-    universal design + hospital partnership; reflects the absence of
-    analogous infrastructure in Hawaii at year-1 ramp.
+    Default 0.90 — below Flint's observed 0.98 (universal design + hospital
+    partnership) to reflect weaker year-1 infrastructure in Hawaii, but
+    above a deeply conservative floor. Set 0.98 for the Flint-observed rate.
     """
 
     is_taxable: bool = False

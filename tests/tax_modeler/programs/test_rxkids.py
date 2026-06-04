@@ -276,7 +276,7 @@ def test_rxkids_defaults_match_hawaii_factory():
     assert p.postnatal_age_cutoff == 1
     assert p.income_fpl_cap == pytest.approx(3.00)
     assert p.prenatal_unborn_count == 1
-    assert p.takeup_rate == pytest.approx(0.80)
+    assert p.takeup_rate == pytest.approx(0.90)
     assert p.is_taxable is False
 
 

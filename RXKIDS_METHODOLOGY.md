@@ -90,7 +90,7 @@ cap (e.g. `10.0`). See the module docstring for override recipes.
 | `postnatal_age_cutoff` | 1 | Infants in their first year (Flint design). PUMS carries no sub-year age, so age 0 is the closest proxy. |
 | `income_fpl_cap` | **3.00** | Statutory clause 2: 300% FPL income test. |
 | `prenatal_unborn_count` | **1** | Statutory "including the expected unborn child" — adds 1 to the prenatal-arm family size (raises the FPL threshold). |
-| `takeup_rate` | 0.80 | Conservative vs Flint's observed 0.98; reflects year-1 ramp without hospital-partnership infrastructure. |
+| `takeup_rate` | 0.90 | Below Flint's observed 0.98 (universal design + hospital partnership) to reflect weaker year-1 Hawaii infrastructure. |
 | `is_taxable` | `False` | Match Flint design — charitable disbursement, not IRS-reported. Routes through SPM resources only. |
 | `prenatal_pregnancy_probability` | 0.066 (raw) → **birth-anchored at runtime** | Annual pregnancy rate per eligible prenatal-universe filer. A flat raw rate overcounts (it implies more pregnancies than Hawaii has eligible births), so `forecast_rxkids_2028.py` rescales it so total expected pregnancies = the eligible-birth count implied by the postnatal arm (one prenatal claim per eligible birth). Sensitivity: linear. |
 | `child_under_age_share` | 0.066 | **Annual qualifying-birth rate per dependent (a FLOW)**: Hawaii births 15,535 ÷ ACS dependents 0-17 ≈ 233,000. Because the postnatal payment is the full per-birth entitlement ($500 × 6 = $3,000), the basis must be the full annual birth cohort, NOT a <6-month stock — a stock basis understates the arm ~2×. Sensitivity: linear. |
@@ -255,7 +255,7 @@ Projected Hawaii impact under default Medicaid-targeted parameters:
 The Hawaii model now matches Flint's per-payment amounts ($1,500
 one-time prenatal, $500/mo postnatal); the difference from Flint is the
 eligibility gate (statutory Medicaid-OR-300%-FPL vs Flint's universal
-no-test design) and the conservative 0.80 take-up. Advocates can override
+no-test design) and the conservative 0.90 take-up. Advocates can override
 parameters to model the Flint-equivalent universal program — see the
 override recipe in the module docstring.
 
@@ -403,13 +403,18 @@ way and reported separately.
 
 | | Value |
 |---|---|
-| **Steady-state annual cost** | **~$41M** (prenatal ~$14M + postnatal ~$27M) |
-| Sampling 90% CI | ~$38M–$44M |
-| **Assumption band (joint corners)** | **~$23M–$61M** |
-| Expected recipients / year | ~18,200 (≈9,100 pregnancies + 9,100 infants) |
+| **Steady-state annual cost** | **~$46M** (prenatal ~$15M + postnatal ~$31M) |
+| Sampling 90% CI | ~$43M–$49M |
+| **Assumption band (joint corners)** | **~$28M–$59M** |
+| Expected recipients / year | ~20,500 (≈10,200 pregnancies + 10,200 infants) |
 | Avg benefit per recipient | ~$2,250 |
-| First fiscal year (launch, 12-mo ramp) | ~$17M (42% of steady) |
-| Optional +6-month postnatal | +~$27M (12-month-design total ~$68M) |
+| First fiscal year (launch, 12-mo ramp) | ~$19M (42% of steady) |
+| Optional +6-month postnatal | +~$31M (12-month-design total ~$77M) |
+
+Default take-up is **0.90** (see §2). Postnatal is ~2× prenatal purely by
+payment design: each eligible birth draws a one-time $1,500 prenatal payment
+but $500/mo × 6 = $3,000 postnatal — same recipients, double the per-birth
+amount.
 
 Eligibility is tested at **SPM-family grain** (income + size summed across
 the tax units in an SPM unit), not per tax unit — testing per filing unit
@@ -417,21 +422,21 @@ split a household's income across small units and overstated cost by ~15%.
 
 #### Scenarios (take-up + behavioral fertility)
 
-The headline above is the **conservative** default (80% take-up, no
+The headline above is the **conservative** default (90% take-up, no
 behavioral response). Two Flint-observed assumptions raise it:
 
 | Scenario | Take-up | Fertility | Steady-state cost | Band |
 |---|---|---|---|---|
-| Conservative (default) | 0.80 | — | **~$41M** | ~$23–61M |
+| Conservative (default) | 0.90 | — | **~$46M** | ~$28–59M |
 | **Flint-equivalent** | 0.98 | +10% | **~$55M** | ~$33–70M |
 
 `--takeup-rate 0.98 --fertility-response 0.10` produces the Flint scenario.
-Take-up scales both arms (×0.98/0.80 = 1.225); the **fertility response**
+Take-up scales both arms linearly; the **fertility response**
 (`_apply_fertility`) models Flint's documented ~10% post-launch birth rise
-as a uniform +10% on eligible births (×1.10 on both arms). The two compound:
-$41M × 1.225 × 1.10 ≈ $55M. The fertility response is a real upside risk a
-static model would miss; it is off by default and surfaced as an explicit
-scenario.
+as a uniform +10% on eligible births (×1.10 on both arms). From the 0.90
+default: $46M × (0.98/0.90) × 1.10 ≈ $55M. The fertility response is a real
+upside risk a static model would miss; it is off by default and surfaced as
+an explicit scenario.
 
 ### Eligible base vs recipients
 
