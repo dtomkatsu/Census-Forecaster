@@ -81,9 +81,10 @@ Caveats
   expected annual pregnancy rate among eligible filers; defaults are
   calibrated from Hawaii Medicaid-financed birth counts.
 * PUMS tax-unit frame does not carry individual child ages → postnatal
-  payments rely on ``child_under_age_share`` (default 0.20, the
-  Hawaii-ACS share of dependents <6 among all dependents 0-17 in
-  Medicaid-eligible households). Sensitivity: linear in this share.
+  payments rely on ``child_under_age_share`` (default 0.066 = Hawaii
+  annual births ÷ dependents 0-17). This is the annual birth FLOW per
+  dependent, matched to the full per-birth postnatal entitlement.
+  Sensitivity: linear in this share.
 * The Flint RxKids program is universal (no income/Medicaid test). The
   default parameters here model a Medicaid-eligibility-gated variant
   for cost reasons. Override ``income_fpl_cap`` to a high value to
@@ -126,13 +127,18 @@ LOG = logging.getLogger(__name__)
 # mothers are eligible regardless of income.
 _DEFAULT_PREGNANCY_PROBABILITY = 0.10
 
-# Share of dependents who are infants under 6 months old.
-# In a cross-sectional ACS year, children under 6 months ≈ half the
-# annual birth cohort / total dependents 0-17.
-# Hawaii births 15,535 → half-year cohort ≈ 7,768.
-# ACS PUMS Hawaii dependents 0-17 ≈ 233,000 (from 5-yr sample).
-# Share ≈ 7,768 / 233,000 ≈ 0.033.
-_DEFAULT_CHILD_UNDER_AGE_SHARE = 0.033
+# Annual qualifying-birth rate per dependent (FLOW, not a point-in-time
+# stock). The postnatal payment is the full per-birth entitlement
+# (postnatal_monthly_per_child × postnatal_months, e.g. $500 × 6 = $3,000),
+# so the correct annual-cost basis is the full annual birth cohort, not the
+# <6-month snapshot. Using a half-year stock here would understate the
+# postnatal arm by ~2× (see RXKIDS_METHODOLOGY.md §3).
+#   Hawaii annual births 15,535 (CDC NVSR 73-02)
+#   ÷ ACS PUMS Hawaii dependents 0-17 ≈ 233,000 (5-yr sample)
+#   ≈ 0.066.
+# Interpretation: n_dep × this rate ≈ the family's expected qualifying
+# births this year; summed over the population it recovers total births.
+_DEFAULT_CHILD_UNDER_AGE_SHARE = 0.066
 
 # Single / head-of-household women aged 18-44 are the prenatal-eligible
 # universe. Conservatively assume ~50% of these filers are women (PUMS
@@ -221,11 +227,15 @@ class RxKidsHIParams:
     """
 
     child_under_age_share: float = _DEFAULT_CHILD_UNDER_AGE_SHARE
-    """Share of dependents 0-17 that are children 0-5.
+    """Annual qualifying-birth rate per dependent (a FLOW, default 0.066).
 
-    Used to convert ``num_dependents`` into an effective count of
-    children under ``postnatal_age_cutoff``, since PUMS does not carry
-    individual child ages on the tax-unit frame.
+    Converts ``num_dependents`` into the family's expected number of
+    qualifying births this year, since PUMS does not carry individual
+    child ages on the tax-unit frame. Because the postnatal payment is the
+    full per-birth entitlement (``postnatal_monthly_per_child`` ×
+    ``postnatal_months``), this must be the full annual birth cohort per
+    dependent (≈ births ÷ dependents 0-17), NOT a <6-month stock share —
+    otherwise the postnatal arm is understated ~2×. Sensitivity: linear.
     """
 
 

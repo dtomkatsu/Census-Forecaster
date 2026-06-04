@@ -67,6 +67,10 @@ PDF_NAME = "rxkids_2028_cost_and_impact.pdf"
 # Full Flint-design postnatal window. The base run uses the 6-month lower
 # bound; this prices the optional extension to the full 12 months.
 EXTENDED_POSTNATAL_MONTHS = 12
+# Expected eligible pregnancies per eligible birth, used to birth-anchor the
+# prenatal arm (1.0 = one prenatal claim per eligible birth). Slightly above
+# 1 would account for miscarriage; 1.0 is the conservative coherence anchor.
+PREG_PER_BIRTH = 1.0
 
 _TEAL = (31, 111, 139)
 _DARK = (31, 59, 77)
@@ -110,6 +114,12 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                    help="Skip the parameter assumption-band sweep.")
     p.add_argument("--no-pdf", action="store_true", default=False,
                    help="Skip the one-page PDF summary (write only the workbook + CSVs).")
+    p.add_argument("--launch-operating-months", type=int, default=12,
+                   help="Months the program operates in its first fiscal year "
+                        "(12 = launch at FY start; e.g. 6 for a mid-year launch).")
+    p.add_argument("--ramp-months", type=int, default=12,
+                   help="Months for enrollment to ramp from zero to full take-up "
+                        "in the launch year. Default 12 (gradual). Lower = faster.")
     p.add_argument("-v", "--verbose", action="store_true")
     return p.parse_args(argv)
 
@@ -129,12 +139,37 @@ def _weighted_cost(frame: pd.DataFrame, amount_col: str, weight_col: str = "weig
 
 
 def _reached(frame: pd.DataFrame, amount_col: str, weight_col: str = "weight") -> float:
-    """Weighted count of units receiving a positive benefit in amount_col."""
+    """Weighted count of units with a positive expected benefit = the ELIGIBLE
+    base (any family that clears the income/Medicaid test and has the relevant
+    composition). NOT the recipient count — see _expected_recipients."""
     if amount_col not in frame.columns:
         return 0.0
     a = frame[amount_col].fillna(0).to_numpy(dtype=float)
     w = frame[weight_col].fillna(0).to_numpy(dtype=float)
     return float(w[a > 0].sum())
+
+
+def _expected_recipients(
+    frame: pd.DataFrame, *, pre_payment: float, post_payment: float,
+    weight_col: str = "weight",
+) -> tuple[float, float, float]:
+    """Weighted EXPECTED recipients/year (pregnancies, infants, total).
+
+    The arm dollar amount = (probability × per-recipient payment × take-up),
+    so dividing by the full per-recipient payment recovers the expected number
+    of actual claimers (probability × take-up). This is the true recipient
+    count, far below the eligible base (_reached), because most eligible
+    families do not have a pregnancy/infant in a given year.
+    """
+    w = frame[weight_col].fillna(0).to_numpy(dtype=float)
+    pre = post = 0.0
+    if pre_payment > 0 and "rxkids_prenatal_amount" in frame.columns:
+        a = frame["rxkids_prenatal_amount"].fillna(0).to_numpy(dtype=float)
+        pre = float((a / pre_payment * w).sum())
+    if post_payment > 0 and "rxkids_postnatal_amount" in frame.columns:
+        a = frame["rxkids_postnatal_amount"].fillna(0).to_numpy(dtype=float)
+        post = float((a / post_payment * w).sum())
+    return pre, post, pre + post
 
 
 def _cost_with_sdr(frame: pd.DataFrame, amount_col: str) -> tuple[float, float]:
@@ -161,13 +196,15 @@ def _cost_with_sdr(frame: pd.DataFrame, amount_col: str) -> tuple[float, float]:
     return cost_0, se
 
 
-def _benefits_by_quintile(frame: pd.DataFrame) -> list[dict]:
+def _benefits_by_quintile(
+    frame: pd.DataFrame, *, pre_payment: float, post_payment: float,
+) -> list[dict]:
     """RxKids benefit received per weighted income quintile (SPM-unit grain).
 
     SPM units are ranked on summed ``income`` and split into population-equal
     fifths weighted by the WGTP household ``weight``. For each quintile:
-    average income, families (weighted), families reached, total benefit
-    dollars, average benefit per reached family, and share of total benefit.
+    average income, families (weighted), expected recipients/year, total
+    benefit dollars, average benefit per recipient, and share of total benefit.
     """
     from tax_modeler.metrics.distribution import weighted_ntile_labels
 
@@ -187,19 +224,80 @@ def _benefits_by_quintile(frame: pd.DataFrame) -> list[dict]:
         inc = sub["income"].fillna(0).to_numpy(dtype=float)
         wsum = w.sum()
         total_benefit = float((amt * w).sum())
-        reached = float(w[amt > 0].sum())
+        _, _, recipients = _expected_recipients(
+            sub, pre_payment=pre_payment, post_payment=post_payment,
+        )
         rows.append({
             "quintile": q,
             "avg_income": round(float((inc * w).sum() / wsum), 0) if wsum > 0 else 0,
             "families": round(float(wsum), 0),
-            "families_reached": round(reached, 0),
+            "expected_recipients": round(recipients, 0),
             "total_benefit_$": round(total_benefit, 0),
-            "avg_benefit_per_reached_$": round(total_benefit / reached, 0) if reached > 0 else 0,
+            "avg_benefit_per_recipient_$": round(total_benefit / recipients, 0) if recipients > 0 else 0,
         })
     grand = sum(r["total_benefit_$"] for r in rows)
     for r in rows:
         r["share_of_benefit_pct"] = round(100.0 * r["total_benefit_$"] / grand, 1) if grand > 0 else 0.0
     return rows
+
+
+def _first_year_disbursement(
+    prenatal_annual: float,
+    postnatal_annual: float,
+    *,
+    operating_months: int = 12,
+    ramp_months: int = 12,
+    postnatal_window: int = 6,
+    start_frac: float = 0.0,
+) -> dict:
+    """First-fiscal-year *disbursement* (cash out the door), not benefits earned.
+
+    A launch year differs from steady state in two ways, modeled monthly:
+
+    * **Enrollment ramp** — take-up climbs from ``start_frac`` to full over
+      ``ramp_months`` (linear). New prenatal payments scale directly with the
+      enrollment level in the month they occur.
+    * **Postnatal caseload fill** — each birth pays out over ``postnatal_window``
+      months, so even at full enrollment the monthly postnatal caseload takes
+      ``postnatal_window`` months to fill. The caseload in month t is the share
+      of the trailing window already born-and-enrolled.
+
+    Payments for late-year births that would spill past month
+    ``operating_months`` fall into the next fiscal year and are excluded.
+    """
+    pre_m = prenatal_annual / 12.0      # steady-state monthly prenatal disbursement
+    post_m = postnatal_annual / 12.0    # steady-state monthly postnatal disbursement
+
+    def enroll(t: int) -> float:
+        if ramp_months <= 0 or t >= ramp_months:
+            return 1.0
+        return start_frac + (1.0 - start_frac) * (t / ramp_months)
+
+    pre_total = 0.0
+    post_total = 0.0          # postnatal dollars actually paid within the FY
+    post_entitlement = 0.0    # full postnatal entitlement of in-FY birth cohorts
+    for t in range(1, operating_months + 1):
+        pre_total += pre_m * enroll(t)
+        # caseload fraction = trailing-window births that are enrolled, / window
+        s = sum(enroll(t - k) for k in range(postnatal_window) if (t - k) >= 1)
+        post_total += post_m * (s / postnatal_window)
+        # full entitlement created by this month's birth cohort (pays out over
+        # the next `postnatal_window` months; the part beyond operating_months
+        # is deferred into the next fiscal year, not saved).
+        post_entitlement += post_m * enroll(t)
+
+    deferred_postnatal = max(0.0, post_entitlement - post_total)
+    total = pre_total + post_total
+    steady = prenatal_annual + postnatal_annual
+    return {
+        "prenatal": pre_total,
+        "postnatal": post_total,
+        "total": total,
+        "deferred_postnatal": deferred_postnatal,
+        "pct_of_steady": (total / steady) if steady > 0 else 0.0,
+        "operating_months": operating_months,
+        "ramp_months": ramp_months,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -235,30 +333,41 @@ def _apply_rxkids(units: pd.DataFrame, *, tax_year: int, overrides: Optional[dic
     return out
 
 
-def _assumption_band(units, persons, *, tax_year: int, base_cost: float) -> dict:
-    """One-at-a-time sweep over the three soft parameters; min/max total cost."""
+def _assumption_band(
+    units, persons, *, tax_year: int, base_cost: float, base_preg_prob: float,
+) -> dict:
+    """Joint (factorial-corner) assumption band over the three soft parameters.
+
+    take-up scales both arms, pregnancy-probability scales only prenatal, and
+    infant-share scales only postnatal — and cost is monotone increasing in
+    each. So the true min/max sit at the all-low and all-high corners, NOT at
+    any one-at-a-time perturbation (which would understate the range). We price
+    those two corners directly. ``base_preg_prob`` is the birth-anchored
+    pregnancy probability, so the prenatal sweep brackets the anchored value.
+    """
     from tax_modeler.poverty.spm_aggregation import aggregate_to_spm_units
     from tax_modeler.programs import hawaii_rxkids_parameters
 
     base = hawaii_rxkids_parameters()
-    cells = {"base": base_cost}
+    tk = _SWEEP["takeup_rate"]
+    pm = _SWEEP["prenatal_pregnancy_probability_mult"]
+    cm = _SWEEP["child_under_age_share_mult"]
 
-    def _cost_for(overrides: dict, label: str) -> None:
+    def _cost_for(overrides: dict) -> float:
         u = _apply_rxkids(units, tax_year=tax_year, overrides=overrides)
-        frame = aggregate_to_spm_units(u, persons)
-        cells[label] = _weighted_cost(frame, "rxkids_amount", "weight")
+        return _weighted_cost(aggregate_to_spm_units(u, persons), "rxkids_amount", "weight")
 
-    for tk in _SWEEP["takeup_rate"]:
-        _cost_for({"takeup_rate": tk}, f"takeup={tk}")
-    for m in _SWEEP["prenatal_pregnancy_probability_mult"]:
-        val = float(np.clip(base.prenatal_pregnancy_probability * m, 0.0, 1.0))
-        _cost_for({"prenatal_pregnancy_probability": val}, f"pregnancy_prob×{m}")
-    for m in _SWEEP["child_under_age_share_mult"]:
-        val = float(np.clip(base.child_under_age_share * m, 0.0, 1.0))
-        _cost_for({"child_under_age_share": val}, f"child_share×{m}")
+    def _corner(takeup, preg_mult, child_mult):
+        return _cost_for({
+            "takeup_rate": takeup,
+            "prenatal_pregnancy_probability": float(np.clip(base_preg_prob * preg_mult, 0.0, 1.0)),
+            "child_under_age_share": float(np.clip(base.child_under_age_share * child_mult, 0.0, 1.0)),
+        })
 
-    costs = list(cells.values())
-    return {"cells": cells, "min": min(costs), "max": max(costs)}
+    low = _corner(min(tk), min(pm), min(cm))
+    high = _corner(max(tk), max(pm), max(cm))
+    return {"min": low, "max": high, "base": base_cost,
+            "takeup_range": tk, "mult_range": [min(pm), max(pm)]}
 
 
 # ---------------------------------------------------------------------------
@@ -299,6 +408,10 @@ def _write_workbook(path: Path, *, ctx: dict) -> None:
     ws["A2"] = ("Statutory eligibility: Medicaid (clause 1) OR income ≤ 300% FPL "
                 "incl. expected unborn child (clause 2)")
     ws["A2"].font = Font(italic=True, color="555555")
+    ws["A3"] = ("⚠ Point estimate — true uncertainty is ±30-40%. RxKids has no admin "
+                "caseload to calibrate against; cost hinges on soft pregnancy/infant "
+                "incidence assumptions. Read with the assumption band below.")
+    ws["A3"].font = Font(italic=True, bold=True, color="B00000")
 
     rows = [
         ("FISCAL COST (annual)", None, None),
@@ -324,11 +437,22 @@ def _write_workbook(path: Path, *, ctx: dict) -> None:
         ("  Additional cost (+6 months)", ctx["additional_cost"], money_fmt),
         ("  Total cost (12-month design)", ctx["ext_total"], money_fmt),
         ("", None, None),
+        (f"FIRST FISCAL YEAR (launch) — {ctx['first_year']['operating_months']}mo "
+         f"operating, {ctx['first_year']['ramp_months']}mo ramp", None, None),
+        ("  Year-1 disbursement (total)", ctx["first_year"]["total"], money_fmt),
+        ("    Prenatal", ctx["first_year"]["prenatal"], money_fmt),
+        ("    Postnatal", ctx["first_year"]["postnatal"], money_fmt),
+        ("    (postnatal deferred to next FY)", ctx["first_year"]["deferred_postnatal"], money_fmt),
+        ("  Year-1 as % of steady state", round(100 * ctx["first_year"]["pct_of_steady"], 1), "0.0"),
+        ("  Year-1 if ramp = 6mo (fast)", ctx["ramp_sensitivity"][6], money_fmt),
+        ("  Year-1 if ramp = 18mo (slow)", ctx["ramp_sensitivity"][18], money_fmt),
+        ("", None, None),
         ("HOUSEHOLD REACH", None, None),
-        ("Families reached (weighted)", ctx["reached_total"], money_fmt),
-        ("  Prenatal (expectant filers)", ctx["reached_prenatal"], money_fmt),
-        ("  Postnatal (families w/ infants)", ctx["reached_postnatal"], money_fmt),
-        ("Avg benefit per family reached", ctx["avg_benefit"], money_fmt),
+        ("Eligible families (weighted)", ctx["eligible_families"], money_fmt),
+        ("Expected recipients / year", ctx["rec_total"], money_fmt),
+        ("  Expected pregnancies (prenatal)", ctx["rec_pregnancies"], money_fmt),
+        ("  Expected infants (postnatal)", ctx["rec_infants"], money_fmt),
+        ("Avg benefit per recipient", ctx["avg_benefit"], money_fmt),
         ("", None, None),
         ("Benefits by income quintile → see the 'By income quintile' tab.", None, None),
     ]
@@ -350,16 +474,16 @@ def _write_workbook(path: Path, *, ctx: dict) -> None:
     # ---- By income quintile ----
     wsq = wb.create_sheet("By income quintile")
     qheaders = [
-        "Quintile", "Avg income ($)", "Families", "Families reached",
-        "Total benefit ($)", "Avg benefit / reached family ($)",
+        "Quintile", "Avg income ($)", "Families", "Expected recipients",
+        "Total benefit ($)", "Avg benefit / recipient ($)",
         "Share of benefit (%)",
     ]
     _style_header_row(wsq, qheaders)
     for i, row in enumerate(ctx["quintiles"], start=2):
         vals = [
             row["quintile"], row["avg_income"], row["families"],
-            row["families_reached"], row["total_benefit_$"],
-            row["avg_benefit_per_reached_$"], row["share_of_benefit_pct"],
+            row["expected_recipients"], row["total_benefit_$"],
+            row["avg_benefit_per_recipient_$"], row["share_of_benefit_pct"],
         ]
         for j, v in enumerate(vals, start=1):
             c = wsq.cell(row=i, column=j, value=v)
@@ -375,13 +499,13 @@ def _write_workbook(path: Path, *, ctx: dict) -> None:
     ws2 = wb.create_sheet("By county")
     headers = [
         "County", "Cost total ($)", "Cost prenatal ($)", "Cost postnatal ($)",
-        "Cost SE ($)", "Families reached",
+        "Cost SE ($)", "Expected recipients",
     ]
     _style_header_row(ws2, headers)
     for i, row in enumerate(ctx["county_rows"], start=2):
         vals = [
             row["county"], row["cost_total"], row["cost_prenatal"],
-            row["cost_postnatal"], row["cost_se"], row["reached"],
+            row["cost_postnatal"], row["cost_se"], row["recipients"],
         ]
         for j, v in enumerate(vals, start=1):
             c = ws2.cell(row=i, column=j, value=v)
@@ -490,6 +614,14 @@ def _write_pdf(path: Path, *, ctx: dict) -> None:
     pdf.multi_cell(0, 5, _ascii(
         "Statutory eligibility: Medicaid (clause 1) OR income <= 300% FPL "
         "incl. expected unborn child (clause 2)"))
+    pdf.set_x(pdf.l_margin)
+    pdf.set_text_color(176, 0, 0)
+    pdf.set_font("Helvetica", "B", 8.5)
+    pdf.multi_cell(0, 4, _ascii(
+        "Point estimate - true uncertainty is +/-30-40%. No admin caseload exists "
+        "to calibrate against; cost hinges on soft pregnancy/infant incidence "
+        "assumptions. Read with the assumption band."))
+    pdf.set_text_color(0, 0, 0)
     pdf.ln(1)
 
     def section(title):
@@ -528,9 +660,31 @@ def _write_pdf(path: Path, *, ctx: dict) -> None:
     kv("Total cost (12-month design)", money(ctx["ext_total"]))
     pdf.ln(1)
 
+    fy = ctx["first_year"]
+    section(f"First fiscal year (launch) - {fy['operating_months']}mo operating, "
+            f"{fy['ramp_months']}mo enrollment ramp")
+    pdf.set_font("Helvetica", "I", 8.5)
+    pdf.set_text_color(*_GREY)
+    pdf.multi_cell(0, 4, _ascii(
+        "Year-1 cash disbursement, below steady state: enrollment ramps up and "
+        "the 6-month postnatal caseload takes time to fill."))
+    pdf.set_text_color(0, 0, 0)
+    kv("Year-1 disbursement (total)", money(fy["total"]))
+    kv("Prenatal / Postnatal",
+       f"{money(fy['prenatal'])} / {money(fy['postnatal'])}", 1)
+    kv("Postnatal deferred to next FY", money(fy["deferred_postnatal"]), 1)
+    kv("Year-1 as % of steady state", f"{100 * fy['pct_of_steady']:.0f}%", 1)
+    kv("Ramp sensitivity (6 / 12 / 18 mo)",
+       f"{money(ctx['ramp_sensitivity'][6])} / {money(ctx['ramp_sensitivity'][12])} / "
+       f"{money(ctx['ramp_sensitivity'][18])}")
+    pdf.ln(1)
+
     section("Household reach")
-    kv("Families reached (weighted)", f"{ctx['reached_total']:,.0f}")
-    kv("Avg benefit per family reached", money(ctx["avg_benefit"]))
+    kv("Eligible families (weighted)", f"{ctx['eligible_families']:,.0f}")
+    kv("Expected recipients / year", f"{ctx['rec_total']:,.0f}")
+    kv("Expected pregnancies / infants",
+       f"{ctx['rec_pregnancies']:,.0f} / {ctx['rec_infants']:,.0f}", 1)
+    kv("Avg benefit per recipient", money(ctx["avg_benefit"]))
     pdf.ln(2)
 
     chart = _quintile_chart_png(ctx["quintiles"])
@@ -540,12 +694,12 @@ def _write_pdf(path: Path, *, ctx: dict) -> None:
         pdf.ln(2)
         _pdf_table(
             pdf,
-            headers=["Quintile", "Avg income", "Families", "Reached",
+            headers=["Quintile", "Avg income", "Families", "Recipients",
                      "Total benefit", "Share"],
             widths_frac=[0.14, 0.20, 0.17, 0.16, 0.20, 0.13],
             rows=[[
                 r["quintile"], money(r["avg_income"]), f"{r['families']:,.0f}",
-                f"{r['families_reached']:,.0f}", money(r["total_benefit_$"]),
+                f"{r['expected_recipients']:,.0f}", money(r["total_benefit_$"]),
                 f"{r['share_of_benefit_pct']:.1f}%",
             ] for r in ctx["quintiles"]],
         )
@@ -555,11 +709,11 @@ def _write_pdf(path: Path, *, ctx: dict) -> None:
         section("Cost by county")
         _pdf_table(
             pdf,
-            headers=["County", "Cost total", "Prenatal", "Postnatal", "Reached"],
+            headers=["County", "Cost total", "Prenatal", "Postnatal", "Recipients"],
             widths_frac=[0.30, 0.18, 0.17, 0.17, 0.18],
             rows=[[
                 r["county"], money(r["cost_total"]), money(r["cost_prenatal"]),
-                money(r["cost_postnatal"]), f"{r['reached']:,.0f}",
+                money(r["cost_postnatal"]), f"{r['recipients']:,.0f}",
             ] for r in ctx["county_rows"]],
         )
         pdf.ln(3)
@@ -596,13 +750,37 @@ def main(argv: Optional[list] = None) -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     p = hawaii_rxkids_parameters()
     ty = args.tax_year
+    pre_payment = p.prenatal_monthly * p.prenatal_months
+    post_payment = p.postnatal_monthly_per_child * p.postnatal_months
 
     LOG.info("Loading PUMS (real PUMS=%s)", not args.use_fixture)
     base_units, persons = _load(pir, args)
 
-    LOG.info("Projecting income + RxKids to TY %d", ty)
+    LOG.info("Projecting income to TY %d", ty)
     projected = _project(pir, base_units, ty)
-    units = _apply_rxkids(projected, tax_year=ty)
+
+    # ---- Prenatal birth-anchor calibration ----
+    # The raw prenatal arm applies a flat pregnancy probability to the whole
+    # single/HoH-no-dependent universe, which produces more expected pregnancies
+    # than Hawaii has eligible births. Anchor it so expected pregnancies =
+    # PREG_PER_BIRTH × the eligible-birth count implied by the postnatal arm
+    # (one prenatal claim per eligible birth). pregnancy_probability is linear,
+    # so a single scale on the raw rate is exact.
+    raw_frame = aggregate_to_spm_units(_apply_rxkids(projected, tax_year=ty), persons)
+    raw_preg, raw_inf, _ = _expected_recipients(
+        raw_frame, pre_payment=pre_payment, post_payment=post_payment,
+    )
+    calib_preg_prob = p.prenatal_pregnancy_probability
+    if raw_preg > 0:
+        calib_preg_prob = p.prenatal_pregnancy_probability * (raw_inf * PREG_PER_BIRTH / raw_preg)
+    calib = {"prenatal_pregnancy_probability": calib_preg_prob}
+    LOG.info(
+        "Prenatal birth-anchor: pregnancy prob %.4f -> %.4f "
+        "(raw pregnancies %.0f vs eligible infants %.0f)",
+        p.prenatal_pregnancy_probability, calib_preg_prob, raw_preg, raw_inf,
+    )
+
+    units = _apply_rxkids(projected, tax_year=ty, overrides=calib)
     frame = aggregate_to_spm_units(units, persons)
     LOG.info("Aggregated %d tax units -> %d SPM units", len(units), len(frame))
 
@@ -617,40 +795,71 @@ def main(argv: Optional[list] = None) -> int:
     #      as an optional add-on (postnatal is linear in months). ----
     ext_units = _apply_rxkids(
         projected, tax_year=ty,
-        overrides={"postnatal_months": EXTENDED_POSTNATAL_MONTHS},
+        overrides={**calib, "postnatal_months": EXTENDED_POSTNATAL_MONTHS},
     )
     ext_frame = aggregate_to_spm_units(ext_units, persons)
     ext_total = _weighted_cost(ext_frame, "rxkids_amount")
     ext_postnatal = _weighted_cost(ext_frame, "rxkids_postnatal_amount")
     additional_cost = ext_total - total_cost
 
-    reached_total = _reached(frame, "rxkids_amount")
-    reached_prenatal = _reached(frame, "rxkids_prenatal_amount")
-    reached_postnatal = _reached(frame, "rxkids_postnatal_amount")
-    avg_benefit = (total_cost / reached_total) if reached_total > 0 else 0.0
+    # ---- First fiscal year (launch): partial operating window + enrollment
+    #      ramp + postnatal caseload fill. This is the appropriation-relevant
+    #      year-1 cash flow, well below the steady-state annual cost. ----
+    postnatal_window = int(p.postnatal_months)
+    first_year = _first_year_disbursement(
+        prenatal_cost, postnatal_cost,
+        operating_months=args.launch_operating_months,
+        ramp_months=args.ramp_months,
+        postnatal_window=postnatal_window,
+    )
+    # Ramp sensitivity (the dominant year-1 driver): fast / base / slow.
+    ramp_sensitivity = {
+        rm: _first_year_disbursement(
+            prenatal_cost, postnatal_cost,
+            operating_months=args.launch_operating_months,
+            ramp_months=rm, postnatal_window=postnatal_window,
+        )["total"]
+        for rm in (6, 12, 18)
+    }
+
+    # Eligible base (families clearing the test) vs the EXPECTED recipient
+    # count (those actually getting a payment in the year). The avg benefit is
+    # per recipient — i.e. the real per-family payment design, not cost spread
+    # over the much larger eligible base.
+    eligible_families = _reached(frame, "rxkids_amount")
+    rec_pregnancies, rec_infants, rec_total = _expected_recipients(
+        frame, pre_payment=pre_payment, post_payment=post_payment,
+    )
+    avg_benefit = (total_cost / rec_total) if rec_total > 0 else 0.0
 
     # ---- Household impact: benefits received by income quintile ----
-    quintiles = _benefits_by_quintile(frame)
+    quintiles = _benefits_by_quintile(
+        frame, pre_payment=pre_payment, post_payment=post_payment,
+    )
 
     # ---- By county (cost) ----
     county_rows = []
     if "county" in frame.columns:
         for county, grp in frame.groupby("county", dropna=False):
             c_total, c_se = _cost_with_sdr(grp, "rxkids_amount")
+            _, _, grp_rec = _expected_recipients(
+                grp, pre_payment=pre_payment, post_payment=post_payment,
+            )
             county_rows.append({
                 "county": county,
                 "cost_total": round(c_total, 0),
                 "cost_prenatal": round(_weighted_cost(grp, "rxkids_prenatal_amount"), 0),
                 "cost_postnatal": round(_weighted_cost(grp, "rxkids_postnatal_amount"), 0),
                 "cost_se": round(c_se, 0),
-                "reached": round(_reached(grp, "rxkids_amount"), 0),
+                "recipients": round(grp_rec, 0),
             })
 
     # ---- Assumption band ----
     band = None
     if not args.no_assumption_band:
         LOG.info("Running assumption-band sweep")
-        band = _assumption_band(units, persons, tax_year=ty, base_cost=total_cost)
+        band = _assumption_band(units, persons, tax_year=ty, base_cost=total_cost,
+                                base_preg_prob=calib_preg_prob)
 
     # ---- Assemble context ----
     assumptions = [
@@ -660,8 +869,11 @@ def main(argv: Optional[list] = None) -> int:
         ("Prenatal payment", f"${p.prenatal_monthly:,.0f} × {p.prenatal_months}", "One-time per pregnancy"),
         ("Postnatal payment", f"${p.postnatal_monthly_per_child:,.0f}/mo × {p.postnatal_months}", "Per infant under cutoff"),
         ("Take-up rate", p.takeup_rate, f"Swept {_SWEEP['takeup_rate']} for the band"),
-        ("Pregnancy probability", p.prenatal_pregnancy_probability, "Prenatal incidence proxy; swept ±25%"),
-        ("Child-under-age share", p.child_under_age_share, "Postnatal infant share proxy; swept ±25%"),
+        ("Pregnancy probability (anchored)", round(calib_preg_prob, 4),
+         f"Birth-anchored from raw {p.prenatal_pregnancy_probability} so expected "
+         f"pregnancies = eligible births; swept ±25%"),
+        ("Child-under-age share", p.child_under_age_share,
+         "Annual births ÷ dependents (FLOW); postnatal infant proxy; swept ±25%"),
         ("FPL table year", ty, "benefits/_fpl.py (2025 published; 2026-28 CPI-projected)"),
         ("Tax treatment", "non-taxable", "Added to SPM resources only; no AGI/EITC/CTC interaction"),
         ("Fiscal weight", "WGTP (household)", "SPM-grain household weight; not the EITC-reweighted tax-unit weight"),
@@ -703,8 +915,10 @@ def main(argv: Optional[list] = None) -> int:
         "ext_postnatal_months": EXTENDED_POSTNATAL_MONTHS,
         "ext_total": ext_total, "ext_postnatal": ext_postnatal,
         "additional_cost": additional_cost,
-        "reached_total": reached_total, "reached_prenatal": reached_prenatal,
-        "reached_postnatal": reached_postnatal, "avg_benefit": avg_benefit,
+        "first_year": first_year, "ramp_sensitivity": ramp_sensitivity,
+        "eligible_families": eligible_families,
+        "rec_total": rec_total, "rec_pregnancies": rec_pregnancies,
+        "rec_infants": rec_infants, "avg_benefit": avg_benefit,
         "quintiles": quintiles, "band": band, "county_rows": county_rows,
         "assumptions": assumptions, "notes": notes,
     }
@@ -728,8 +942,15 @@ def main(argv: Optional[list] = None) -> int:
         "cost_total_ci90_high_$": round(total_cost + moe, 0),
         "potential_additional_6mo_cost_$": round(additional_cost, 0),
         "potential_total_12mo_cost_$": round(ext_total, 0),
-        "families_reached": round(reached_total, 0),
-        "avg_benefit_per_family_$": round(avg_benefit, 0),
+        "first_year_total_$": round(first_year["total"], 0),
+        "first_year_prenatal_$": round(first_year["prenatal"], 0),
+        "first_year_postnatal_$": round(first_year["postnatal"], 0),
+        "first_year_pct_of_steady": round(100 * first_year["pct_of_steady"], 1),
+        "eligible_families": round(eligible_families, 0),
+        "expected_recipients": round(rec_total, 0),
+        "expected_pregnancies": round(rec_pregnancies, 0),
+        "expected_infants": round(rec_infants, 0),
+        "avg_benefit_per_recipient_$": round(avg_benefit, 0),
     }]).to_csv(args.out / "cost_by_state.csv", index=False)
     frame.to_parquet(args.out / "spm_units.parquet")
 
@@ -744,8 +965,15 @@ def main(argv: Optional[list] = None) -> int:
         print(f"  Assumption band            : ${band['min']:,.0f} – ${band['max']:,.0f}")
     print(f"  POTENTIAL +6 months        : +${additional_cost:>15,.0f}"
           f"  (12-mo total ${ext_total:,.0f})")
-    print(f"  Families reached           : {reached_total:>16,.0f}")
-    print(f"  Avg benefit per family     : ${avg_benefit:>15,.0f}")
+    print(f"  FIRST FY (launch)          : ${first_year['total']:>16,.0f}"
+          f"  ({100 * first_year['pct_of_steady']:.0f}% of steady; "
+          f"{first_year['operating_months']}mo op, {first_year['ramp_months']}mo ramp)")
+    print(f"    ramp 6/12/18mo           : ${ramp_sensitivity[6]:,.0f} / "
+          f"${ramp_sensitivity[12]:,.0f} / ${ramp_sensitivity[18]:,.0f}")
+    print(f"  Eligible families          : {eligible_families:>16,.0f}")
+    print(f"  Expected recipients/year   : {rec_total:>16,.0f}"
+          f"  ({rec_pregnancies:,.0f} preg + {rec_infants:,.0f} infants)")
+    print(f"  Avg benefit per recipient  : ${avg_benefit:>15,.0f}")
     print("\n  Benefit received by income quintile:")
     for row in quintiles:
         print(f"    {row['quintile']}  avg inc ${row['avg_income']:>10,.0f}  "

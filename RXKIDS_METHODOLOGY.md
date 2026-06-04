@@ -92,8 +92,8 @@ cap (e.g. `10.0`). See the module docstring for override recipes.
 | `prenatal_unborn_count` | **1** | Statutory "including the expected unborn child" — adds 1 to the prenatal-arm family size (raises the FPL threshold). |
 | `takeup_rate` | 0.80 | Conservative vs Flint's observed 0.98; reflects year-1 ramp without hospital-partnership infrastructure. |
 | `is_taxable` | `False` | Match Flint design — charitable disbursement, not IRS-reported. Routes through SPM resources only. |
-| `prenatal_pregnancy_probability` | 0.10 | All-Hawaii birth rate among single/HoH filers with no dependents: 15,535 births ÷ ~155,000 such filers × 50% women-share ≈ 0.10. Sensitivity: linear. |
-| `child_under_age_share` | 0.033 | Share of dependents 0-17 that are infants <6 months (the postnatal window): ~half the annual birth cohort ÷ ACS dependents 0-17. Sensitivity: linear. |
+| `prenatal_pregnancy_probability` | 0.066 (raw) → **birth-anchored at runtime** | Annual pregnancy rate per eligible prenatal-universe filer. A flat raw rate overcounts (it implies more pregnancies than Hawaii has eligible births), so `forecast_rxkids_2028.py` rescales it so total expected pregnancies = the eligible-birth count implied by the postnatal arm (one prenatal claim per eligible birth). Sensitivity: linear. |
+| `child_under_age_share` | 0.066 | **Annual qualifying-birth rate per dependent (a FLOW)**: Hawaii births 15,535 ÷ ACS dependents 0-17 ≈ 233,000. Because the postnatal payment is the full per-birth entitlement ($500 × 6 = $3,000), the basis must be the full annual birth cohort, NOT a <6-month stock — a stock basis understates the arm ~2×. Sensitivity: linear. |
 
 Plus the Medicaid clause, evaluated in `compute_rxkids_for_units` from the
 `medicaid_receives` column produced by `compute_medicaid_for_units` (the
@@ -149,8 +149,9 @@ individual child ages, so each arm applies a probabilistic adjustment.
 
 - Proxy: filers with `filing_status in {single, head_of_household}`
   AND `num_dependents == 0` AND (clause 1 OR clause 2 at prenatal size).
-- Pregnancy probability: `prenatal_pregnancy_probability` per
-  eligible filer per year (default 0.10).
+- Pregnancy probability: `prenatal_pregnancy_probability` per eligible
+  filer per year (raw 0.066, **birth-anchored at runtime** — see §10 — so
+  total expected pregnancies = eligible births, not ~2× births).
 - Per-unit expected amount:
   `pregnancy_prob × prenatal_monthly × prenatal_months × takeup_rate`.
 - Emitted as `rxkids_prenatal_amount`.
@@ -261,12 +262,16 @@ override recipe in the module docstring.
 ## 7. Limitations & caveats
 
 1. **Pregnancy not observable on PUMS** — prenatal eligibility is
-   probabilistic. Population-level totals are reliable; unit-level
-   amounts are expectations rather than literal payments.
-2. **Per-child ages not on tax-unit frame** — postnatal payment
-   counts depend on `child_under_age_share`. Sensitivity: linear.
-   For a major shift in this share (e.g. 0.20 → 0.10), expect a 50%
-   reduction in modeled postnatal cost.
+   probabilistic and the rate is **birth-anchored at runtime** (§10) so the
+   state total matches eligible births. Unit-level amounts are expectations,
+   not literal payments. The prenatal universe excludes married first-time
+   expectant parents and repeat pregnancies — distributionally imperfect,
+   but the birth-anchor keeps the state total right.
+2. **Per-child ages not on tax-unit frame** — postnatal counts depend on
+   `child_under_age_share`, which must be the annual birth FLOW per
+   dependent (~0.066), matched to the full per-birth entitlement. Using a
+   point-in-time <6-month stock (~0.033) understates the postnatal arm ~2×.
+   Sensitivity: linear.
 3. **No labor supply / fertility response modeled** — static
    counterfactual. The literature suggests unconditional cash
    transfers slightly reduce maternal labor supply (small effect,
@@ -394,32 +399,86 @@ way and reported separately.
 4. Compute `medicaid_receives` (clause 1) then the RxKids benefit, and
    aggregate to SPM units.
 
+### Headline (real PUMS, TY2028)
+
+| | Value |
+|---|---|
+| **Steady-state annual cost** | **~$48M** (prenatal ~$16M + postnatal ~$32M) |
+| Sampling 90% CI | ~$46M–$51M |
+| **Assumption band (joint corners)** | **~$27M–$72M** |
+| Expected recipients / year | ~21,500 (≈10,800 pregnancies + 10,800 infants) |
+| Avg benefit per recipient | ~$2,250 |
+| First fiscal year (launch, 12-mo ramp) | ~$20M (42% of steady) |
+| Optional +6-month postnatal | +~$32M (12-month-design total ~$81M) |
+
+### Eligible base vs recipients
+
+"Eligible families" (~306k weighted) is the population clearing the
+income/Medicaid test — NOT the recipient count. Actual **expected
+recipients** (pregnancies + infants) are ~21,500/yr, recovered by dividing
+each arm's expected-dollar column by its full per-recipient payment
+($1,500 prenatal, $3,000 postnatal). Report recipients, not the eligible
+base, to avoid a ~15× overstatement.
+
+### Birth-anchoring the prenatal arm
+
+A flat `prenatal_pregnancy_probability` applied to the whole single/HoH-no-
+dependent universe produces **more expected pregnancies than Hawaii has
+eligible births** (~2× total births). The forecast rescales the rate at
+runtime so expected pregnancies = `PREG_PER_BIRTH` × the eligible-birth
+count implied by the postnatal arm (default 1.0 = one prenatal claim per
+eligible birth). This makes the two arms coherent: each eligible birth
+draws one $1,500 prenatal + one $3,000 postnatal payment.
+
+### Launch (first fiscal year)
+
+`_first_year_disbursement` models year-1 cash, which is far below steady
+state because (a) enrollment ramps from zero to full over `--ramp-months`
+(default 12) and (b) the 6-month postnatal caseload takes 6 months to fill.
+A monthly simulation sums prenatal payments scaled by enrollment and
+postnatal payments scaled by the trailing-window caseload; postnatal
+dollars that pay out past the fiscal year are reported as **deferred to the
+next FY** (not lost). `--launch-operating-months` < 12 models a mid-year
+launch. Ramp speed is the dominant year-1 driver (6/12/18-month sensitivity
+is reported).
+
 ### Uncertainty
 
 - **Sampling 90% CI** — SDR (Fay method, factor 4.0) over the 80 PUMS
   household replicate weights `weight_r01..weight_r80`, reusing
   `poverty.impact._sdr_se_from_replicates`. Captures ACS sampling error
-  only. (n/a on the synthetic fixture, which has no replicate weights.)
-- **Assumption band** — a one-at-a-time sweep over the three soft,
-  unanchored parameters: `takeup_rate` (0.60–0.95),
-  `prenatal_pregnancy_probability` (±25%), `child_under_age_share` (±25%).
-  The cost is linear in each, so the band brackets parameter risk.
+  only (~±5%) and badly understates total uncertainty.
+- **Assumption band (joint corners)** — the all-low and all-high corners
+  of `takeup_rate` (0.60–0.95), `prenatal_pregnancy_probability` (±25%),
+  and `child_under_age_share` (±25%). The arms are separable, so the joint
+  corners (not a one-at-a-time sweep) give the true outer envelope.
+- **Overall MOE — treat as ±30–40%.** The estimate is dominated by
+  **specification** uncertainty, not sampling. RxKids has no admin caseload
+  to calibrate against, so the soft pregnancy-incidence and infant-share
+  assumptions drive the answer. Present the headline as a point estimate
+  **with the band always beside it**, never as a ±5% figure.
 
 ### Caveats specific to the 2028 run
 
 - Federal EITC/CTC parameter tables fall back to TY2025 for years > 2025.
   **Immaterial here** — RxKids is non-taxable and never touches AGI /
   EITC / CTC.
+- Income is tested at **tax-unit grain** against FPL, not household/MAGI
+  grain — a household split across filing units is tested per small unit,
+  which tends to **overstate** eligibility. This is a known open item.
 - Pregnancy incidence and child-age share are held at base-year values
   (no 2028 birth-trend adjustment); the assumption band brackets this.
 - The 2026–2028 FPL inflator is a CPI projection, not a published table.
 
 ### Outputs (`reports/rxkids_2028/`)
 
-- `cost_by_state.csv` — total + prenatal/postnatal subtotals, SDR SE, 90% CI.
-- `cost_by_county.csv` — per-county cost + SE.
+- `cost_by_state.csv` — cost, CI, potential +6mo, launch year, recipients.
+- `cost_by_county.csv` — per-county cost + expected recipients.
+- `benefits_by_income_quintile.csv` — benefit received by income quintile.
+- `rxkids_2028_cost_and_impact.xlsx` — workbook (Summary / quintile / county
+  / assumptions / notes).
+- `rxkids_2028_cost_and_impact.pdf` — one-page shareable summary.
 - `spm_units.parquet` — SPM-grain frame.
-- `summary.txt` — headline cost, subtotals, sampling CI, assumption band.
 
 Run:
 ```bash
