@@ -90,13 +90,54 @@ cap (e.g. `10.0`). See the module docstring for override recipes.
 | `postnatal_age_cutoff` | 1 | Infants in their first year (Flint design). PUMS carries no sub-year age, so age 0 is the closest proxy. |
 | `income_fpl_cap` | **3.00** | Statutory clause 2: 300% FPL income test (at family size). |
 | `pregnant_fpl_cap` | **1.96** | Clause 1 prenatal Medicaid pregnancy pathway (196% FPL). Subsumed by the 300% income test at default; binds only if the income cap is set below 196%. |
-| `takeup_rate` | 0.90 | Below Flint's observed 0.98 (universal design + hospital partnership) to reflect weaker year-1 Hawaii infrastructure. |
+| `takeup_rate` | 0.90 | Anchored by *delivery channel* (clinic-enrolled, sub-Flint) — see "Take-up rate — how it is anchored" below. |
 | `is_taxable` | `False` | Match Flint design — charitable disbursement, not IRS-reported. Routes through SPM resources only. |
 | `child_under_age_share` | 0.066 | **Annual qualifying-birth rate per dependent (a FLOW)** — the common driver of BOTH arms: Hawaii births 15,535 ÷ ACS dependents 0-17 ≈ 233,000. Must be the full annual birth cohort, NOT a <6-month stock (a stock basis understates ~2×). Sensitivity: linear (scales total cost). |
 
 Plus the Medicaid clause, evaluated in `compute_rxkids_for_units` from the
 `medicaid_receives` column produced by `compute_medicaid_for_units` (the
 caller pre-attaches it).
+
+### Take-up rate — how it is anchored
+
+`takeup_rate` (default **0.90**) is the single most important and least
+data-anchored input — it scales the whole estimate linearly. It is set by
+analogy, not by an administrative caseload (no Hawaiʻi RxKids exists). The
+key principle: **take-up is driven primarily by the *delivery channel*, not
+the benefit type.**
+
+- **Tax-delivered** benefits (EITC, CTC) have take-up limited by tax-filing
+  friction — non-filers, complexity, awareness. EITC ≈ 78% overall / ~85%
+  for families with children; CTC ≈ 90% among filers.
+- **Clinically enrolled / "prescribed"** benefits — RxKids' actual design in
+  Flint (enroll at a prenatal-care visit, disbursed via GiveDirectly) — clear
+  that friction because nearly every pregnant person has prenatal contact.
+  Flint observed **98%** of eligible newborns. The same perinatal channel
+  drives high take-up in WIC-infants (~90%+) and Medicaid-for-pregnant-women
+  (~90%+).
+- **Application-based** standalone programs sit lower (WIC pregnant/children
+  ~55–65%; SNAP ~82%).
+
+So **EITC/CTC are the right anchor only if Hawaiʻi delivers RxKids as a tax
+credit.** For a Flint-style clinic-enrolled cash program, the perinatal
+analogs (WIC-infants, Medicaid-pregnant, Flint itself) put steady-state
+take-up at **~0.85–0.98**, which is why the 0.90 default is justified — and
+why EITC/CTC should be treated as a *floor*, not the central estimate.
+
+Reference scenarios by delivery channel (override with `--takeup-rate`):
+
+| Delivery design | Take-up anchor | Rate |
+|---|---|---|
+| Refundable tax credit | EITC/CTC families | ~0.85 |
+| **Clinic-enrolled, maturing (default)** | Perinatal analogs, sub-Flint | **0.90** |
+| Flint-mature (hospital partnership) | Flint observed | 0.98 |
+| Standalone application | WIC pregnant/children | ~0.60 |
+
+Two structural notes: (1) 0.90 is the **steady-state** rate — the launch-year
+ramp (§10) separately models lower year-1 enrollment; (2) the assumption band
+already sweeps take-up, so this uncertainty is reflected in the reported
+range. *(Take-up figures above are standard IRS/USDA/CMS estimates; see §8
+for sourcing.)*
 
 ### Estimated annual cost (statutory eligibility)
 
