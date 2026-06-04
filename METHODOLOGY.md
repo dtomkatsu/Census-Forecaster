@@ -270,6 +270,60 @@ The calibration regeneration reads the bundled panel and needs no key
 
 ### 7. 2020 1-year ACS hole
 
+---
+
+### 8. v4 phi calibration — implementation and null result (May 2026)
+
+**What was built.** The v4 calibration layer adds a Pass 0 that derives a
+per-cell damping constant (phi) from the ACS series' own margin-of-error
+data, rather than using the global default `phi=0.85` everywhere. The idea:
+counties with high sampling noise relative to real economic signal should be
+damped more aggressively; precise large counties less so.
+
+Noise/signal is estimated by decomposing the observed year-over-year variance
+into a sampling component (derived from published ACS MOEs via
+`SE = MOE / 1.645`, then `var_sampling ≈ SE_log(t)² + SE_log(t-1)²`) and a
+residual signal component (`var_signal = max(0, var_total − var_sampling)`).
+The noise share maps to phi via an affine function bounded in `[0.70, 0.95]`:
+`phi = 0.70 + 0.25 × noise_share`.
+
+Published ACS MOEs are used rather than PUMS replicate weights — they are
+mathematically equivalent (Census Bureau computes MOEs internally from the
+same 80 replicates) and avoid a 16+ hour data fetch for a 50-state panel.
+
+**Walk-forward evaluation.** A held-out ablation was run on the 147-county
+multi-state panel: train on anchors 2014–2020, evaluate on 2021–2022,
+h ∈ {1, 2, 3}. Results:
+
+| Metric | v3 (φ = 0.85) | v4 (per-cell φ) |
+|---|---|---|
+| Median MAPE | 5.59% | 5.64% |
+| Any CI90 coverage < 80% | no | no |
+
+Acceptance bar (median MAPE drop ≥ 3% relative) was not met.
+
+**Why phi doesn't help at short horizons.** The damped trend model uses phi
+to shrink the trend component toward zero over time: the trend contribution
+at horizon h scales as `Σᵢ₌₁ʰ φⁱ`. At h = 1–3, the level component
+dominates the forecast and the trend's cumulative contribution is small.
+Varying phi in `[0.70, 0.95]` changes that contribution by less than 25%,
+which is not enough to move MAPE materially. The calibrated phi values
+further clustered near the default (median = 0.87, stdev = 0.07), so most
+cells were already close to `phi = 0.85` anyway.
+
+Phi would become a meaningful lever at h = 4–5, where the trend compounds
+across more steps and damping choices diverge. The current primary use case
+(revenue forecasting at 1–3 year horizons) sits in the insensitive range.
+
+**Status.** The phi infrastructure is implemented and ships in v4
+(`acs/acs_volatility.py`, Pass 0 in `acs/calibration.py`, `_lookup_phi` in
+`acs/ensemble.py`). It is included in the calibration output but has no
+practical effect at h ≤ 3. It is **not the default** — the bundled
+calibration index remains v3. Re-enable and re-evaluate if longer-horizon
+forecasting becomes a requirement.
+
+### 9. 2020 1-year ACS hole
+
 The 2020 1-year ACS was suspended due to COVID-19 data quality issues.
 Folds whose target year would be 2020 (e.g. anchor=2018 with h=2;
 anchor=2015 with h=5) are dropped silently by the calibration generator.
@@ -524,6 +578,68 @@ sees exactly the keys it expects.
 
 ---
 
+## Federal EITC / CTC by geography (May 2026)
+
+Year-keyed federal credit calculators (`tax_modeler.credits.eitc`,
+`tax_modeler.credits.ctc`) carry IRS Rev. Proc. parameters for TY
+2022 → TY 2025 — max-credit, phase-in completion income, single-
+and joint-filer phaseout starts, ACTC refundable cap. Statutory rates
+(phase-in / phase-out percentages, $200K/$400K phaseout thresholds,
+$2,000/child max under TCJA) do not move year-to-year and live in
+shared constants.
+
+### Parameter vintages
+
+| Year | EITC max (2 kids) | ACTC refundable cap | IRS Rev. Proc. |
+|-----:|------------------:|--------------------:|----------------|
+| 2022 |           $6,164 |              $1,500 |        2021-45 |
+| 2023 |           $6,604 |              $1,600 |        2022-38 |
+| 2024 |           $6,960 |              $1,700 |        2023-34 |
+| 2025 |           $7,152 |              $1,700 |        2024-40 |
+
+`project_tax_units_forward(target_year=Y)` plumbs `Y` into both
+`_recalculate_ctc` and `calculate_eitc_for_tax_units` so projected
+nominal incomes are credited against `Y`'s statutory parameters
+(this matches the IRS chained-CPI inflation-indexing treatment).
+For `target_year` beyond the latest published Rev. Proc., the
+projector clamps to the most recent supported year and logs the
+substitution — older callers projecting to 2026+ continue to work.
+
+### Take-up imputation
+
+Eligibility ≠ claim. PUMS-derived eligible amounts overstate IRS
+take-up. The `tax_modeler.pipeline.apply_credit_takeup` helper
+(opt-in via `run_pipeline(apply_credit_takeup=True)`) ranks eligible
+filers by their eligible credit dollars descending and zeroes credits
+on non-claimants until weighted recipient counts match the IRS
+state-total benchmark. Anchors (IRS SOI ZIP=00000 row, TY 2022):
+
+* **EITC**: 84,010 returns / $184.7M
+* **CTC** (nonref + ACTC): 154,580 returns / $469.5M
+* **ACTC alone**: 60,600 returns / $117.8M
+
+The take-up *rate* is treated as behavioral and constant across
+forward projection; only the target count is anchored at the 2022
+vintage. Re-run when newer IRS SOI Hawaii state-totals publish.
+
+### CBPP comparison caveats
+
+`scripts/eitc_ctc_geo_report.py --compare-cbpp` produces a senate-
+district delta table against CBPP table 367 (TY 2022). Two systematic
+caveats apply:
+
+1. **Geographic resolution**: CBPP uses IRS SOI ZIP-code claims data
+   raked to 2024 SLDs. The modeler uses PUMA-level signal hashed to
+   HD/SD via the bundled crosswalk, which preserves PUMA-level
+   variance but smears within-PUMA. A future enhancement would
+   ingest IRS SOI ZIP data and rake the modeler's LD column to it.
+2. **Suppression and AGI<$1**: CBPP suppresses small-cell districts
+   and excludes AGI<$1 returns; the modeler does neither. Expect
+   some absolute discrepancy on small-population SDs even with
+   perfect raking.
+
+---
+
 ## References
 
 * **Damped trend, ETS variance:** Hyndman, R., Koehler, A., Ord, J.,
@@ -545,3 +661,308 @@ sees exactly the keys it expects.
 * **Cleveland Fed rent blending:** Adams, B., Hertz, B., Verbrugge, R.
   (2022). "New-Tenant Repeat Rent Inflation." *Cleveland Fed
   Working Paper 22-38r.*
+
+---
+
+## SPM unit of analysis (Tier 4, May 2026)
+
+The poverty pipeline reports the Supplemental Poverty Measure at the
+**SPM-unit** level per Census P60-280, not at the tax-unit level.
+Tax-unit-grained calculations remain available for revenue-side
+forecasts and for backward-compatibility checks (the
+`--by-tax-unit` flag on `scripts/poverty_impact_report.py`).
+
+### SPM unit construction
+
+SPM units are built bottom-up from PUMS persons using the RELSHIPP
+relationship-to-householder code:
+
+* **Primary SPM unit per household** (`{SERIALNO}_primary`): the
+  householder + all relatives (RELSHIPP 20–30) + unmarried partner
+  (33) + foster children (34) + *any unrelated child under 15*
+  (RELSHIPP 31, 32, or 35 with AGEP < 15, per the standard P60-280
+  exception).
+* **Unrelated adult SPM units** (`{SERIALNO}_unrel_{SPORDER}`):
+  roomers/boarders/other non-relatives aged 15+ (RELSHIPP 31, 32, 35
+  with AGEP ≥ 15) — one one-person SPM unit each.
+* **Group quarters** (RELSHIPP 36, 37): excluded from SPM accounting
+  entirely (per P60-280; SPM is defined for the household population).
+
+Implementation: `tax_modeler.units.spm_unit_assembly.build_spm_unit_assignment`.
+
+### Tax-unit → SPM-unit aggregation
+
+After all tax/credit/benefit dollars have been computed at tax-unit
+granularity (the methodologically correct level for tax-return-based
+quantities), the pipeline rolls them up to SPM-unit granularity
+before threshold comparison:
+
+* **Sum across tax units in the same SPM unit**: every SPM-resource
+  component — `total_cash_income`, `eitc_amount`, `ctc_refundable`,
+  `hi_eitc_amount`, all benefit imputations (SNAP, housing subsidy,
+  WIC, LIHEAP, CCSP, school lunch), all tax liabilities (federal,
+  state, payroll), MOOP, childcare expense, work expense, RxKids
+  (if enabled).
+* **Representative columns** (constant within a household): SERIALNO,
+  PUMA, county, house district, senate district, tenure — taken
+  from the highest-income constituent tax unit (deterministic
+  tiebreak: lowest filer_id).
+* **Composition counts** (`n_adults`, `n_children`, `n_persons`)
+  computed from PUMS person ages restricted to members of the SPM
+  unit, used both for the threshold lookup and for the
+  persons-in-poverty numerator.
+* **Weight**: raw household `WGTP` from PUMS, one value per SPM
+  unit. The tax-unit hybrid weight (calibrated to DOTAX filer
+  totals via per-filing-status multipliers) is dropped because it
+  is a tax-filer concept, not a person concept; SPM-unit weighted
+  persons hits the ACS person count (~1.3M for Hawaii) directly.
+
+Implementation: `tax_modeler.poverty.spm_aggregation.aggregate_to_spm_units`.
+
+### Threshold lookup
+
+`tax_modeler.poverty.thresholds.threshold_for_units` auto-detects
+SPM-unit input via the presence of `n_adults` and `n_children`
+columns and uses them directly when present, applying the Betson
+(1996) three-parameter equivalence scale to the published Hawaii
+2A2C reference threshold. When the composition columns are absent
+(tax-unit fallback path used by `forecast_*.py` revenue scripts),
+the function derives `n_adults = 1 + (filing_status == MFJ)` and
+`n_children = num_dependents` for backward compatibility.
+
+### Result (TY2024, real Hawaii PUMS)
+
+The Tier 4 SPM-unit pipeline produces a baseline rate of **12.43 %**
+on real PUMS, matching the upper bound of Census-published Hawaii
+SPM (~10–12 %). The Tier 3 tax-unit baseline of 24.62 % was
+inflated by the well-known unit-of-analysis bias: multi-tax-unit
+households were each scored against single-person thresholds with
+only their individual income, missing the resource-pooling that
+happens in real households.
+
+### References
+
+* Short, K. (2012). *The Research Supplemental Poverty Measure:
+  2010.* Census P60-241.
+* Renwick, T., & Fox, L. (2016). *The Supplemental Poverty Measure:
+  2015.* Census P60-258.
+* US Census Bureau (annual). *The Supplemental Poverty Measure:
+  P60-280 series.*
+
+---
+
+## Margin of error on the poverty-impact pipeline
+
+`scripts/poverty_impact_report.py` historically returned point
+estimates (`persons_lifted_<scenario>`, `poverty_rate_<scenario>`,
+`gap_closed_<scenario>_$`) with no margin of error. Two dominant
+sources of uncertainty are now quantified — and reported as
+**separate sibling columns** rather than combined in quadrature, so
+the source of any uncertainty is legible to reviewers.
+
+### Source 1 — PUMS sampling variance (SDR)
+
+The Census Bureau ships 80 replicate weights with every PUMS vintage
+(`PWGTP1`–`PWGTP80` on persons, `WGTP1`–`WGTP80` on households),
+generated via the successive-difference perturbation method (Fay's
+modified BRR with `k = 0.5`). The standard variance estimator is
+
+    V(θ) = (4 / R) · Σ_{r=1..R} (θ_r − θ_0)²
+
+where θ_0 is the headline estimate on the main weight and θ_r is the
+same estimate recomputed under replicate weight r. The leading factor
+of 4 comes from `1 / k²` (with `k = 0.5`). `R = 80` is the default;
+truncating to fewer replicates inflates the SE estimate and is
+intended for smoke testing only.
+
+**Implementation:** `tax_modeler.poverty.impact.compute_poverty_impact_with_se`
+wraps the headline function. After computing the main estimate, it
+swaps the SPM-unit `weight` column for each `weight_r{01..80}` in
+turn and re-runs the `_aggregate` step (NOT the upstream credit
+calculation, which is weight-invariant). The function emits
+`<col>_se` siblings for every persons-lifted, poverty-rate, and
+gap-closed cell on every aggregated DataFrame.
+
+**Calibration interaction.** This codebase calibrates *tax-unit*
+weights via IPF in `tax_modeler.calibration.*` to match DOTAX
+filer-status totals. The SPM aggregator
+(`aggregate_to_spm_units`) discards the calibrated tax-unit weight
+and uses raw household `WGTP` for the SPM-unit weight, because
+person-level poverty accounting needs a person-grained denominator
+that matches the ACS published count (~1.3M for Hawaii). The
+replicate weights ride the same raw-WGTP path; *no per-replicate
+IPF re-run is performed*. Doing so would multiply runtime by 80×
+without changing the SE materially: sampling variance dominates the
+residual calibration variance by roughly an order of magnitude on
+state-level poverty counts. This is the standard post-calibration
+approximation used by ACS estimation guides.
+
+**CLI:** pass `--replicate-weights` (and optionally `--n-replicates N`)
+to `scripts/poverty_impact_report.py`. The flag is OFF by default
+because the supporting columns (`WGTP1`..`WGTP80`) are not present in
+the bundled synthetic fixture; production PUMS parquet/CSV does ship
+them.
+
+### Source 2 — Parameter sensitivity sweep
+
+Four parameters in the poverty-impact pipeline are bare scalars in
+the codebase but are empirically uncertain:
+
+| Parameter | Default | Low / Mid / High | Empirical anchor |
+|---|---|---|---|
+| `hi_ctc_takeup_rate` | 0.70 | 0.65 / 0.70 / 0.75 | **Hawaii-empirical**: federal-EITC take-up in HI 2022 = 84,010 admin claims / 120,535 PUMS-eligible filers ≈ 0.697 (±5pp judgment band). See `tax_modeler.calibration.hi_eitc_takeup_estimate` for the SDR-bootstrap variant. |
+| `hi_eitc_100pct_takeup_rate` | 0.98 | 0.95 / 0.98 / 1.00 | **Conditional take-up given existing HI EITC claim**. HI EITC auto-computes as fixed percentage of federal on Form N-15 (Act 209, 2023); conditional rate is near-perfect (0.02 captures rare elect-out cases). Composite friction (non-claimers of federal EITC) is upstream in `hi_eitc_amount`. |
+| `arpa_ctc_takeup_rate` | 0.94 | 0.92 / 0.94 / 0.95 | **Empirical mean** of Karpman et al. (Urban Institute, 2022) and US Treasury reports on actual ARPA monthly-CTC participation among eligible families. Band: 0.92–0.95. |
+| `eitc_poverty_alpha` | 0.5 | 0.3 / 0.5 / 0.7 | Half-elasticity convention from Tax Policy Center / ITEP state models. **Empirical fit attempted (2026-Q2)**: 5-year Hawaii panel (IRS SOI Historic Table 2 TY 2015–2022 + ACS 1-year Honolulu B19013/S1701) yielded α ≈ 0.71 with RMSE 0.03, but n=2 year-pairs after excluding 2019→20 (COVID), 2020→21 (ARPA up), 2021→22 (ARPA expiration). Per-pair α swings −0.43 to 1.01, so the OLS fit is statistically unidentified. Keep 0.5 as production default; 0.71 lies inside the 0.3/0.5/0.7 sweep band so the existing band brackets the empirical range. Module shipped as infrastructure at `tax_modeler.calibration.eitc_alpha_calibration` — re-run after IRS publishes TY 2023 or when pre-2015 IRS files become accessible. |
+
+The per-child HI CTC dollar amount (formerly a swept parameter at
+$300 / $650 / $1000) is no longer in the sweep — it is a
+**policy-design counterfactual**, not parameter uncertainty.
+Different bills ask different things. The pipeline now ships three
+named scenarios (`hi_ctc_300`, `hi_ctc_650`, `hi_ctc_1000`) in the
+default scenario menu; each gets its own SE and parameter range.
+Ad-hoc dollar amounts for amendment analysis are supported via the
+scenario name (e.g. `hi_ctc_500`).
+
+#### Policy-choice axes vs parameter uncertainty
+
+We distinguish two stakeholder questions:
+
+* "Given SB 3125 specifies $650, what's the estimated poverty effect
+  ± behavioral uncertainty?" — the **parameter MOE**, surfaced in
+  `<col>_param_min` / `<col>_param_max` columns.
+* "What if SB 3125 had specified $300 instead?" — a **scenario**,
+  surfaced as a separate named row (`persons_lifted_hi_ctc_300`).
+
+Mixing the two conflates "uncertainty about the bill as drafted"
+with "uncertainty about which bill to draft." Splitting them by
+construction tightens the parameter MOE on `persons_lifted_hi_ctc_650`
+from ±37 % (when the per-child amount was in the sweep) to ~±10 %.
+
+`scripts/poverty_impact_sweep.py` runs all four parameters in a
+one-at-a-time (OAT) sweep around the mid point by default (9 unique
+cells after de-duplication of the shared mid-point), or as a full
+factorial of 3^4 = 81 cells with `--factorial`. Each cell invokes
+`poverty_impact_report.py` in-process via its `main(argv)` entry
+point, collates the state-level `by_state.csv` into `summary.csv`,
+and emits `param_ranges.csv` (per-column min / max / median across
+all cells).
+
+**Merging back into the headline report:** pass `--merge-sweep
+<path>/param_ranges.csv` to `poverty_impact_report.py`. Every
+`persons_lifted_*` and `poverty_rate_*` column gains three siblings:
+`<col>_param_min`, `<col>_param_max`, `<col>_param_median`. These are
+populated only for state-level rows; other geographies receive
+NaN-filled siblings for schema parity until per-district sweeps land.
+
+### Why separate columns instead of a combined band
+
+Quadrature combination (`SE_total² = SE_sampling² + SE_param²`)
+implicitly assumes independence of the two sources, which is not
+true here: a take-up rate move correlates with the credit-amount
+columns that the replicate-weighted aggregation reads. More
+importantly, **decomposition is informative**. A reviewer can see
+whether the band around "persons lifted by EITC" is dominated by
+sampling (n=80 is a small sub-state count) or by take-up
+uncertainty (a policy assumption that future enactment could
+verify). A combined headline band would hide that.
+
+A reader who wants a single conservative envelope can take
+
+    headline ± 1.65 · √(_se² + ((_param_max − _param_min) / 3.29)²)
+
+with the caveat that this treats the parameter range as a 90 %
+band and assumes the two sources are independent — a defensible
+back-of-envelope but not a rigorous CI.
+
+### Federal-tax fallback removal (2026-Q2 hardening)
+
+`compute_spm_resources` previously used a 10 % flat effective rate
+on positive money income as a federal-tax stand-in when no
+`federal_tax_liability` column was supplied. For SPM-eligible
+filers (low income, standard deduction wipes out taxable income),
+the true federal liability is typically $0 — the 10 % fallback was
+subtracting $1,000–$3,000 of phantom federal tax per return,
+biasing the modeled Hawaiʻi SPM poverty rate ~4–6 pp upward.
+
+The fallback is now wired to the real federal-tax calculator at
+`tax_modeler.liability.federal.compute_federal_income_tax_for_units`
+(TY 2022–2025 brackets + standard deduction per IRS Rev. Procs.).
+The 10 % flat path remains only as a last resort when neither the
+`federal_tax_liability` column nor a `tax_year` argument is
+supplied; it now logs a warning so direct callers know to upgrade.
+The `SPMResourceMeta.federal_tax_source` field reports which path
+fired (`"column" | "computed" | "fallback_rate" | "zero"`).
+
+### What's still uncalibrated
+
+* **Behavioral response** — `compute_poverty_impact` is a static
+  counterfactual. EITC repeal would reduce single-mother LFP by
+  2–7 pp per Eissa-Liebman / Meyer-Rosenbaum; no elasticity
+  knob is exposed yet. This bounds removal-scenario estimates
+  *above* and expansion-scenario estimates *below*.
+* **`eitc_poverty_alpha` empirical calibration** — currently a
+  literature half-elasticity (0.5); backtest spec documented in
+  `adjustments/eitc_poverty_scaling.py`. Deferred pending a
+  multi-year ACS S1701 × IRS SOI panel build.
+* **HI Renters Credit take-up** — `compute_hi_renters_for_units`
+  uses an unanchored 0.30 default. Not currently invoked in the
+  poverty-impact pipeline (the `hi_renters_amount` column is not
+  populated upstream of `compute_spm_resources` in the report);
+  affects only revenue-forecast outputs. TODO to anchor empirically
+  is in the credit module's docstring.
+* **Replicate-weight propagation through tax-unit constructor**
+  (2026-Q2 closed) — `weight_r01..weight_r80` now ride from PUMS
+  households → persons → tax units → SPM aggregator via the
+  `include_replicate_weights: bool = True` flag on
+  `TaxUnitConstructor`. Each replicate inherits the same hybrid-weight
+  + per-filing-status calibration formula as the main `weight` column.
+  This unlocks the SDR bootstrap on `τ_HI_EITC` at the tax-unit level
+  (the `estimate_hi_eitc_takeup` function now returns a real SE
+  instead of the 2-replicate judgment band when run post-constructor).
+* **HI Renters Credit** (2026-Q2 wired) — `_apply_hi_renters` now runs
+  in `scripts/poverty_impact_report.py` after `_apply_hi_eitc`, so
+  `hi_renters_amount` flows into `compute_spm_resources` as a positive
+  SPM resource. On real Hawaii PUMS 2024, ~15K tax units qualify with
+  aggregate disbursement ~$10.7M; SPM rate shifts by <0.1 pp. The
+  underlying take-up rate stays at the 0.30 placeholder pending a
+  DOTAX caseload pull (documented TODO in `credits/hi_renters.py`).
+* **District-level uncertainty** — within-PUMA HD/SD assignment
+  is a deterministic SERIALNO hash. The `--rake-to-irs-zip`
+  flag is wired but the supporting IRS SOI ZIP + crosswalk data
+  is not bundled, so district point estimates carry roughly
+  ±20% uncertainty that the SDR SE alone does not capture.
+* **SPM threshold MRI / tenure factors** — fixed constants per
+  Renwick (2015) / Burns-Fox (2021); not swept.
+
+### CLI quick reference
+
+    # SDR SE only
+    python scripts/poverty_impact_report.py --tax-year 2024 \
+        --replicate-weights --n-replicates 80 \
+        --out reports/poverty_impact_2024_with_se/
+
+    # Sensitivity sweep (OAT)
+    python scripts/poverty_impact_sweep.py --tax-year 2024 \
+        --out reports/poverty_sweep_2024/
+
+    # Both together: per-cell SDR SE + cross-cell param ranges
+    python scripts/poverty_impact_sweep.py --tax-year 2024 \
+        --replicate-weights \
+        --out reports/poverty_sweep_2024/
+    python scripts/poverty_impact_report.py --tax-year 2024 \
+        --replicate-weights \
+        --merge-sweep reports/poverty_sweep_2024/param_ranges.csv \
+        --out reports/poverty_impact_2024_full/
+
+### References
+
+* US Census Bureau (2024). *PUMS Accuracy of the Data (2018–2022)*,
+  §3 (Variance Estimation via Replicate Weights). The
+  successive-difference replicate-weight construction and the
+  `(4 / R) · Σ(θ_r − θ_0)²` formula are documented there.
+* Fay, R.E. (1989). *Theory and application of replicate weighting
+  for variance calculations.* Proc. ASA Survey Research Methods.
+* Eissa, N., & Liebman, J. (1996). *Labor Supply Response to the EITC.*
+  Quarterly Journal of Economics 111(2). (Source of the LFP
+  elasticity caveat above.)

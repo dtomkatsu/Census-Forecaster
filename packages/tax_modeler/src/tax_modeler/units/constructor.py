@@ -63,16 +63,17 @@ class TaxUnitConstructor:
     # Will rely on SOI calibration to adjust filing status distribution
     MAX_TAX_UNITS_PER_HOUSEHOLD = None  # Unlimited
     
-    def __init__(self, person_df: pd.DataFrame, hh_df: pd.DataFrame, 
+    def __init__(self, person_df: pd.DataFrame, hh_df: pd.DataFrame,
                  batch_size: int = None, num_processes: int = None,
                  progress_bar: bool = True, ml_model_path: str = None,
                  use_soi_calibration: bool = True,
                  soi_calibration_method: str = 'filing_status',
                  dotax_benchmarks: Optional[Dict] = None,
-                 irs_benchmarks: Optional[Dict] = None):
+                 irs_benchmarks: Optional[Dict] = None,
+                 include_replicate_weights: bool = True):
         """
         Initialize the TaxUnitConstructor.
-        
+
         Args:
             person_df: DataFrame containing person-level PUMS data
             hh_df: DataFrame containing household-level PUMS data
@@ -84,6 +85,13 @@ class TaxUnitConstructor:
             soi_calibration_method: Method for SOI calibration ('overall', 'filing_status', 'income_bracket')
             dotax_benchmarks: DOTAX SOI benchmark data (optional, will load if not provided)
             irs_benchmarks: IRS SOI benchmark data (optional, will load if not provided)
+            include_replicate_weights: When True (default), propagate PUMS replicate
+                weights (WGTP1..WGTP80 for households, PWGTP1..PWGTP80 for persons)
+                through to the tax-unit output as weight_r01..weight_r80. Required
+                for SDR variance estimation downstream (compute_poverty_impact_with_se,
+                estimate_hi_eitc_takeup). Auto-no-ops if the replicate columns are
+                missing from the input frames. Each replicate adds ~0.3 MB to
+                a 42K-row tax-unit frame.
         """
         self.person_df = person_df.copy()
         self.hh_df = hh_df.copy()
@@ -99,6 +107,23 @@ class TaxUnitConstructor:
         self.soi_calibration_method = soi_calibration_method
         self.dotax_benchmarks = dotax_benchmarks
         self.irs_benchmarks = irs_benchmarks
+
+        # Replicate-weight propagation (auto-no-op if PUMS replicates aren't loaded)
+        self.include_replicate_weights = include_replicate_weights
+        if include_replicate_weights:
+            # Detect at construction time so per-row work in the hot path can
+            # branch on a precomputed list instead of re-checking 80 columns.
+            self._wgtp_replicate_cols = [
+                f"WGTP{r}" for r in range(1, 81)
+                if f"WGTP{r}" in self.hh_df.columns
+            ]
+            self._pwgtp_replicate_cols = [
+                f"PWGTP{r}" for r in range(1, 81)
+                if f"PWGTP{r}" in self.person_df.columns
+            ]
+        else:
+            self._wgtp_replicate_cols = []
+            self._pwgtp_replicate_cols = []
         
         # Initialize validator
         self.validator = TaxUnitValidator()
@@ -660,38 +685,59 @@ class TaxUnitConstructor:
         
         # First pass: Identify potential HoH filers
         for adult_id in remaining_adult_ids:
+            # An adult already claimed as someone's dependent is not a filer.
+            if adult_id in claimed_dependents:
+                continue
             adult_deps = dependents.get(adult_id, set()) - claimed_dependents
             if adult_deps:  # Only consider adults with unclaimed dependents
                 potential_hoh.append((adult_id, adult_deps))
-        
+
         # Sort potential HoH by number of dependents (most first)
         potential_hoh.sort(key=lambda x: len(x[1]), reverse=True)
-        
+
         # Process HoH filers
         for adult_id, deps in potential_hoh:
-            if adult_id in processed_adults:
+            if adult_id in processed_adults or adult_id in claimed_dependents:
                 continue
-                
+
             tax_unit = self._create_single_filer(
-                adults.loc[adult_id], 
-                hh_group, 
-                hh_data, 
+                adults.loc[adult_id],
+                hh_group,
+                hh_data,
                 list(deps)
             )
-            
+
             if tax_unit and tax_unit['filing_status'] == 'head_of_household':
                 num_deps = len(tax_unit['dependents'])
                 logger.info(f"Created HoH tax unit for {adult_id} with {num_deps} dependents")
                 tax_units.append(tax_unit)
                 claimed_dependents.update(tax_unit['dependents'])
                 processed_adults.add(adult_id)
-        
-        # Process remaining adults as single filers (vectorized where possible)
+
+        # Process remaining adults as single filers.
+        #
+        # An adult designated as another adult's dependent (e.g. an adult child
+        # still at home, or a qualifying relative) must be CLAIMED, not filed —
+        # but only if their guardian actually files and claims them. Process
+        # likely guardians first (non-dependents, most-dependents-first) so the
+        # claim lands before we reach the dependent, and skip anyone already
+        # claimed. Any designated dependent left unclaimed (guardian couldn't
+        # claim them) falls through to filing for themselves, so no person is
+        # dropped from the population.
         remaining_adult_ids = set(adults.index) - processed_adults
-        for adult_id in remaining_adult_ids:
+        designated_adult_deps = {a for a in remaining_adult_ids if a in all_dependents}
+
+        def _filer_order_key(aid: str):
+            is_designated = aid in designated_adult_deps
+            n_deps = len(dependents.get(aid, set()))
+            return (is_designated, -n_deps)
+
+        for adult_id in sorted(remaining_adult_ids, key=_filer_order_key):
+            if adult_id in processed_adults or adult_id in claimed_dependents:
+                continue
             adult = adults.loc[adult_id]
             deps = list(dependents.get(adult_id, set()) - claimed_dependents)
-            
+
             # Don't force 'single' status - let _create_single_filer determine HoH eligibility
             tax_unit = self._create_single_filer(
                 adult,
@@ -699,7 +745,7 @@ class TaxUnitConstructor:
                 hh_data,
                 deps
             )
-            
+
             if tax_unit:
                 num_deps = len(tax_unit['dependents'])
                 logger.debug(f"Created single filer tax unit for {adult_id} with {num_deps} dependents")
@@ -732,8 +778,9 @@ class TaxUnitConstructor:
                 claimed_dependents.add(dep_id)
                 logger.info(f"Assigned unclaimed dependent {dep_id} to tax unit {tax_units[idx]['filer_id']}")
         
-        # Final validation and logging
-        unassigned_adults = set(adults.index) - processed_adults
+        # Final validation and logging. Adults claimed as a dependent of another
+        # filer are correctly assigned (as dependents), not unassigned filers.
+        unassigned_adults = set(adults.index) - processed_adults - claimed_dependents
         num_assigned_deps = len(claimed_dependents)
         
         # Enforce maximum tax units per household (if cap is set)
@@ -1181,6 +1228,7 @@ class TaxUnitConstructor:
             'income': income,
             'num_dependents': len(valid_dependents),
             'dependents': [str(d) for d in valid_dependents],  # Ensure dependents are strings
+            'dependents_details': self._build_dependent_details(valid_dependents, hh_members),
             'hh_id': str(adult1['SERIALNO']),  # Ensure hh_id is string
             'weight': hybrid_weight,  # Use hybrid weight
             'hh_weight': hh_weight,   # Store original household weight for reference
@@ -1202,6 +1250,11 @@ class TaxUnitConstructor:
             'secondary_pap': p2['pap'],
             'secondary_oip': p2['oip'], 'secondary_agep': p2['agep'],
         }
+        # PUMS replicate weights for SDR variance: weight_r01..weight_r80
+        # (empty dict if include_replicate_weights=False or replicates absent).
+        tax_unit.update(self._compute_replicate_weights(
+            hh_data, adult1, 'married_filing_jointly',
+        ))
 
         logger.debug(f"Created joint tax unit: {tax_unit}")
         return tax_unit
@@ -1270,11 +1323,69 @@ class TaxUnitConstructor:
         
         adjustment = calibration_factors.get(filing_status, 1.0)
         calibrated_weight = hybrid_weight * adjustment
-        
+
         return max(calibrated_weight, 0.1)  # Ensure weight is never zero or negative
 
-    def _create_joint_filer(self, adult1: pd.Series, adult2: pd.Series, 
-                           hh_members: pd.DataFrame, hh_data: pd.Series, 
+    def _compute_replicate_weights(
+        self,
+        hh_data: pd.Series,
+        primary_person: pd.Series,
+        filing_status: str,
+    ) -> Dict[str, float]:
+        """Per-replicate tax-unit weight dict, mirroring _calculate_hybrid_weight.
+
+        For each of WGTP1..WGTP80, compute the same hybrid-weight formula
+        the main `weight` column uses, applied to the replicate household
+        weight (and the corresponding PWGTPr for single filers). Returns
+        a dict ``{"weight_r01": float, ..., "weight_r80": float}`` ready
+        to merge into the tax-unit row.
+
+        Empty dict (no replicate keys added) if:
+          * ``include_replicate_weights=False`` was passed to __init__, or
+          * The PUMS input frames lack the WGTP1..WGTP80 / PWGTP1..PWGTP80
+            columns entirely (e.g., synthetic fixtures).
+
+        Notes
+        -----
+        The same per-filing-status calibration factor that scales the
+        main weight (single 0.85, MFJ 1.0, HoH 1.88, MFS 1.05) is
+        applied to each replicate, so SDR ratios at the tax-unit level
+        are dimensionally consistent with the main weight.
+        """
+        if not self._wgtp_replicate_cols:
+            return {}
+
+        calibration_factors = {
+            'single': 0.85,
+            'married_filing_jointly': 1.0,
+            'head_of_household': 1.88,
+            'married_filing_separately': 1.05,
+        }
+        adjustment = calibration_factors.get(filing_status, 1.0)
+        is_single = filing_status in ('single', 'head_of_household')
+
+        out: Dict[str, float] = {}
+        for r_idx, wgtp_col in enumerate(self._wgtp_replicate_cols, start=1):
+            hh_w_r = float(hh_data.get(wgtp_col, 1.0))
+            if is_single:
+                # Single-person tax unit: per-replicate person weight when
+                # available, else fall back to the household replicate.
+                pwgtp_col = f"PWGTP{r_idx}"
+                if pwgtp_col in primary_person.index:
+                    base = float(primary_person.get(pwgtp_col, 1.0))
+                else:
+                    base = hh_w_r
+            else:
+                # Joint / MFS tax unit: use the household replicate weight
+                # (consistent with _calculate_hybrid_weight returning hh_weight
+                # when len(person_weights) >= 2).
+                base = hh_w_r
+            calibrated = max(base * adjustment, 0.1)
+            out[f"weight_r{r_idx:02d}"] = calibrated
+        return out
+
+    def _create_joint_filer(self, adult1: pd.Series, adult2: pd.Series,
+                           hh_members: pd.DataFrame, hh_data: pd.Series,
                            available_deps: List[str] = None) -> Optional[dict]:
         """
         Create a tax unit for a joint filer.
@@ -1330,6 +1441,7 @@ class TaxUnitConstructor:
             'income': income,
             'num_dependents': len(valid_dependents),
             'dependents': [str(d) for d in valid_dependents],  # Ensure dependents are strings
+            'dependents_details': self._build_dependent_details(valid_dependents, hh_members),
             'hh_id': str(adult1['SERIALNO']),  # Ensure hh_id is string
             'weight': hybrid_weight,  # Use hybrid weight
             'hh_weight': hh_weight,   # Store original household weight for reference
@@ -1395,7 +1507,41 @@ class TaxUnitConstructor:
             
         return False
 
-    def _create_single_filer(self, adult: pd.Series, hh_members: pd.DataFrame, 
+    @staticmethod
+    def _build_dependent_details(dep_ids: List[str], hh_members: pd.DataFrame) -> List[dict]:
+        """Build per-dependent records (real age/relationship/citizenship/etc.).
+
+        Credit code (EITC ``_count_qualifying_children_eitc`` and CTC
+        ``_is_qualifying_child_ctc``) applies its OWN age/relationship tests on
+        these dicts. Carrying real PUMS values — instead of synthetic age-10
+        placeholders — is what lets an attached adult dependent (e.g. an elderly
+        parent) be excluded from EITC/CTC qualifying-child counts.
+        """
+        def _safe_int(value, default=0):
+            if value is None or (isinstance(value, float) and pd.isna(value)):
+                return default
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+
+        details: List[dict] = []
+        for dep_id in dep_ids:
+            dep_id_str = str(dep_id)
+            if dep_id_str not in hh_members.index:
+                continue
+            d = hh_members.loc[dep_id_str]
+            details.append({
+                'age': _safe_int(d.get('AGEP', 0)),
+                'relationship': _safe_int(d.get('RELSHIPP', 0)),
+                'citizenship': _safe_int(d.get('CIT', 1), default=1),
+                'months_in_home': 12,  # PUMS has no sub-year residency data
+                'school_level': _safe_int(d.get('SCHL', 0)),
+                'disabled': _safe_int(d.get('DIS', 2), default=2) == 1,
+            })
+        return details
+
+    def _create_single_filer(self, adult: pd.Series, hh_members: pd.DataFrame,
                            hh_data: pd.Series, available_deps: List[str] = None,
                            filing_status: str = None) -> Optional[dict]:
         """
@@ -1515,6 +1661,7 @@ class TaxUnitConstructor:
             'income': income,
             'num_dependents': len(valid_dependents),
             'dependents': [str(d) for d in valid_dependents],
+            'dependents_details': self._build_dependent_details(valid_dependents, hh_members),
             'hh_id': str(adult.get('SERIALNO', hh_data.get('SERIALNO', ''))),
             'weight': hybrid_weight,
             'hh_weight': hh_weight,
@@ -1536,6 +1683,12 @@ class TaxUnitConstructor:
             'secondary_pap': 0.0,
             'secondary_oip': 0.0, 'secondary_agep': 0,
         }
+        # PUMS replicate weights for SDR variance: weight_r01..weight_r80
+        # (empty dict if include_replicate_weights=False or replicates absent).
+        # Single / HoH filers use the per-replicate PWGTPr from the adult.
+        tax_unit.update(self._compute_replicate_weights(
+            hh_data, adult, filing_status,
+        ))
 
         logger.debug(f"Created tax unit: {tax_unit}")
         return tax_unit

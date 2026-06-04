@@ -1,0 +1,27 @@
+name: sb3125_cd2
+tax_system: sb3125_cd2
+metadata:
+  created: 2026-05-11
+  author: dtomkatsu
+  description: >
+    SB 3125 CD2 (2026 conference draft 2): replaces Hawaii §235-51 brackets
+    with the CD2 schedule. Top bracket is 13% at $1M+ MFJ / $750K+ HoH /
+    $500K+ Single. Lower 2nd and 3rd bracket rates vs Act 46 (2.50% and 5.00%
+    vs 3.20% and 5.50%). Effective TY 2027+.
+
+    Note: the bracket values tagged sb3125_cd1 in the CSV were already loaded
+    with CD2-vintage numbers. The sb3125_cd2 tag is an exact copy; both tags
+    produce identical results. CD2 is the authoritative label going forward.
+
+    Credit changes (all identical to the sb3125_cd1 overlay):
+      §235-12.5 REEC: AGI limits ($175K single / $350K MFJ), $40M aggregate
+        cap for calendar years 2027-2030, $0 from 2031. Section sunsets after
+        Dec 31, 2029.
+      §235-110.7 CGEC: sunsets after Dec 31, 2027.
+      Act 261 §5 TCRA: Part II repeal accelerated to Jan 1, 2029 (from Jan 1, 2030).
+      §235-110.51 Tech Infrastructure Renovation Credit: repealed TY 2028+
+        (modeled as $0 — near-zero TY2023 claims).
+      §235-110.9 High Technology Business Investment Credit: repealed TY 2029+
+        (modeled as $0 — carryforward-only by TY2023, near-zero).
+  citation: HI SB 3125 CD2, conference draft (2026)
+  bill_status: conference_draft

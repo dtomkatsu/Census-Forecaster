@@ -42,11 +42,14 @@ from __future__ import annotations
 
 import logging
 import time
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Optional
 
 import pandas as pd
+
+from tax_modeler.errors import MissingDataError, validate_units_schema
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +64,9 @@ class PipelineResult:
 
     All revenue figures are population-weighted dollar totals.  Use
     ``estimator`` for additional queries not pre-computed here.
+
+    When a ``reform`` is supplied to :func:`run_pipeline`, the
+    ``reform_result`` field carries the comparison vs. baseline.
     """
 
     tax_units: pd.DataFrame          # calibrated base-year units (post-IPF)
@@ -80,6 +86,9 @@ class PipelineResult:
 
     timings: Dict[str, float] = field(default_factory=dict)
 
+    # Optional reform comparison (populated when run_pipeline receives a Reform)
+    reform_result: Optional[object] = None  # tax_modeler.reform.ReformResult | None
+
 
 # ---------------------------------------------------------------------------
 # Stage helpers
@@ -93,11 +102,13 @@ def _load_pums(data_dir: Path, state: str, pums_type: str) -> tuple[pd.DataFrame
     loader = PUMSDataLoader(data_dir=data_dir)
     hh_file = loader._hh_file_path(state, pums_type)
     if not hh_file.exists():
-        raise FileNotFoundError(
-            f"PUMS household file not found: {hh_file}\n"
-            "Download the Hawaii ACS PUMS files and place them at:\n"
+        raise MissingDataError(
+            f"PUMS household file not found.\n"
+            f"Download the ACS PUMS files for state FIPS {state} and place them at:\n"
             f"  {data_dir}/psam_h{state}.parquet  (or .csv)\n"
-            f"  {data_dir}/psam_p{state}.parquet  (or .csv)"
+            f"  {data_dir}/psam_p{state}.parquet  (or .csv)",
+            path=hh_file,
+            env_var="HAWAII_PUMS_DIR",
         )
     person_df, hh_df = loader.load_data(state=state, pums_type=pums_type)
     logger.info("PUMS loaded: %d persons, %d households", len(person_df), len(hh_df))
@@ -119,22 +130,55 @@ def _construct_units(person_df: pd.DataFrame, hh_df: pd.DataFrame) -> pd.DataFra
     return units
 
 
-def _enrich_for_credits(df: pd.DataFrame) -> pd.DataFrame:
+def enrich_with_spm_unit_id(
+    units: pd.DataFrame,
+    persons: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Compute SPM unit IDs from PUMS and attach them to the tax-unit frame.
+
+    Thin glue around
+    :func:`tax_modeler.units.spm_unit_assembly.build_spm_unit_assignment`
+    and :func:`attach_spm_unit_id_to_tax_units`. Returns
+    ``(units_with_spm_id, persons_with_assignment)``. Either frame can
+    have ``person_id`` as a column or as the index; both are handled.
+
+    Use as the first step after PUMS load + tax-unit construction so the
+    ``spm_unit_id`` column rides through all subsequent enrichment and
+    benefit-imputation steps unchanged.
+    """
+    from tax_modeler.units.spm_unit_assembly import (
+        attach_spm_unit_id_to_tax_units,
+        build_spm_unit_assignment,
+    )
+
+    # If persons has person_id as index, reset for the assignment step so
+    # the new spm_unit_id column lands alongside it.
+    pers = persons
+    if pers.index.name == "person_id":
+        pers = pers.reset_index()
+    pers_assigned = build_spm_unit_assignment(pers)
+    units_with_id = attach_spm_unit_id_to_tax_units(units, pers_assigned)
+    return units_with_id, pers_assigned
+
+
+def enrich_for_credits(df: pd.DataFrame) -> pd.DataFrame:
     """Stage 3: derive credit-calculation inputs from TaxUnitConstructor columns.
 
-    TaxUnitConstructor stores dependent person IDs in ``dependents``
-    (list[str]).  Credit calculations expect ``dependents`` to be a list of
-    dicts with ``age``, ``relationship``, ``citizenship``, ``months_in_home``.
-    This step replaces the person-ID list with synthetic dicts using
-    ``num_dependents`` as the count, assuming each is a qualifying child aged 10.
+    Credit calculations expect ``dependents`` to be a list of dicts with
+    ``age``, ``relationship``, ``citizenship``, ``months_in_home`` (plus
+    ``school_level`` / ``disabled`` for the EITC qualifying-child test).
+    ``TaxUnitConstructor`` now emits these REAL per-dependent records in
+    ``dependents_details``; this step uses them when present and only
+    synthesizes age-10 placeholders as a FALLBACK (e.g. caller-supplied frames
+    or synthesized top-filer rows that lack per-dependent detail).
 
     Derived columns added:
       - ``earned_income``          wages + self-employment income (skipped if present)
       - ``investment_income``      interest/dividend income (skipped if present)
       - ``total_cash_income``      ITEP-style TCI for quintile binning (always recomputed)
-      - ``num_qualifying_children`` capped copy of num_dependents (skipped if present)
+      - ``num_qualifying_children`` EITC-rule count of real dependents, cap 3 (skipped if present)
       - ``dependents``             list of credit-ready dicts (overwrites str list)
-      - ``dependents_details``     alias of dependents (for EITC code path)
+      - ``dependents_details``     real per-dependent dicts (or synthetic fallback)
     """
     df = df.copy()
 
@@ -142,17 +186,38 @@ def _enrich_for_credits(df: pd.DataFrame) -> pd.DataFrame:
     if "dependents" in df.columns:
         df["dependent_person_ids"] = df["dependents"]
 
-    def _make_dep_dicts(n: int):
+    from tax_modeler.credits.eitc import _count_qualifying_children_eitc
+
+    def _synthetic_dep_dicts(n: int):
+        # Fallback ONLY when real per-dependent records are absent (e.g.
+        # caller-supplied tax-unit frames, synthesized top-filer rows). Real
+        # details come from TaxUnitConstructor via ``dependents_details``.
         return [
             {"age": 10, "relationship": 22, "citizenship": 1, "months_in_home": 12}
         ] * max(0, int(n))
 
-    df["dependents"] = df["num_dependents"].apply(_make_dep_dicts)
-    df["dependents_details"] = df["dependents"]
+    def _coerce_dep_details(row):
+        real = row.get("dependents_details")
+        n = int(row.get("num_dependents", 0) or 0)
+        is_real_list = (
+            isinstance(real, (list, tuple))
+            and len(real) == n
+            and all(isinstance(x, dict) for x in real)
+        )
+        return list(real) if is_real_list else _synthetic_dep_dicts(n)
 
-    # Qualifying children count (proxy: all dependents, capped at 3 for EITC)
+    df["dependents_details"] = df.apply(_coerce_dep_details, axis=1)
+    df["dependents"] = df["dependents_details"]
+
+    # Qualifying-children count from real per-dependent EITC rules
+    # (age / relationship / citizenship), capped at 3. This replaces a blind
+    # count of num_dependents, so attached adult dependents (e.g. an elderly
+    # parent) are correctly excluded. Falls back to synthetic placeholders when
+    # real details are absent.
     if "num_qualifying_children" not in df.columns:
-        df["num_qualifying_children"] = df["num_dependents"].clip(upper=3).astype(int)
+        df["num_qualifying_children"] = df["dependents_details"].apply(
+            lambda deps: min(_count_qualifying_children_eitc(deps), 3)
+        ).astype(int)
 
     def _col(name: str) -> pd.Series:
         return df[name].fillna(0) if name in df.columns else pd.Series(0.0, index=df.index)
@@ -205,7 +270,97 @@ def _enrich_for_credits(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _compute_base_tax(
+def enrich_for_benefits(
+    df: pd.DataFrame,
+    person_df: Optional[pd.DataFrame] = None,
+    hh_df: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
+    """Pull richer PUMS variables (DIS, HINS*, WKHP, CIT, TEN) onto tax units.
+
+    The base ``enrich_for_credits`` populates the columns needed for
+    EITC / CTC / Hawaii tax math. The benefit modules
+    (SSI, ACA PTC, childcare, SPM thresholds) need additional PUMS
+    variables that aren't aggregated by ``TaxUnitConstructor``. This
+    helper does the per-tax-unit aggregation:
+
+      * ``n_disabled``                count of disabled people in the tax unit
+      * ``n_employer_insured``        any HINS1==1
+      * ``n_medicaid_covered``        any HINS3==1
+      * ``n_medicare_covered``        any HINS4==1
+      * ``n_uninsured``               HICOV==2 count
+      * ``primary_hours_worked``      WKHP for primary filer
+      * ``secondary_hours_worked``    WKHP for spouse on MFJ returns
+      * ``n_non_citizens``            CIT==5 count
+      * ``tenure``                    "renter" / "owner_with_mortgage" /
+                                      "owner_no_mortgage" derived from TEN
+      * ``hh_received_snap``          HH-level FS column (when available)
+
+    Idempotent — existing columns are skipped. When ``person_df`` /
+    ``hh_df`` are not supplied the function is a no-op (returns ``df``
+    unchanged), so callers can opt in by passing the frames they have.
+    """
+    out = df.copy()
+
+    if hh_df is not None and "tenure" not in out.columns and "TEN" in hh_df.columns:
+        # PUMS TEN: 1=owner-mortgage, 2=owner-free, 3=renter, 4=no-rent
+        ten_map = {1: "owner_with_mortgage", 2: "owner_no_mortgage", 3: "renter", 4: "renter"}
+        hh_tenure = hh_df.set_index(hh_df["SERIALNO"].astype(str))["TEN"].map(ten_map)
+        out["tenure"] = out["SERIALNO"].astype(str).map(hh_tenure).fillna("renter")
+        if "FS" in hh_df.columns:
+            hh_fs = hh_df.set_index(hh_df["SERIALNO"].astype(str))["FS"]
+            out["hh_received_snap"] = out["SERIALNO"].astype(str).map(hh_fs == 1).fillna(False)
+
+    if person_df is None:
+        return out
+
+    # Build a per-SERIALNO aggregator
+    p = person_df.copy()
+    if "SERIALNO" not in p.columns:
+        return out
+    p["SERIALNO"] = p["SERIALNO"].astype(str)
+
+    def _agg_by_serial(col: str, predicate) -> pd.Series:
+        if col not in p.columns:
+            return pd.Series(dtype=float)
+        flag = predicate(p[col])
+        return flag.groupby(p["SERIALNO"]).sum()
+
+    serial = out["SERIALNO"].astype(str)
+
+    # Counts
+    if "n_disabled" not in out.columns:
+        out["n_disabled"] = serial.map(_agg_by_serial("DIS", lambda s: s == 1)).fillna(0).astype(int)
+    if "n_employer_insured" not in out.columns:
+        out["n_employer_insured"] = serial.map(_agg_by_serial("HINS1", lambda s: s == 1)).fillna(0).astype(int)
+    if "n_medicaid_covered" not in out.columns:
+        out["n_medicaid_covered"] = serial.map(_agg_by_serial("HINS3", lambda s: s == 1)).fillna(0).astype(int)
+    if "n_medicare_covered" not in out.columns:
+        out["n_medicare_covered"] = serial.map(_agg_by_serial("HINS4", lambda s: s == 1)).fillna(0).astype(int)
+    if "n_uninsured" not in out.columns:
+        out["n_uninsured"] = serial.map(_agg_by_serial("HICOV", lambda s: s == 2)).fillna(0).astype(int)
+    if "n_non_citizens" not in out.columns:
+        out["n_non_citizens"] = serial.map(_agg_by_serial("CIT", lambda s: s == 5)).fillna(0).astype(int)
+
+    # Per-filer hours-worked: requires linking via primary_filer_id / secondary_filer_id
+    if "WKHP" in p.columns and "primary_filer_id" in out.columns:
+        # Build person_id from SERIALNO_SPORDER
+        if "person_id" not in p.columns:
+            p["person_id"] = p["SERIALNO"].astype(str) + "_" + p["SPORDER"].astype(str)
+        wkhp_by_pid = p.set_index("person_id")["WKHP"].fillna(0).astype(float)
+        if "primary_hours_worked" not in out.columns:
+            out["primary_hours_worked"] = (
+                out["primary_filer_id"].astype(str).map(wkhp_by_pid).fillna(0.0)
+            )
+        if "secondary_hours_worked" not in out.columns:
+            out["secondary_hours_worked"] = (
+                out.get("secondary_filer_id", pd.Series("0", index=out.index))
+                   .astype(str).map(wkhp_by_pid).fillna(0.0)
+            )
+
+    return out
+
+
+def compute_base_tax(
     df: pd.DataFrame,
     deduction_params=None,
     tax_year: int = 2023,
@@ -232,8 +387,13 @@ def _compute_base_tax(
     from tax_modeler.projection.tax_unit_projector import _recalculate_ctc
 
     df = calculate_hawaii_tax_for_units(df, tax_year=tax_year, deduction_params=deduction_params)
-    df = _recalculate_ctc(df)
-    df = calculate_eitc_for_tax_units(df)
+    # Year-aware federal credits: use the requested tax_year when it has a
+    # statutory parameter set; otherwise fall back to TY 2023 to preserve
+    # historical behavior for older calibration vintages.
+    from tax_modeler.credits.eitc import _EITC_PARAMS_BY_YEAR
+    credit_year = tax_year if tax_year in _EITC_PARAMS_BY_YEAR else 2023
+    df = _recalculate_ctc(df, tax_year=credit_year)
+    df = calculate_eitc_for_tax_units(df, tax_year=credit_year)
     # Calibration expects 'agi' and 'hi_state_tax'; Hawaii tax produces 'hi_agi' / 'hi_tax_liability'
     if "hi_agi" in df.columns and "agi" not in df.columns:
         df["agi"] = df["hi_agi"]
@@ -242,7 +402,67 @@ def _compute_base_tax(
     return df
 
 
-def _calibrate(df: pd.DataFrame) -> pd.DataFrame:
+def apply_credit_takeup(
+    df: pd.DataFrame,
+    *,
+    year: int = 2022,
+    programs: tuple[str, ...] = ("eitc", "actc"),
+    stratify_eitc_by_children: bool = True,
+) -> pd.DataFrame:
+    """Apply IRS-anchored take-up imputation to federal EITC/CTC dollars.
+
+    Eligibility ≠ claim. PUMS-derived eligible amounts overstate actual
+    IRS take-up; this step ranks eligible filers by their eligible
+    credit dollars (descending) and marks the top-N as claimants until
+    the weighted count matches the IRS Hawaii state-total target.
+    Non-claimants have their credit zeroed.
+
+    Parameters
+    ----------
+    df:
+        Projected (or calibrated) tax units. Must contain ``weight``,
+        ``eitc_amount`` (for ``eitc``), and ``ctc_total`` /
+        ``ctc_refundable`` (for ``ctc`` / ``actc``).
+    year:
+        Caseload-table year for the IRS benchmark (default 2022 — the
+        latest IRS SOI Hawaii state total).  The take-up *rate* is
+        treated as behavioral and constant across forward projection;
+        only the target count is fixed at this vintage.
+    programs:
+        Programs to apply. Default is the federal refundable EITC and
+        the refundable portion of CTC (ACTC), since these are the
+        primary anti-poverty channels. Pass ``("eitc", "ctc", "actc")``
+        for the full set when CBPP comparison covers total CTC.
+    stratify_eitc_by_children:
+        When True (default), EITC take-up is stratified across 0/1/2/3+
+        qualifying-child buckets per the IRS SOI by-children distribution
+        instead of a single pooled rank-truncate. The microsimulation
+        over-produces childless EITC eligibles relative to IRS Hawaii; a
+        pooled target lets them absorb the whole take-up slack, inflating
+        the childless-claimer share. Bucketing caps the childless bucket at
+        its IRS share. ACTC and any other programs are unaffected.
+
+    Notes
+    -----
+    By default ``run_pipeline`` skips this step (opt-in) so existing
+    forecast scripts that benchmark against eligibility totals are not
+    silently changed. Pass ``apply_credit_takeup=True`` to ``run_pipeline``
+    to enable.
+    """
+    from tax_modeler.calibration.admin_caseload import AdminCaseload
+    from tax_modeler.calibration.takeup_imputation import calibrate_benefits
+
+    caseload = AdminCaseload.load()
+    return calibrate_benefits(
+        df,
+        caseload=caseload,
+        year=year,
+        programs=programs,
+        stratify_eitc_by_children=stratify_eitc_by_children,
+    )
+
+
+def calibrate(df: pd.DataFrame) -> pd.DataFrame:
     """Stage 5: IPF rake calibration against DOTAX aggregate benchmarks."""
     from tax_modeler.calibration import apply_ipf_calibration_via_rake
 
@@ -253,6 +473,50 @@ def _calibrate(df: pd.DataFrame) -> pd.DataFrame:
         calibrated["weight"].sum(),
     )
     return calibrated
+
+
+# ---------------------------------------------------------------------------
+# Deprecated underscore-prefixed aliases.
+#
+# The underscore names were the de-facto public API (imported from 5+ external
+# scripts).  They are kept as thin shims that emit DeprecationWarning so that
+# downstream scripts keep working while migration happens.  Remove in a future
+# major release once no callers remain.
+# ---------------------------------------------------------------------------
+
+
+def _enrich_for_credits(df: pd.DataFrame) -> pd.DataFrame:
+    warnings.warn(
+        "tax_modeler.pipeline._enrich_for_credits is deprecated; "
+        "use enrich_for_credits (public name) instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return enrich_for_credits(df)
+
+
+def _compute_base_tax(
+    df: pd.DataFrame,
+    deduction_params=None,
+    tax_year: int = 2023,
+) -> pd.DataFrame:
+    warnings.warn(
+        "tax_modeler.pipeline._compute_base_tax is deprecated; "
+        "use compute_base_tax (public name) instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return compute_base_tax(df, deduction_params=deduction_params, tax_year=tax_year)
+
+
+def _calibrate(df: pd.DataFrame) -> pd.DataFrame:
+    warnings.warn(
+        "tax_modeler.pipeline._calibrate is deprecated; "
+        "use calibrate (public name) instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return calibrate(df)
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +533,9 @@ def run_pipeline(
     method: str = "ensemble",
     tax_units_df: Optional[pd.DataFrame] = None,
     skip_calibration: bool = False,
+    reform: Optional[object] = None,    # tax_modeler.reform.Reform | None
+    apply_credit_takeup: bool = False,
+    credit_takeup_year: int = 2022,
 ) -> PipelineResult:
     """Run the full Hawaii tax microsimulation pipeline.
 
@@ -301,15 +568,33 @@ def run_pipeline(
     skip_calibration:
         When ``True``, skip the IPF rake step even when building from PUMS.
         Useful for debugging the construction and projection stages in isolation.
+    reform:
+        Optional :class:`tax_modeler.reform.Reform`. When supplied, the
+        comparison between baseline and reform is computed on the projected
+        units and attached to the result as ``reform_result``. The baseline
+        DataFrames returned in the result are unchanged.
+    apply_credit_takeup:
+        When ``True``, after projection (and before revenue estimation),
+        zero out federal EITC and ACTC dollars for non-claimants per
+        rank-based imputation calibrated to the IRS Hawaii state total
+        for ``credit_takeup_year``. Default is ``False`` (opt-in) so
+        callers receive raw eligibility amounts.
+    credit_takeup_year:
+        IRS caseload-table year used as the take-up benchmark
+        (default 2022 — the latest IRS SOI Hawaii state total).
 
     Returns
     -------
     PipelineResult
         Contains calibrated base units, projected units, a RevenueEstimator
-        instance, and pre-computed summary tables.
+        instance, and pre-computed summary tables. ``reform_result`` is
+        populated when a ``reform`` is supplied.
     """
     from tax_modeler.projection.tax_unit_projector import project_tax_units_forward
     from tax_modeler.revenue.estimator import RevenueEstimator
+    # Rebind the module-level function under a different name so it does
+    # not collide with the bool parameter ``apply_credit_takeup`` below.
+    _apply_credit_takeup = globals()["apply_credit_takeup"]
 
     wall_start = time.perf_counter()
     timings: Dict[str, float] = {}
@@ -318,6 +603,7 @@ def run_pipeline(
     # Stages 1–5: build calibrated base-year units (skipped if supplied)  #
     # ------------------------------------------------------------------ #
     if tax_units_df is not None:
+        validate_units_schema(tax_units_df)
         logger.info("run_pipeline: using caller-supplied tax_units_df (%d rows)", len(tax_units_df))
         calibrated = tax_units_df
     else:
@@ -334,15 +620,15 @@ def run_pipeline(
         timings["construct"] = time.perf_counter() - t0
 
         t0 = time.perf_counter()
-        units = _enrich_for_credits(units)
+        units = enrich_for_credits(units)
         timings["enrich"] = time.perf_counter() - t0
 
         t0 = time.perf_counter()
-        units = _compute_base_tax(units)
+        units = compute_base_tax(units)
         timings["base_tax"] = time.perf_counter() - t0
 
         t0 = time.perf_counter()
-        calibrated = _calibrate(units) if not skip_calibration else units
+        calibrated = calibrate(units) if not skip_calibration else units
         timings["calibrate"] = time.perf_counter() - t0
 
     # ------------------------------------------------------------------ #
@@ -364,6 +650,21 @@ def run_pipeline(
     )
 
     # ------------------------------------------------------------------ #
+    # Stage 6b (optional): IRS take-up imputation for EITC/CTC           #
+    # ------------------------------------------------------------------ #
+    if apply_credit_takeup:
+        t0 = time.perf_counter()
+        projected = _apply_credit_takeup(
+            projected, year=credit_takeup_year, programs=("eitc", "actc")
+        )
+        timings["credit_takeup"] = time.perf_counter() - t0
+        logger.info(
+            "Credit take-up imputation applied (year=%d): EITC + ACTC restricted "
+            "to IRS-anchored claimants.",
+            credit_takeup_year,
+        )
+
+    # ------------------------------------------------------------------ #
     # Stage 7: revenue estimation                                          #
     # ------------------------------------------------------------------ #
     t0 = time.perf_counter()
@@ -373,6 +674,22 @@ def run_pipeline(
     by_filing = estimator.by_filing_status()
     by_quintile = estimator.by_income_quintile()
     timings["estimate"] = time.perf_counter() - t0
+
+    # ------------------------------------------------------------------ #
+    # Stage 8 (optional): apply a reform and compute the comparison       #
+    # ------------------------------------------------------------------ #
+    reform_result = None
+    if reform is not None:
+        from tax_modeler.reform import apply_reform
+        t0 = time.perf_counter()
+        reform_result = apply_reform(projected, reform, year=target_year)
+        timings["reform"] = time.perf_counter() - t0
+        logger.info(
+            "Reform %s applied: revenue delta = %+.1fM, avg tax delta = %+.0f",
+            reform.name,
+            reform_result.revenue_delta_millions,
+            reform_result.avg_tax_delta,
+        )
 
     elapsed = time.perf_counter() - wall_start
 
@@ -399,4 +716,5 @@ def run_pipeline(
         n_weighted_filers=state_summary["total_weighted_filers"],
         elapsed_seconds=elapsed,
         timings=timings,
+        reform_result=reform_result,
     )

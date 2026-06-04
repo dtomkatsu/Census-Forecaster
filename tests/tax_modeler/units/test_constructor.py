@@ -17,11 +17,11 @@ def create_test_data():
         # Household 1 - Married couple with child (joint filers)
         {'SERIALNO': '1', 'SPORDER': '1', 'AGEP': 35, 'SEX': 1, 'MAR': 1, 'RELSHIPP': 20, 'WAGP': 60000, 'HINCP': 100000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
         {'SERIALNO': '1', 'SPORDER': '2', 'AGEP': 33, 'SEX': 2, 'MAR': 1, 'RELSHIPP': 21, 'WAGP': 40000, 'HINCP': 100000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
-        {'SERIALNO': '1', 'SPORDER': '3', 'AGEP': 5, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 22, 'WAGP': 0, 'HINCP': 100000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 1},
+        {'SERIALNO': '1', 'SPORDER': '3', 'AGEP': 5, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 25, 'WAGP': 0, 'HINCP': 100000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 1},
         
         # Household 2 - Single parent with child
         {'SERIALNO': '2', 'SPORDER': '1', 'AGEP': 30, 'SEX': 2, 'MAR': 5, 'RELSHIPP': 20, 'WAGP': 45000, 'HINCP': 50000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
-        {'SERIALNO': '2', 'SPORDER': '2', 'AGEP': 8, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 22, 'WAGP': 0, 'HINCP': 50000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 5},
+        {'SERIALNO': '2', 'SPORDER': '2', 'AGEP': 8, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 25, 'WAGP': 0, 'HINCP': 50000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 5},
         
         # Household 3 - Single person
         {'SERIALNO': '3', 'SPORDER': '1', 'AGEP': 28, 'SEX': 1, 'MAR': 5, 'RELSHIPP': 20, 'WAGP': 50000, 'HINCP': 50000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
@@ -31,7 +31,7 @@ def create_test_data():
         # Also requires PINCP set (constructor's _should_file_separately reads PINCP, not WAGP).
         {'SERIALNO': '4', 'SPORDER': '1', 'AGEP': 40, 'SEX': 1, 'MAR': 1, 'RELSHIPP': 20, 'WAGP': 400000, 'PINCP': 400000, 'HINCP': 405000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
         {'SERIALNO': '4', 'SPORDER': '2', 'AGEP': 38, 'SEX': 2, 'MAR': 1, 'RELSHIPP': 21, 'WAGP':   5000, 'PINCP':   5000, 'HINCP': 405000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 16},
-        {'SERIALNO': '4', 'SPORDER': '3', 'AGEP': 12, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 22, 'WAGP':      0, 'PINCP':      0, 'HINCP': 405000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 6},
+        {'SERIALNO': '4', 'SPORDER': '3', 'AGEP': 12, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 25, 'WAGP':      0, 'PINCP':      0, 'HINCP': 405000, 'CIT': 1, 'SEMP': 0, 'ADJINC': 1.0, 'SCHL': 6},
 
         # Household 5 - Married couple filing separately (ultra-high income + disparity).
         # Combined $605k + 120x ratio → MFS score ≈ 10 (guaranteed MFS).
@@ -228,3 +228,157 @@ class TestTaxUnitConstructor:
         assert tax_unit is not None
         assert tax_unit['filing_status'] in ['single', 'head_of_household']  # Could be either
         assert tax_unit['filer_id'] == '3_single_3_1'  # New format includes filing status
+
+
+class TestReplicateWeightPropagation:
+    """``include_replicate_weights`` flag carries WGTP1..WGTP80 / PWGTP1..PWGTP80
+    through to the tax-unit frame as ``weight_r01..weight_r80``.
+
+    Required by the SDR variance machinery downstream:
+      * ``compute_poverty_impact_with_se`` emits *_se columns by re-aggregating
+        under each replicate weight.
+      * ``estimate_hi_eitc_takeup`` bootstraps τ_HI_EITC's SE from the same
+        per-replicate weights.
+
+    Without this propagation, both fall back to no-variance / judgment bands.
+    """
+
+    @staticmethod
+    def _fixture_with_replicates():
+        """Tiny 2-household fixture with WGTP1..WGTP80 and PWGTP1..PWGTP80 set."""
+        hh = pd.DataFrame({
+            'SERIALNO': ['001', '002'],
+            'WGTP': [100.0, 50.0],
+            'HINCP': [30000.0, 60000.0],
+            'PUMA': [301, 302],
+            'TYPEHUGQ': [1, 1],
+            'TEN': [1, 3],
+            **{f'WGTP{r}': [100.0 + r, 50.0 + r] for r in range(1, 81)},
+        })
+        per = pd.DataFrame({
+            'SERIALNO': ['001', '002'],
+            'SPORDER': [1, 1],
+            'AGEP': [35, 35],
+            'PWGTP': [100.0, 50.0],
+            'PINCP': [30000.0, 60000.0],
+            'WAGP': [30000.0, 60000.0],
+            'SCHL': [16, 16],
+            'MAR': [5, 5],
+            'RELSHIPP': [20, 20],
+            'SEX': [1, 2],
+            'CIT': [1, 1],
+            'SEMP': [0, 0],
+            'ADJINC': [1.0, 1.0],
+            **{f'PWGTP{r}': [100.0 + r, 50.0 + r] for r in range(1, 81)},
+        })
+        return per, hh
+
+    def test_flag_default_on_propagates_80_replicates(self):
+        per, hh = self._fixture_with_replicates()
+        ctor = TaxUnitConstructor(per, hh, num_processes=1, progress_bar=False,
+                                  use_soi_calibration=False)
+        units = ctor.create_rule_based_units(parallel=False)
+        rep_cols = sorted(c for c in units.columns if c.startswith('weight_r'))
+        assert len(rep_cols) == 80, f"expected 80 weight_r columns, got {len(rep_cols)}"
+        # First and last canonical names
+        assert rep_cols[0] == 'weight_r01'
+        assert rep_cols[-1] == 'weight_r80'
+
+    def test_replicates_match_hybrid_weight_formula_single(self):
+        """Single filer: weight_r<R> = PWGTP<R> * single_calibration_factor (0.85)."""
+        per, hh = self._fixture_with_replicates()
+        ctor = TaxUnitConstructor(per, hh, num_processes=1, progress_bar=False,
+                                  use_soi_calibration=False)
+        units = ctor.create_rule_based_units(parallel=False)
+        # Row 0: PWGTP=100, PWGTPr = 100+r, single ⇒ weight × 0.85
+        row = units.iloc[0]
+        assert row['filing_status'] == 'single', f"expected single, got {row['filing_status']}"
+        # Main weight: 100 * 0.85 = 85
+        # rtol=1e-5 because the constructor stores weights as float32 internally.
+        np.testing.assert_allclose(row['weight'], 85.0, rtol=1e-5)
+        # weight_r01: 101 * 0.85 = 85.85
+        np.testing.assert_allclose(row['weight_r01'], 85.85, rtol=1e-5)
+        # weight_r80: 180 * 0.85 = 153.0
+        np.testing.assert_allclose(row['weight_r80'], 153.0, rtol=1e-5)
+
+    def test_flag_off_suppresses_replicates(self):
+        per, hh = self._fixture_with_replicates()
+        ctor = TaxUnitConstructor(per, hh, num_processes=1, progress_bar=False,
+                                  use_soi_calibration=False,
+                                  include_replicate_weights=False)
+        units = ctor.create_rule_based_units(parallel=False)
+        rep_cols = [c for c in units.columns if c.startswith('weight_r')]
+        assert rep_cols == [], f"expected no weight_r columns, got {rep_cols}"
+
+    def test_missing_replicate_inputs_noop_gracefully(self):
+        """No WGTPr/PWGTPr columns on input ⇒ no weight_r columns on output."""
+        per, hh = self._fixture_with_replicates()
+        # Drop all WGTPr and PWGTPr columns
+        hh_bare = hh.drop(columns=[c for c in hh.columns if c.startswith('WGTP') and c != 'WGTP'])
+        per_bare = per.drop(columns=[c for c in per.columns if c.startswith('PWGTP') and c != 'PWGTP'])
+        ctor = TaxUnitConstructor(per_bare, hh_bare, num_processes=1, progress_bar=False,
+                                  use_soi_calibration=False)
+        assert ctor._wgtp_replicate_cols == []
+        assert ctor._pwgtp_replicate_cols == []
+        units = ctor.create_rule_based_units(parallel=False)
+        rep_cols = [c for c in units.columns if c.startswith('weight_r')]
+        assert rep_cols == []
+
+
+def _make_df(person_rows, hh_rows):
+    pdf = pd.DataFrame(person_rows)
+    pdf['person_id'] = pdf['SERIALNO'] + '_' + pdf['SPORDER'].astype(str)
+    pdf['is_adult'] = pdf['AGEP'] >= 18
+    pdf = pdf.set_index('person_id')
+    return pdf, pd.DataFrame(hh_rows)
+
+
+class TestAdultDependentNotOverSplit:
+    """Over-splitting fix: an adult who is claimed as a dependent must not also
+    become their own tax unit, and real dependent ages must be carried."""
+
+    def test_adult_relative_child_does_not_create_extra_unit(self):
+        """Householder + non-student adult child (age 27, $3k) → ONE unit, with
+        the adult child claimed as a dependent rather than filing separately."""
+        person_rows = [
+            {'SERIALNO': '90', 'SPORDER': '1', 'AGEP': 58, 'SEX': 1, 'MAR': 5,
+             'RELSHIPP': 20, 'WAGP': 70000, 'PINCP': 70000, 'CIT': 1, 'SEMP': 0,
+             'ADJINC': 1.0, 'SCHL': 21, 'DIS': 2},
+            {'SERIALNO': '90', 'SPORDER': '2', 'AGEP': 27, 'SEX': 2, 'MAR': 5,
+             'RELSHIPP': 25, 'WAGP': 3000, 'PINCP': 3000, 'CIT': 1, 'SEMP': 0,
+             'ADJINC': 1.0, 'SCHL': 19, 'DIS': 2},
+        ]
+        hh_rows = [{'SERIALNO': '90', 'HINCP': 73000, 'ADJINC': 1.0, 'WGTP': 100}]
+        person_df, hh_df = _make_df(person_rows, hh_rows)
+
+        units = TaxUnitConstructor(
+            person_df, hh_df, use_soi_calibration=False, progress_bar=False
+        ).create_rule_based_units(parallel=False)
+
+        hh90 = units[units['hh_id'] == '90']
+        assert len(hh90) == 1, hh90[['filing_status', 'num_dependents']].to_dict('records')
+        assert hh90.iloc[0]['num_dependents'] == 1
+
+    def test_dependents_details_carry_real_ages(self):
+        """dependents_details must reflect the real dependent age/relationship,
+        not synthetic age-10 placeholders."""
+        person_rows = [
+            {'SERIALNO': '91', 'SPORDER': '1', 'AGEP': 40, 'SEX': 2, 'MAR': 5,
+             'RELSHIPP': 20, 'WAGP': 45000, 'PINCP': 45000, 'CIT': 1, 'SEMP': 0,
+             'ADJINC': 1.0, 'SCHL': 18, 'DIS': 2},
+            {'SERIALNO': '91', 'SPORDER': '2', 'AGEP': 7, 'SEX': 1, 'MAR': 0,
+             'RELSHIPP': 25, 'WAGP': 0, 'PINCP': 0, 'CIT': 1, 'SEMP': 0,
+             'ADJINC': 1.0, 'SCHL': 4, 'DIS': 2},
+        ]
+        hh_rows = [{'SERIALNO': '91', 'HINCP': 45000, 'ADJINC': 1.0, 'WGTP': 100}]
+        person_df, hh_df = _make_df(person_rows, hh_rows)
+
+        units = TaxUnitConstructor(
+            person_df, hh_df, use_soi_calibration=False, progress_bar=False
+        ).create_rule_based_units(parallel=False)
+
+        row = units[units['hh_id'] == '91'].iloc[0]
+        details = row['dependents_details']
+        assert isinstance(details, list) and len(details) == 1
+        assert details[0]['age'] == 7
+        assert details[0]['relationship'] == 25

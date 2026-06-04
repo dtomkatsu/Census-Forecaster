@@ -18,7 +18,6 @@ and analyzing their characteristics for tax policy modeling.
 from .base import TaxUnitConstructor, FILING_STATUS
 from .dependencies import identify_dependents
 from .income import calculate_tax_unit_income
-from .relationships import identify_relationships
 from .status import (
     is_head_of_household,
     is_married_filing_jointly,
@@ -39,7 +38,6 @@ __all__ = [
     'validate_tax_units',
     'identify_dependents',
     'calculate_tax_unit_income',
-    'identify_relationships',
     'is_head_of_household',
     'is_married_filing_jointly',
     'is_married_filing_separately',

@@ -413,6 +413,40 @@ def _coverage_warning_note(
 # Both consumers (_apply_se_override, _apply_bias_correction) need the same
 # lookup machinery, so factor it here.
 
+def _lookup_phi(
+    calibration: dict | None,
+    indicator: str,
+    method_key: str,
+    pop_bucket: str | None,
+    h_bucket: str | None,
+) -> float:
+    """Look up the calibrated phi for this cell, falling through to DEFAULT_PHI.
+
+    Uses the same 4-level strata fallback chain as kappa/bias. phi records
+    are emitted by the v4 calibration pass (Pass 0 in calibration.py) under
+    strata_records["phi"]. When absent (v2/v3 calibration), returns DEFAULT_PHI.
+    """
+    from .projection import DEFAULT_PHI
+    from .strata import PHI_N_THRESHOLD
+    phi_lookup = _v3_strata_lookup(calibration, "phi", floor_value=DEFAULT_PHI)
+    if phi_lookup is None:
+        return DEFAULT_PHI
+    # phi strata use PHI_N_THRESHOLD (15), not DEFAULT_N_THRESHOLD (20)
+    from .strata import index_records, record_from_dict
+    sr = (calibration or {}).get("strata_records", {})
+    raw = sr.get("phi")
+    if not raw:
+        return DEFAULT_PHI
+    records = [record_from_dict(d) for d in raw]
+    lookup_fn = index_records(
+        records=records,
+        n_threshold=PHI_N_THRESHOLD,
+        floor_value=DEFAULT_PHI,
+    )
+    rec, _src = lookup_fn(indicator, method_key, pop_bucket, h_bucket)
+    return rec.value
+
+
 def _v3_strata_lookup(
     calibration: dict | None,
     kind: str,
@@ -903,8 +937,9 @@ def project_ensemble_multi(
             return kal_fp
 
     # Trend ensemble first.
+    phi = _lookup_phi(calibration, indicator, "trend_ensemble", pop_bucket, h_bucket)
     components: list[ForecastPoint] = []
-    f_damped = project_damped_trend(series_observations, target_year)
+    f_damped = project_damped_trend(series_observations, target_year, phi=phi)
     if f_damped is not None:
         components.append(f_damped)
     f_ar1 = project_ar1_log_diff(series_observations, target_year)

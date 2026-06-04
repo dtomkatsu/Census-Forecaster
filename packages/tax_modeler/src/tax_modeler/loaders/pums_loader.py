@@ -34,18 +34,38 @@ DEFAULT_STATE = '15'      # Hawaii FIPS code
 DEFAULT_DATA_DIR = Path(__file__).parent.parent.parent.parent.parent / 'data' / 'raw' / 'pums'
 DEFAULT_PUMS_TYPE = '5yr' # 5-year data
 
+# PUMS replicate weight column names (Census ships 80 for variance estimation
+# via Successive Difference Replication). PWGTP1..PWGTP80 on the person file,
+# WGTP1..WGTP80 on the household file. For the SPM poverty pipeline we only
+# need household-grain WGTP_r because aggregate_to_spm_units picks up WGTP
+# per household, but PWGTP_r is loaded too so person-grain estimators (kept
+# out of scope for the poverty path) can opt in later.
+N_PUMS_REPLICATES = 80
+PWGTP_REPLICATE_COLS = tuple(f'PWGTP{i}' for i in range(1, N_PUMS_REPLICATES + 1))
+WGTP_REPLICATE_COLS = tuple(f'WGTP{i}' for i in range(1, N_PUMS_REPLICATES + 1))
+
 
 class PUMSDataLoader:
     """Handles loading and processing of PUMS data for tax benefit analysis."""
 
-    def __init__(self, data_dir: Path = DEFAULT_DATA_DIR):
+    def __init__(
+        self,
+        data_dir: Path = DEFAULT_DATA_DIR,
+        load_replicate_weights: bool = False,
+    ):
         """Initialize the PUMS data loader.
 
         Args:
             data_dir: Directory containing PUMS data files
+            load_replicate_weights: If True, request the 80 PUMS replicate
+                weight columns (``PWGTP1``-``PWGTP80`` on persons,
+                ``WGTP1``-``WGTP80`` on households) for SDR variance
+                estimation downstream. Default ``False`` keeps the file
+                I/O cheap for the common case.
         """
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.load_replicate_weights = bool(load_replicate_weights)
 
         # Batch state (used by load_households_batch / reset_batch_state)
         self._batch_offset = 0
@@ -81,6 +101,12 @@ class PUMSDataLoader:
             'TAXP': int, 'WIF': int, 'WKEXREL': int, 'WORKSTAT': int,
             'YBL': int,
         }
+
+        if self.load_replicate_weights:
+            for col in PWGTP_REPLICATE_COLS:
+                self.person_columns[col] = int
+            for col in WGTP_REPLICATE_COLS:
+                self.household_columns[col] = int
 
     def _hh_file_path(self, state: str, pums_type: str) -> Path:
         """Return the household PUMS file path (parquet preferred over CSV)."""
@@ -290,7 +316,37 @@ class PUMSDataLoader:
             for old, new in self._column_renames.items()
             if old in df.columns and new not in df.columns
         }
-        return df.rename(columns=rename_map) if rename_map else df
+        if rename_map:
+            df = df.rename(columns=rename_map)
+        return self._coalesce_puma(df)
+
+    def _coalesce_puma(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Backfill ``PUMA`` from ``PUMA20``/``PUMA10`` for 5-year vintages.
+
+        The 2018-2022 5-year ACS PUMS exposes both ``PUMA10`` and ``PUMA20``
+        because the 2020-vintage PUMA boundaries were adopted mid-window:
+        rows from survey years 2018-2019 carry valid ``PUMA10`` and
+        ``PUMA20=-9``, while 2020-2022 rows carry valid ``PUMA20`` and
+        ``PUMA10=-9``. Older 1-year files only have ``PUMA10`` (or a bare
+        ``PUMA``); newer 1-year files only have ``PUMA20``. Coalesce to a
+        single ``PUMA`` column, preferring ``PUMA20`` when valid (≥0).
+        """
+        if "PUMA" in df.columns:
+            return df
+        has20 = "PUMA20" in df.columns
+        has10 = "PUMA10" in df.columns
+        if not (has20 or has10):
+            return df
+        df = df.copy()
+        if has20 and has10:
+            puma20 = pd.to_numeric(df["PUMA20"], errors="coerce")
+            puma10 = pd.to_numeric(df["PUMA10"], errors="coerce")
+            df["PUMA"] = puma20.where(puma20 >= 0, puma10)
+        elif has20:
+            df["PUMA"] = pd.to_numeric(df["PUMA20"], errors="coerce")
+        else:
+            df["PUMA"] = pd.to_numeric(df["PUMA10"], errors="coerce")
+        return df
 
     def _adjust_income(self, df: pd.DataFrame) -> pd.DataFrame:
         """Fill NA values for monetary columns with 0; ensure ADJINC is float."""

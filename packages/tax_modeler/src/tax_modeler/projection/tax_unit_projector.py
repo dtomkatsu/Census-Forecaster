@@ -27,9 +27,16 @@ sourced from census_forecaster's ensemble projector on the bundled ACS panel
 (same projector used by project_revenue_per_filer). Counties not present in the
 panel fall back to the Honolulu (15003) B19013 as a Hawaii-wide proxy.
 
-Tax recalculation uses the 2023 Hawaii bracket schedule
-(calculate_hawaii_tax_for_units). CTC and EITC are recalculated on the scaled
-incomes using the 2023 federal parameters.
+Tax recalculation uses the target-year Hawaii bracket schedule via
+``calculate_hawaii_tax_for_units(tax_year=target_year)``. CTC and EITC
+are recalculated on the scaled (nominal) incomes using the **target
+year's statutory federal parameters** — the IRS phase-in/phase-out
+thresholds and refundable caps are inflation-indexed via chained CPI per
+the relevant Rev. Procs. (e.g. Rev. Proc. 2024-40 for TY 2025), so
+applying them to nominal income mirrors the actual taxpayer experience.
+Supported credit years: 2022, 2023, 2024, 2025 (see
+``credits/eitc.py`` and ``credits/ctc.py``). Years outside that range
+raise ``KeyError``.
 """
 from __future__ import annotations
 
@@ -187,21 +194,25 @@ def _apply_bls_income_projection(
     return df
 
 
-def _recalculate_ctc(df: pd.DataFrame) -> pd.DataFrame:
+def _recalculate_ctc(df: pd.DataFrame, tax_year: int = 2023) -> pd.DataFrame:
     """
-    Recalculate CTC on scaled incomes.
+    Recalculate CTC on scaled incomes using the requested year's parameters.
 
     Calls calculate_ctc() per row and merges results directly (unit.update
     pattern), producing ctc_total / ctc_refundable / ctc_nonrefundable columns
     as RevenueEstimator expects.  The DataFrame-level calculate_ctc_for_tax_units
     adds a redundant 'ctc_' prefix (producing ctc_ctc_total), so we bypass it.
+
+    ``tax_year`` selects the inflation-indexed refundable cap
+    ($1,500 in TY 2022 → $1,700 in TY 2024-2025); the $2,000 max-credit
+    and $200K/$400K phaseout thresholds are TCJA statutory and unchanged.
     """
     from tax_modeler.credits.ctc import calculate_ctc
 
     results = []
     for _, row in df.iterrows():
         unit = row.to_dict()
-        unit.update(calculate_ctc(unit))
+        unit.update(calculate_ctc(unit, tax_year=tax_year))
         results.append(unit)
     return pd.DataFrame(results)
 
@@ -221,6 +232,10 @@ def project_tax_units_forward(
     bls_oes_data: Optional[pd.DataFrame] = None,
     acs_weight: float = 0.4,
     bls_weight: float = 0.6,
+    eitc_poverty_alpha: float = 0.5,
+    use_cbo_aging: bool = False,
+    cbo_vintage: str = "2025-01",
+    cbo_hawaii_factors: Optional[Dict[str, float]] = None,
 ) -> pd.DataFrame:
     """
     Project tax units to ``target_year`` using county-specific income growth.
@@ -282,6 +297,32 @@ def project_tax_units_forward(
         Weight assigned to the BLS occupation-specific component (default 0.6).
         Effective BLS weight is scaled by per-row match confidence; low-quality
         matches fall back toward the ACS aggregate.
+    eitc_poverty_alpha:
+        Elasticity exponent applied to the S1701 poverty-rate growth factor
+        when scaling forward-year EITC amounts via
+        :func:`scale_eitc_for_poverty`. Default 0.5 (a conservative
+        half-elasticity, motivated by the B19013/S1701 signal correlation).
+        Set to 0.0 to disable the poverty-rate correction entirely; tune
+        upward (e.g. 0.7) for a more aggressive distributional response.
+    use_cbo_aging:
+        When True, replace the county-scalar B19013 income growth with CBO
+        per-component aging (:func:`tax_modeler.calibration.cbo_aging.age_filers_with_components`)
+        — the same income-aging engine the revenue path uses via
+        ``year_recalibrator.project_and_recalibrate``. Each income component
+        grows at its own CBO Outlook rate × a Hawaii calibration factor.
+        Statewide: county growth differentiation is intentionally dropped
+        (component differentiation replaces it), but all geography columns ride
+        through unchanged, so the by-county / district poverty breakouts still
+        resolve. Mutually exclusive with the BLS OES path; takes precedence if
+        both are requested. Default False (legacy B19013 scaling).
+    cbo_vintage:
+        CBO Outlook vintage identifier for the component growth CSV
+        (default ``"2025-01"``). Only used when ``use_cbo_aging=True``.
+    cbo_hawaii_factors:
+        Optional per-component Hawaii calibration multipliers passed through to
+        the CBO aging engine. ``None`` (default) uses
+        ``cbo_aging.DEFAULT_HAWAII_FACTORS``. Only used when
+        ``use_cbo_aging=True``.
 
     Returns
     -------
@@ -304,7 +345,11 @@ def project_tax_units_forward(
 
     # BLS OES path is active when the caller provides person-level PUMS data
     # with occupation codes AND BLS wage-growth data.
-    use_bls_path = pums_persons_df is not None and bls_oes_data is not None
+    use_bls_path = (
+        not use_cbo_aging
+        and pums_persons_df is not None
+        and bls_oes_data is not None
+    )
 
     # --- Auto-assign geography if PUMA is present but county is absent ------
     # TaxUnitConstructor preserves the PUMA column from PUMS records; use the
@@ -322,7 +367,7 @@ def project_tax_units_forward(
     county_growth: Dict[str, _GrowthFactorResult] = {}
     has_county = "county" in tax_units_df.columns
 
-    if not use_bls_path and has_county:
+    if not use_bls_path and not use_cbo_aging and has_county:
         for county in tax_units_df["county"].dropna().unique():
             geoid = _resolve_geoid(str(county), geoid_lookup)
             if geoid is None:
@@ -363,7 +408,35 @@ def project_tax_units_forward(
     df = tax_units_df.copy()
     df["income_base_year"] = df["income"].copy()
 
-    if use_bls_path:
+    if use_cbo_aging:
+        # CBO per-component aging — the same income-aging engine the revenue
+        # path uses (year_recalibrator.project_and_recalibrate). Each income
+        # component grows at its own CBO Outlook rate × Hawaii factor, replacing
+        # the uniform county B19013 scaling. Statewide: county growth
+        # differentiation is intentionally dropped, but every geography column
+        # rides through age_filers_with_components unchanged (it only rewrites
+        # income/agi/cbo_aged_*), so the by-county / district poverty breakouts
+        # still resolve. No per-county growth CI is defined for this path.
+        from tax_modeler.calibration.cbo_aging import (
+            age_filers_with_components,
+            load_cbo_rates,
+        )
+        cbo_rates = load_cbo_rates(vintage=cbo_vintage)
+        df = age_filers_with_components(
+            df,
+            target_year=target_year,
+            base_year=_DEFAULT_BASE_YEAR,
+            cbo_rates=cbo_rates,
+            hawaii_factors=cbo_hawaii_factors,
+        )
+        df["income_ci90_low"] = float("nan")
+        df["income_ci90_high"] = float("nan")
+        logger.info(
+            "CBO component aging (vintage %s): %d units, median %.0f → %.0f",
+            cbo_vintage, len(df),
+            df["income_base_year"].median(), df["income"].median(),
+        )
+    elif use_bls_path:
         # BLS OES path: occupation-specific growth via EnsembleProjector.
         # CI columns are left NaN — per-row occupation growth provides no
         # aggregate CI analogous to the county B19013 SE.
@@ -382,50 +455,47 @@ def project_tax_units_forward(
         # County B19013 scalar path: uniform factor per county + 90% CI.
         df["income_ci90_low"] = float("nan")
         df["income_ci90_high"] = float("nan")
+        if has_county:
+            for county, gfr in county_growth.items():
+                mask = df["county"] == county
+                df.loc[mask, "income"] *= gfr.factor
+                df.loc[mask, "income_ci90_low"] = (
+                    df.loc[mask, "income_base_year"] * gfr.factor_ci90_low
+                )
+                df.loc[mask, "income_ci90_high"] = (
+                    df.loc[mask, "income_base_year"] * gfr.factor_ci90_high
+                )
 
-    if not use_bls_path and has_county:
-        for county, gfr in county_growth.items():
-            mask = df["county"] == county
-            df.loc[mask, "income"] *= gfr.factor
-            df.loc[mask, "income_ci90_low"] = (
-                df.loc[mask, "income_base_year"] * gfr.factor_ci90_low
-            )
-            df.loc[mask, "income_ci90_high"] = (
-                df.loc[mask, "income_base_year"] * gfr.factor_ci90_high
-            )
+            # Rows whose county was not resolved → state fallback
+            unresolved = ~df["county"].isin(county_growth) & df["county"].notna()
+            if unresolved.any():
+                fb = fallback()
+                df.loc[unresolved, "income"] *= fb.factor
+                df.loc[unresolved, "income_ci90_low"] = (
+                    df.loc[unresolved, "income_base_year"] * fb.factor_ci90_low
+                )
+                df.loc[unresolved, "income_ci90_high"] = (
+                    df.loc[unresolved, "income_base_year"] * fb.factor_ci90_high
+                )
 
-        # Rows whose county was not resolved → state fallback
-        unresolved = ~df["county"].isin(county_growth) & df["county"].notna()
-        if unresolved.any():
+            # Rows with a null county → state fallback
+            null_county = df["county"].isna()
+            if null_county.any():
+                fb = fallback()
+                df.loc[null_county, "income"] *= fb.factor
+                df.loc[null_county, "income_ci90_low"] = (
+                    df.loc[null_county, "income_base_year"] * fb.factor_ci90_low
+                )
+                df.loc[null_county, "income_ci90_high"] = (
+                    df.loc[null_county, "income_base_year"] * fb.factor_ci90_high
+                )
+        else:
+            # No county column → apply state-wide fallback to all rows
             fb = fallback()
-            df.loc[unresolved, "income"] *= fb.factor
-            df.loc[unresolved, "income_ci90_low"] = (
-                df.loc[unresolved, "income_base_year"] * fb.factor_ci90_low
-            )
-            df.loc[unresolved, "income_ci90_high"] = (
-                df.loc[unresolved, "income_base_year"] * fb.factor_ci90_high
-            )
+            df["income"] *= fb.factor
+            df["income_ci90_low"] = df["income_base_year"] * fb.factor_ci90_low
+            df["income_ci90_high"] = df["income_base_year"] * fb.factor_ci90_high
 
-        # Rows with a null county → state fallback
-        null_county = df["county"].isna()
-        if null_county.any():
-            fb = fallback()
-            df.loc[null_county, "income"] *= fb.factor
-            df.loc[null_county, "income_ci90_low"] = (
-                df.loc[null_county, "income_base_year"] * fb.factor_ci90_low
-            )
-            df.loc[null_county, "income_ci90_high"] = (
-                df.loc[null_county, "income_base_year"] * fb.factor_ci90_high
-            )
-
-    elif not use_bls_path:
-        # No county column → apply state-wide fallback to all rows
-        fb = fallback()
-        df["income"] *= fb.factor
-        df["income_ci90_low"] = df["income_base_year"] * fb.factor_ci90_low
-        df["income_ci90_high"] = df["income_base_year"] * fb.factor_ci90_high
-
-    if not use_bls_path:
         logger.info(
             "Income scaled: %d units, median %.0f → %.0f  "
             "90%% CI median [%.0f, %.0f]",
@@ -480,10 +550,36 @@ def project_tax_units_forward(
         df = calculate_hawaii_tax_for_units(df, tax_year=target_year, deduction_params=state_ded)
 
     # --- Recalculate CTC and EITC on scaled incomes --------------------------
-    df = _recalculate_ctc(df)
+    # Use the target year's inflation-indexed credit parameters.  Per IRS
+    # Rev. Procs., EITC max-credit / phase-in / phaseout thresholds and the
+    # ACTC refundable cap move with chained CPI each year; the projector
+    # scales nominal income, so applying nominal target-year parameters is
+    # the consistent treatment.  For target_year beyond the latest published
+    # Rev. Proc., the most-recent supported year is used (currently TY 2025).
+    from tax_modeler.credits.eitc import (
+        _EITC_PARAMS_BY_YEAR,
+        calculate_eitc_for_tax_units,
+    )
+    supported = sorted(_EITC_PARAMS_BY_YEAR)
+    if target_year in _EITC_PARAMS_BY_YEAR:
+        credit_year = target_year
+    elif target_year > supported[-1]:
+        credit_year = supported[-1]
+        logger.info(
+            "target_year %d beyond latest published credit parameters; "
+            "using TY %d statutory params for EITC/CTC.",
+            target_year, credit_year,
+        )
+    else:
+        credit_year = supported[0]
+        logger.info(
+            "target_year %d below earliest supported credit parameters; "
+            "using TY %d statutory params for EITC/CTC.",
+            target_year, credit_year,
+        )
 
-    from tax_modeler.credits.eitc import calculate_eitc_for_tax_units
-    df = calculate_eitc_for_tax_units(df)
+    df = _recalculate_ctc(df, tax_year=credit_year)
+    df = calculate_eitc_for_tax_units(df, tax_year=credit_year)
 
     # --- Poverty rate correction on EITC (S1701 signal) ----------------------
     # project_acs_supplement results are lru_cache'd from the deduction step,
@@ -506,6 +602,7 @@ def project_tax_units_forward(
         df,
         county_poverty_factors=county_poverty_factors,
         default_factor=state_poverty_factor,
+        alpha=eitc_poverty_alpha,
     )
 
     # --- Metadata columns ----------------------------------------------------

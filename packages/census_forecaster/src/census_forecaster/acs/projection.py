@@ -88,6 +88,12 @@ ANNUAL_RATE_CAP = 0.10
 # Re-derive with `scripts/run_backtest.py --calibrate-se`.
 EMPIRICAL_SE_INFLATOR = 1.30
 
+# Default damping constant for the local linear trend model.
+# This value is used when no per-cell calibrated phi is available.
+# Per-cell phi is produced by the v4 calibration pass in calibration.py
+# and looked up via ensemble.py's _lookup_phi.
+DEFAULT_PHI: float = 0.85
+
 
 def _clamp(x: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, x))
@@ -257,7 +263,7 @@ class DampedTrendFit:
 
 def fit_damped_trend(
     observations: Sequence[AcsObservation],
-    phi: float = 0.85,
+    phi: float = DEFAULT_PHI,
     alpha: float = 0.6,
     beta: float = 0.2,
 ) -> DampedTrendFit | None:
@@ -370,7 +376,7 @@ def fit_damped_trend(
 def project_damped_trend(
     series_observations: Sequence[AcsObservation],
     target_year: int,
-    phi: float = 0.85,
+    phi: float = DEFAULT_PHI,
 ) -> ForecastPoint | None:
     """Project the series to `target_year` using the damped trend model.
 

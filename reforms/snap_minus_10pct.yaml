@@ -1,0 +1,15 @@
+name: snap_minus_10pct
+benefit_overrides:
+  snap:
+    max_benefit_pct: 0.90
+metadata:
+  created: 2026-05-09
+  author: dtomkatsu
+  description: >
+    Demonstrates the user's literal Phase 3 question — a 10% reduction
+    in maximum SNAP allotment, applied as a multiplier on the USDA-FNS
+    Hawaii max-benefit table.
+  citation: HI Senate Ways & Means request, May 2026
+  data_vintage:
+    cps_asec: 2024
+    dotax_dhs_caseload: 2024

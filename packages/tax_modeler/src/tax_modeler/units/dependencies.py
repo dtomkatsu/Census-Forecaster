@@ -11,7 +11,49 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 import pandas as pd
 import numpy as np
 
-def identify_dependents(household: pd.DataFrame) -> Dict[str, List[str]]:
+from tax_modeler.units.relshipp_codes import (
+    GRANDCHILD,
+    OWN_CHILD,
+    FOSTER_CHILD,
+    REFERENCE_PERSON,
+    SPOUSE,
+    QUALIFYING_RELATIVE_RELS,
+)
+
+# IRS qualifying-relative gross-income limit by tax year (Rev. Proc. inflation
+# adjustments). A would-be qualifying relative earning at/above this cannot be
+# claimed as a dependent.
+_QR_GROSS_INCOME_LIMIT_BY_YEAR = {2022: 4_400, 2023: 4_700, 2024: 5_050, 2025: 5_200}
+_DEFAULT_DEP_TAX_YEAR = 2023  # matches the DOTAX Table A8 calibration anchor
+
+
+def _qr_gross_income_limit(tax_year: int) -> int:
+    return _QR_GROSS_INCOME_LIMIT_BY_YEAR.get(
+        tax_year, _QR_GROSS_INCOME_LIMIT_BY_YEAR[_DEFAULT_DEP_TAX_YEAR]
+    )
+
+
+# Self-support income floors. Below these, a household member living rent-free
+# is assumed NOT to have provided over half their own support (imputed parental
+# housing + food in Hawaii is roughly $15-25K/yr), so they remain a dependent.
+# PUMS has no direct support data, so these income proxies stand in for the
+# IRS support test.
+_SELF_SUPPORT_FLOOR_MINOR = 15_000    # age < 19
+_SELF_SUPPORT_FLOOR_STUDENT = 20_000  # age 19-23, student
+_SELF_SUPPORT_FLOOR_ADULT = 25_000    # age >= 24
+
+
+def _self_support_floor(age: float) -> int:
+    if age < 19:
+        return _SELF_SUPPORT_FLOOR_MINOR
+    if age < 24:
+        return _SELF_SUPPORT_FLOOR_STUDENT
+    return _SELF_SUPPORT_FLOOR_ADULT
+
+
+def identify_dependents(
+    household: pd.DataFrame, tax_year: int = _DEFAULT_DEP_TAX_YEAR
+) -> Dict[str, List[str]]:
     """
     Identify all potential dependents in a household.
     
@@ -71,8 +113,7 @@ def identify_dependents(household: pd.DataFrame) -> Dict[str, List[str]]:
                     return (0, 0)
                 if rel in [21, 2]:   # spouse
                     return (1, 0)
-                adjinc = float(g.get('ADJINC', 1.0) or 1.0)
-                income = float(g.get('PINCP', 0) or 0) * adjinc
+                income = _calculate_income(g)
                 return (2, income)
 
             guardian_id = sorted(potential_guardians, key=_guardian_sort_key)[0]
@@ -88,7 +129,7 @@ def identify_dependents(household: pd.DataFrame) -> Dict[str, List[str]]:
             
         # Check if this adult could be a qualifying relative of another adult
         for _, potential_guardian in adults[adults.index != adult_id].iterrows():
-            if _is_qualifying_relative(adult, potential_guardian, household):
+            if _is_qualifying_relative(adult, potential_guardian, household, tax_year):
                 dependents[potential_guardian.name].append(adult_id)
                 break
     
@@ -159,41 +200,26 @@ def _is_parent(adult: pd.Series, child: pd.Series, household: pd.DataFrame) -> b
     if age_diff < 15:
         return False
     
-    # Check relationship codes
+    # Check relationship codes (canonical Census 2019+ RELSHIPP; see
+    # tax_modeler.units.relshipp_codes). A householder (20) or their spouse
+    # (21) is treated as the parent of an own child (bio 25 / adopted 26 /
+    # step 27) or grandchild (30) living in the household.
     adult_rel = adult.get('RELSHIPP', 0)
     child_rel = child.get('RELSHIPP', 0)
-    
-    # Parent-child relationships in PUMS:
-    # 20 = Reference person (householder)
-    # 22 = Biological son or daughter
-    # 23 = Adopted son or daughter  
-    # 24 = Stepson or stepdaughter
-    # 25 = Grandchild
-    # 26 = Brother or sister
-    # 27 = Father or mother
-    # 28 = Grandparent
-    # 29 = Son-in-law or daughter-in-law
-    # 30 = Other relative
-    # 31 = Roomer or boarder
-    # 32 = Housemate or roommate
-    # 33 = Unmarried partner
-    # 34 = Foster child
-    # 35 = Other nonrelative
-    # 36 = Institutionalized group quarters population
-    # 37 = Noninstitutionalized group quarters population
-    
-    # If adult is householder (20) and child is biological/adopted/step child (3, 22-24) or grandchild (25)
-    if adult_rel == 20 and child_rel in [3, 22, 23, 24, 25]:
+
+    _parent_child_codes = OWN_CHILD | {GRANDCHILD}
+
+    if adult_rel == REFERENCE_PERSON and child_rel in _parent_child_codes:
         return True
 
-    # If adult is spouse (21) and child is biological/adopted/step child (3, 22-24) or grandchild (25)
-    if adult_rel == 21 and child_rel in [3, 22, 23, 24, 25]:
+    # Spouse of the householder (21 = opposite-sex, 23 = same-sex)
+    if adult_rel in {21, 23} and child_rel in _parent_child_codes:
         return True
-        
+
     # Foster child relationship
-    if child_rel == 34:
+    if child_rel == FOSTER_CHILD:
         return True
-    
+
     return False
 
 def _is_stepparent(guardian: pd.Series, child: pd.Series, household: pd.DataFrame) -> bool:
@@ -212,11 +238,10 @@ def _is_stepparent(guardian: pd.Series, child: pd.Series, household: pd.DataFram
 
 def _is_foster_parent(guardian: pd.Series, child: pd.Series, household: pd.DataFrame) -> bool:
     """Check if guardian is a foster parent of the child."""
-    # PUMS code 34 = Foster child; householder is RELSHIPP 20
-    # Test data may use code 5 for foster child and 1 for householder
+    # Canonical RELSHIPP: 35 = Foster child, 20 = householder.
     child_rel = child.get('RELSHIPP')
     guardian_rel = guardian.get('RELSHIPP')
-    if child_rel in [34, 5] and guardian_rel in [20, 1]:
+    if child_rel == FOSTER_CHILD and guardian_rel == REFERENCE_PERSON:
         return True
 
     return False
@@ -239,66 +264,63 @@ def _are_spouses(person1: pd.Series, person2: pd.Series) -> bool:
     if person1.get('MAR') != 1 or person2.get('MAR') != 1:
         return False
 
-    # Check relationship codes as integers
-    # PUMS: householder=20, spouse=21; test data may use householder=1, spouse=2
+    # Check relationship codes. Canonical RELSHIPP: householder=20,
+    # spouse=21 (opposite-sex) or 23 (same-sex).
     rel1 = person1.get('RELSHIPP', 0)
     rel2 = person2.get('RELSHIPP', 0)
 
     return (
-        (rel1 == 20 and rel2 == 21) or (rel1 == 21 and rel2 == 20) or  # PUMS codes
-        (rel1 == 1 and rel2 == 2) or (rel1 == 2 and rel2 == 1)          # test data codes
+        (rel1 == REFERENCE_PERSON and rel2 in SPOUSE) or
+        (rel2 == REFERENCE_PERSON and rel1 in SPOUSE)
     )
 
 def _is_qualifying_relative(
-    person: pd.Series, 
+    person: pd.Series,
     potential_guardian: pd.Series,
-    household: pd.DataFrame
+    household: pd.DataFrame,
+    tax_year: int = _DEFAULT_DEP_TAX_YEAR,
 ) -> bool:
     """
     Check if a person is a qualifying relative of another person.
-    
+
+    Applies the IRS qualifying-relative tests (IRC §152(d)):
+      - not a qualifying child of the guardian
+      - relationship-or-member-of-household test (PUMS RELSHIPP codes)
+      - gross-income test (year-aware limit)
+      - support test (guardian provides over half)
+      - not filing a joint return
+
     Args:
         person: The potential dependent
         potential_guardian: The potential guardian
         household: Full household data for reference
-        
+        tax_year: Tax year (selects the gross-income limit)
+
     Returns:
         bool: True if person is a qualifying relative of potential_guardian
     """
     # Can't be a qualifying child of the potential guardian
     if _is_qualifying_child(person, potential_guardian, household):
         return False
-    
-    # Check if they are related or lived together all year
-    is_relative = _is_relative(person, potential_guardian)
-    lived_with = _lived_with_all_year(person, potential_guardian, household)
-    
-    # For the test case, we need to identify the elderly parent (RELSHIPP='03') of the primary filer (RELSHIPP='20')
-    # In the test data, person is the elderly parent (1_6) and potential_guardian is the primary filer (1_1)
-    
-    # Check if this is a parent-child relationship where the person is the parent
-    # PUMS codes: 27=Father or mother, 28=Grandparent, 31=Parent-in-law; householder=20
-    # Test data may use codes 7 (parent), 8 (grandparent) or string variants
-    is_parent = (person.get('RELSHIPP') in [27, 28, 31, '01', '02', '03'] and
-                 potential_guardian.get('RELSHIPP') in [20, '20'])
-    
-    # For testing purposes, if the person is a relative (like a parent) and lives with the guardian,
-    # or if this is a parent-child relationship where the person is the parent
-    if (is_relative and lived_with) or is_parent:
-        # Check income test (must be under $4,300 for 2023)
-        if _calculate_income(person) >= 4300:
-            return False
-            
-        # For testing, assume the guardian provides over half support
-        # In a real implementation, this would check actual support amounts
-        
-        # Not filing a joint return (unless only to claim refund)
-        if person.get('MAR') == 1:  # Married
-            return False
-            
-        return True
-        
-    return False
+
+    # Relationship-or-member-of-household + residency test
+    if not (_is_relative(person, potential_guardian)
+            and _lived_with_all_year(person, potential_guardian, household)):
+        return False
+
+    # Gross-income test (year-aware): must earn under the limit
+    if _calculate_income(person) >= _qr_gross_income_limit(tax_year):
+        return False
+
+    # Support test: guardian must provide over half of the person's support
+    if not _provides_over_half_support(person, potential_guardian, household):
+        return False
+
+    # Not filing a joint return (unless only to claim a refund)
+    if person.get('MAR') == 1:  # Married
+        return False
+
+    return True
 
 def _is_qualifying_child(
     child: pd.Series, 
@@ -346,21 +368,14 @@ def _is_child_relationship(
     household: pd.DataFrame
 ) -> bool:
     """Check if the relationship is a qualifying child relationship."""
-    # Check if potential_guardian is a parent, stepparent, or foster parent
+    # Check if potential_guardian is a parent, stepparent, or foster parent.
+    # _is_parent already covers own child (25/26/27) and grandchild (30) of
+    # the householder or their spouse.
     if (_is_parent(potential_guardian, child, household) or
             _is_stepparent(potential_guardian, child, household) or
             _is_foster_parent(potential_guardian, child, household)):
         return True
-    
-    # Also check for grandchild relationship (RELSHIPP=25)
-    # In PUMS data, many children are coded as grandchildren
-    child_rel = child.get('RELSHIPP', 0)
-    guardian_rel = potential_guardian.get('RELSHIPP', 0)
-    
-    if guardian_rel in [20, 21] and child_rel == 25:
-        # Householder or spouse with grandchild - this is a qualifying relationship
-        return True
-        
+
     return False
 
 def _is_student(person: pd.Series) -> bool:
@@ -406,71 +421,97 @@ def _provides_over_half_support(
     """
     person_income = _calculate_income(person)
     guardian_income = _calculate_income(potential_guardian)
-    
-    # Simplified: If person has no income and guardian has income, assume support
-    if person_income == 0 and guardian_income > 0:
-        return True
-        
-    # More sophisticated calculation would be needed
-    return False
+    age = float(person.get('AGEP', 0) or 0)
+
+    # The guardian is assumed to provide over half of support when the person's
+    # own income is below the age-appropriate self-support floor (imputed
+    # parental housing/food dominates) AND the guardian out-earns the person.
+    floor = _self_support_floor(age)
+    return person_income <= floor and guardian_income > person_income
+
 
 def _provides_over_half_own_support(person: pd.Series, household: pd.DataFrame) -> bool:
     """
     Check if a person provides over half of their own support.
-    
-    This is a simplified check based on income.
-    In reality, would need more detailed data on support.
+
+    PUMS has no support data, so income stands in: a household member living
+    rent-free who earns below the age-appropriate floor is assumed NOT to have
+    provided over half their own support (imputed parental housing + food in
+    Hawaii is roughly $15-25K/yr). Above the floor, own earnings plausibly
+    exceed half of total support.
     """
-    # FIXED: Person must have SUBSTANTIAL income to be considered self-supporting
-    # For 2023, if income exceeds ~$12,000 (rough threshold for self-support)
-    # Children with part-time jobs (<$5,000) should still be dependents
-    
     person_income = _calculate_income(person)
-    age = person.get('AGEP', 0)
-    
-    # Under 19: Must have >$10,000 income to be self-supporting
-    if age < 19:
-        return person_income > 10000
-    
-    # Age 19-23 (students): Must have >$15,000 income to be self-supporting  
-    # Many have part-time jobs but parents still provide majority of support
-    if age < 24:
-        return person_income > 15000
-    
-    # Adults 24+: If income >$12,000, likely self-supporting
-    return person_income > 12000
+    age = float(person.get('AGEP', 0) or 0)
+    return person_income > _self_support_floor(age)
+
+# Canonical RELSHIPP codes that denote a blood/marriage relative of the
+# householder eligible to be a qualifying relative (see
+# tax_modeler.units.relshipp_codes.QUALIFYING_RELATIVE_RELS): own children,
+# sibling, parent, grandchild, in-laws, other relative, foster child.
+# Householder (20), spouses (21/23) and unmarried partners (22/24) are NOT
+# in this set — spouses file together and the householder is the reference
+# point, not a dependent.
+_RELATIVE_RELSHIPP_CODES = QUALIFYING_RELATIVE_RELS
+
 
 def _is_relative(person1: pd.Series, person2: pd.Series) -> bool:
-    """Check if two people are related."""
-    # This is a simplified check
-    # In reality, would need to check family relationships
-    
-    # Check if they have the same last name (if available)
-    if 'NAME_LAST' in person1 and 'NAME_LAST' in person2:
-        if person1['NAME_LAST'] and person2['NAME_LAST']:
-            return person1['NAME_LAST'] == person2['NAME_LAST']
-    
-    # Could add more sophisticated relationship checking
+    """Check whether two household members are related, using PUMS RELSHIPP.
+
+    RELSHIPP encodes each person's relationship to the *householder*, not a
+    pairwise relationship. So:
+      - householder (20) is related to anyone coded as a relative;
+      - two relative-coded members are treated as related to each other
+        (e.g. the householder's adult child claiming the householder's
+        parent), which is the modeling assumption that lets a non-householder
+        guardian claim a non-householder relative.
+    """
+    def _rel(p):
+        try:
+            return int(p.get('RELSHIPP', 0) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    r1, r2 = _rel(person1), _rel(person2)
+
+    # Householder related to any coded relative (either direction).
+    if r1 == 20 and r2 in _RELATIVE_RELSHIPP_CODES:
+        return True
+    if r2 == 20 and r1 in _RELATIVE_RELSHIPP_CODES:
+        return True
+    # Two relatives of the same householder.
+    if r1 in _RELATIVE_RELSHIPP_CODES and r2 in _RELATIVE_RELSHIPP_CODES:
+        return True
     return False
+
+def _adjinc_factor(person: pd.Series) -> float:
+    """Return ADJINC as a multiplicative factor (~1.0).
+
+    PUMS stores ADJINC as an integer (e.g. 1184371 → 1.184371), but some
+    fixtures/test data store it already as a factor (e.g. 1.0). Treat any
+    value > 2 as the raw integer form (divide by 1e6); values <= 2 are taken
+    as an already-applied factor. Guards against silently zeroing incomes when
+    ADJINC=1.0 is divided by 1e6.
+    """
+    raw = person.get('ADJINC', 1.0)
+    try:
+        raw = float(raw)
+    except (TypeError, ValueError):
+        return 1.0
+    if raw <= 0:
+        return 1.0
+    return raw / 1_000_000.0 if raw > 2 else raw
+
 
 def _calculate_income(person: pd.Series) -> float:
     """Calculate total income for a person."""
     # Use PINCP if available
     pincp = person.get('PINCP', 0)
     if pincp and pincp > 0:
-        # CRITICAL: ADJINC in PUMS is stored as integer (e.g., 1184371 = 1.184371)
-        adjinc_raw = person.get('ADJINC', 1000000)
-        adjinc = float(adjinc_raw) / 1000000.0 if adjinc_raw and adjinc_raw > 0 else 1.0
-        return float(pincp) * adjinc
-    
+        return float(pincp) * _adjinc_factor(person)
+
     # Fallback to summing components
     income = 0.0
     for col in ['WAGP', 'SEMP', 'INTP', 'RETP', 'SSP', 'SSIP', 'PAP', 'OIP']:
         income += float(person.get(col, 0) or 0)
-    
-    # Apply ADJINC
-    adjinc_raw = person.get('ADJINC', 1000000)
-    adjinc = float(adjinc_raw) / 1000000.0 if adjinc_raw and adjinc_raw > 0 else 1.0
-    income *= adjinc
-    
-    return income
+
+    return income * _adjinc_factor(person)

@@ -1,0 +1,25 @@
+# Generated report artifacts — stale run outputs
+reports/poverty_impact_2022*/
+reports/poverty_impact_2024_tier[134]*/
+reports/poverty_impact_2024_review/
+reports/poverty_impact_2024_tier4_legacy/
+reports/poverty_impact_2025_tier[134]*/
+reports/eitc_ctc_2022*/
+reports/eitc_ctc_2025*/
+
+# Raw PUMS microdata — too large, fetched on-demand
+packages/data/
+
+# Build caches and runtime artifacts
+backtests/
+dashboard/dist/
+data/cache/
+
+# Binary/generated file types
+*.parquet
+*.zip
+*.pdf
+*.pkl
+
+# Dependency lock file (large, not source)
+uv.lock

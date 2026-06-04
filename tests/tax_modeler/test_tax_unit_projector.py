@@ -241,3 +241,74 @@ def test_no_county_column_uses_state_proxy():
     assert max(ratios) - min(ratios) < 1e-9, (
         f"Expected uniform growth factor without county, got varying ratios: {ratios}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Year-aware credit recalculation (Phase 2 of EITC/CTC geo plan)
+# ---------------------------------------------------------------------------
+
+def _two_kid_30k_unit() -> pd.DataFrame:
+    """A 2-child single filer at $30K EI — squarely in the EITC flat region.
+
+    Uses PUMS-style integer relationship codes (22 = natural-born child) and
+    citizenship code 1 so that both CTC and EITC qualifying-child tests pass.
+    The earned income exceeds the EITC phase-in point for 2 kids across all
+    years and stays below the single-filer phaseout start for all years.
+    """
+    return pd.DataFrame([{
+        "filing_status": "single",
+        "income": 30_000.0,
+        "earned_income": 30_000.0,
+        "investment_income": 0.0,
+        "num_dependents": 2,
+        "num_qualifying_children": 2,
+        # CTC uses ``dependents`` (string code path).
+        "dependents": [
+            {"age": 8, "relationship": "25", "citizenship": "1"},
+            {"age": 12, "relationship": "25", "citizenship": "1"},
+        ],
+        # EITC uses ``dependents_details`` with integer codes.
+        "dependents_details": [
+            {"age": 8, "relationship": 25, "citizenship": 1},
+            {"age": 12, "relationship": 25, "citizenship": 1},
+        ],
+    }])
+
+
+def test_recalculate_ctc_refundable_cap_changes_by_year():
+    """_recalculate_ctc must apply the target year's refundable-cap parameter."""
+    from tax_modeler.projection.tax_unit_projector import _recalculate_ctc
+
+    df = _two_kid_30k_unit()
+
+    out_2022 = _recalculate_ctc(df, tax_year=2022)
+    out_2025 = _recalculate_ctc(df, tax_year=2025)
+
+    # 2 kids, EI=$30k → ACTC = min(15%*(30k-2.5k), cap) per child
+    # = min(4_125, cap_per_child) per child
+    # 2022 cap = $1,500/child → ACTC caps at 2*1500 = 3_000
+    # 2025 cap = $1,700/child → ACTC caps at 2*1700 = 3_400
+    assert out_2022["ctc_refundable"].iloc[0] == pytest.approx(3_000)
+    assert out_2025["ctc_refundable"].iloc[0] == pytest.approx(3_400)
+    # Total CTC capped at $2,000/child * 2 = $4,000 either way (no phaseout).
+    assert out_2022["ctc_total"].iloc[0] == 4_000
+    assert out_2025["ctc_total"].iloc[0] == 4_000
+
+
+def test_recalculate_eitc_grows_with_irs_parameter_indexing():
+    """At the same nominal EI, EITC must be at least as large in TY 2025 as TY 2022.
+
+    EI=$30k for 2 kids sits in the phaseout region for both years (single
+    filer phaseout starts ~$20k). As the IRS inflates phaseout-start and
+    max-credit each year, the credit at a fixed nominal EI strictly grows.
+    """
+    from tax_modeler.credits.eitc import calculate_eitc_for_tax_units
+
+    df = _two_kid_30k_unit()
+    out_2022 = calculate_eitc_for_tax_units(df, tax_year=2022)
+    out_2025 = calculate_eitc_for_tax_units(df, tax_year=2025)
+
+    e22 = out_2022["eitc_amount"].iloc[0]
+    e25 = out_2025["eitc_amount"].iloc[0]
+    assert e22 > 0
+    assert e25 > e22, f"Expected EITC TY2025 > TY2022 at fixed $30K EI; got 2022={e22:.2f}, 2025={e25:.2f}"

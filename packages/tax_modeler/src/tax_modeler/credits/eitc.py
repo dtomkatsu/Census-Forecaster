@@ -1,12 +1,20 @@
 """
 Earned Income Tax Credit (EITC) Calculation Module
 
-Implements the federal EITC based on 2023 tax law parameters.
+Implements the federal EITC with year-specific statutory parameters.
 The EITC is a refundable credit for low-to-moderate income workers.
+
+Supported tax years: 2022, 2023, 2024, 2025.
+
+Sources (IRS Revenue Procedures, inflation-adjusted tables):
+- TY 2022: IRS Rev. Proc. 2021-45
+- TY 2023: IRS Rev. Proc. 2022-38
+- TY 2024: IRS Rev. Proc. 2023-34
+- TY 2025: IRS Rev. Proc. 2024-40
 
 Key rules:
 - Must have earned income (wages or self-employment)
-- Investment income must not exceed $11,000
+- Investment income must not exceed the year-specific limit
 - Married Filing Separately filers are ineligible
 - Credit amount depends on filing status, number of qualifying children,
   and earned income / AGI (the lesser determines the credit)
@@ -18,6 +26,8 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
+
+from tax_modeler.units.relshipp_codes import EITC_QUALIFYING_CHILD_RELS
 
 
 @dataclass
@@ -33,12 +43,14 @@ class EITCChildParameters:
 
 @dataclass
 class EITCParameters:
-    """
-    2023 EITC parameters by number of qualifying children.
+    """EITC parameters for a single tax year.
 
-    Source: IRS Revenue Procedure 2022-38
+    Use ``eitc_parameters_for_year(year)`` to build the parameters for a
+    supported tax year. The no-argument constructor returns the TY 2023
+    defaults to preserve historical call sites.
     """
-    investment_income_limit: float = 11_000  # No EITC if investment income exceeds this
+
+    investment_income_limit: float = 11_000  # TY 2023 default
 
     by_children: Dict[int, EITCChildParameters] = field(default_factory=lambda: {
         0: EITCChildParameters(
@@ -76,6 +88,162 @@ class EITCParameters:
     })
 
 
+# ---------------------------------------------------------------------------
+# Year-keyed parameter factories
+# ---------------------------------------------------------------------------
+
+# Phase-in / phase-out rates are statutory (IRC §32) and identical across years.
+# Only the max credit, phase-in completion income, phaseout start income, and
+# investment-income limit are inflation-adjusted (per the cited Rev. Procs.).
+
+_EITC_PHASE_IN_RATES = {0: 0.0765, 1: 0.34, 2: 0.40, 3: 0.45}
+_EITC_PHASEOUT_RATES = {0: 0.0765, 1: 0.1598, 2: 0.2106, 3: 0.2106}
+
+
+def _build_eitc_params(
+    *,
+    investment_income_limit: float,
+    max_credits: Dict[int, float],
+    phase_in_ends: Dict[int, float],
+    phaseout_start_single: Dict[int, float],
+    phaseout_start_joint: Dict[int, float],
+) -> EITCParameters:
+    by_children = {
+        n: EITCChildParameters(
+            max_credit=max_credits[n],
+            phase_in_rate=_EITC_PHASE_IN_RATES[n],
+            phase_in_ends=phase_in_ends[n],
+            phaseout_start_single=phaseout_start_single[n],
+            phaseout_start_joint=phaseout_start_joint[n],
+            phaseout_rate=_EITC_PHASEOUT_RATES[n],
+        )
+        for n in (0, 1, 2, 3)
+    }
+    p = EITCParameters(investment_income_limit=investment_income_limit)
+    p.by_children = by_children
+    return p
+
+
+def _eitc_2022() -> EITCParameters:
+    # IRS Rev. Proc. 2021-45 (TY 2022). Investment income limit $10,300.
+    return _build_eitc_params(
+        investment_income_limit=10_300,
+        max_credits={0: 560, 1: 3_733, 2: 6_164, 3: 6_935},
+        phase_in_ends={0: 7_320, 1: 10_980, 2: 15_410, 3: 15_410},
+        phaseout_start_single={0: 9_160, 1: 20_130, 2: 20_130, 3: 20_130},
+        phaseout_start_joint={0: 15_290, 1: 26_260, 2: 26_260, 3: 26_260},
+    )
+
+
+def _eitc_2023() -> EITCParameters:
+    # IRS Rev. Proc. 2022-38 (TY 2023). Investment income limit $11,000.
+    return _build_eitc_params(
+        investment_income_limit=11_000,
+        max_credits={0: 600, 1: 3_995, 2: 6_604, 3: 7_430},
+        phase_in_ends={0: 7_840, 1: 11_750, 2: 16_510, 3: 16_510},
+        phaseout_start_single={0: 9_800, 1: 21_560, 2: 21_560, 3: 21_560},
+        phaseout_start_joint={0: 17_640, 1: 28_120, 2: 28_120, 3: 28_120},
+    )
+
+
+def _eitc_2024() -> EITCParameters:
+    # IRS Rev. Proc. 2023-34 (TY 2024). Investment income limit $11,600.
+    return _build_eitc_params(
+        investment_income_limit=11_600,
+        max_credits={0: 632, 1: 4_213, 2: 6_960, 3: 7_830},
+        phase_in_ends={0: 8_260, 1: 12_390, 2: 17_400, 3: 17_400},
+        phaseout_start_single={0: 10_330, 1: 22_720, 2: 22_720, 3: 22_720},
+        phaseout_start_joint={0: 17_250, 1: 29_640, 2: 29_640, 3: 29_640},
+    )
+
+
+def _eitc_2025() -> EITCParameters:
+    # IRS Rev. Proc. 2024-40 (TY 2025). Investment income limit $11,950.
+    return _build_eitc_params(
+        investment_income_limit=11_950,
+        max_credits={0: 649, 1: 4_328, 2: 7_152, 3: 8_046},
+        phase_in_ends={0: 8_490, 1: 12_730, 2: 17_880, 3: 17_880},
+        phaseout_start_single={0: 10_620, 1: 23_350, 2: 23_350, 3: 23_350},
+        phaseout_start_joint={0: 17_730, 1: 30_470, 2: 30_470, 3: 30_470},
+    )
+
+
+_EITC_PARAMS_BY_YEAR = {
+    2022: _eitc_2022,
+    2023: _eitc_2023,
+    2024: _eitc_2024,
+    2025: _eitc_2025,
+}
+
+
+def eitc_parameters_for_year(tax_year: int) -> EITCParameters:
+    """Return EITC parameters for the requested tax year.
+
+    Raises ``KeyError`` for unsupported years.
+    """
+    if tax_year not in _EITC_PARAMS_BY_YEAR:
+        raise KeyError(
+            f"EITC parameters not defined for tax year {tax_year}. "
+            f"Supported years: {sorted(_EITC_PARAMS_BY_YEAR)}"
+        )
+    return _EITC_PARAMS_BY_YEAR[tax_year]()
+
+
+def classify_eitc_region(
+    earned_income,
+    num_qualifying_children,
+    filing_status,
+    *,
+    tax_year: int,
+) -> np.ndarray:
+    """Classify each row's federal-EITC schedule region: phase_in / plateau / phase_out.
+
+    Vectorized over array-like inputs. Boundary convention: earnings
+    exactly equal to ``phase_in_ends`` or ``phaseout_start`` map to
+    ``"plateau"``; strict inequality is required to fall into
+    ``"phase_in"`` or ``"phase_out"``. Used by the intensive-margin
+    behavioral response in ``scenarios/eitc_labor_response.py`` to apply
+    a piecewise hours elasticity (phase-in workers respond most
+    strongly to EITC subsidy changes).
+
+    Parameters
+    ----------
+    earned_income, num_qualifying_children, filing_status
+        Array-like, all the same length. ``num_qualifying_children`` is
+        clamped to [0, 3] to match the EITC parameter schedule (3 = "3
+        or more"). ``filing_status`` strings are compared against
+        ``"married_filing_jointly"`` for the joint-vs-single phaseout
+        boundary.
+    tax_year
+        Used to look up the EITC parameter set; must be a supported
+        year per :func:`eitc_parameters_for_year`.
+
+    Returns
+    -------
+    np.ndarray of object dtype, values in {"phase_in", "plateau", "phase_out"}.
+    """
+    params = eitc_parameters_for_year(tax_year)
+    ei = np.asarray(earned_income, dtype=float)
+    n_kids = np.clip(np.asarray(num_qualifying_children, dtype=int), 0, 3)
+    is_joint = np.asarray(filing_status) == "married_filing_jointly"
+
+    phase_in_ends = np.array(
+        [params.by_children[k].phase_in_ends for k in n_kids], dtype=float
+    )
+    phaseout_start_single = np.array(
+        [params.by_children[k].phaseout_start_single for k in n_kids], dtype=float
+    )
+    phaseout_start_joint = np.array(
+        [params.by_children[k].phaseout_start_joint for k in n_kids], dtype=float
+    )
+    phaseout_start = np.where(is_joint, phaseout_start_joint, phaseout_start_single)
+
+    region = np.full(len(ei), "plateau", dtype=object)
+    region[ei < phase_in_ends] = "phase_in"
+    region[ei > phaseout_start] = "phase_out"
+    return region
+
+
 def calculate_eitc(tax_unit: Dict, tax_year: int = 2023) -> Dict[str, float]:
     """
     Calculate the EITC for a single tax unit.
@@ -96,7 +264,7 @@ def calculate_eitc(tax_unit: Dict, tax_year: int = 2023) -> Dict[str, float]:
             - eitc_qualifying_children: Number of qualifying children for EITC
             - eitc_eligible: Whether the unit is eligible for EITC at all
     """
-    params = EITCParameters()
+    params = eitc_parameters_for_year(tax_year)
 
     result = {
         'eitc_amount': 0.0,
@@ -127,6 +295,12 @@ def calculate_eitc(tax_unit: Dict, tax_year: int = 2023) -> Dict[str, float]:
     num_qualifying = _count_qualifying_children_eitc(dependents)
     result['eitc_qualifying_children'] = num_qualifying
 
+    # IRC §32(c)(1)(A)(ii): childless filers must be aged 25-64
+    if num_qualifying == 0:
+        filer_age = int(tax_unit.get('primary_agep') or 40)
+        if not (25 <= filer_age <= 64):
+            return result
+
     # Clamp to the highest-bracket key (3 = "3 or more")
     bracket_key = min(num_qualifying, 3)
     child_params = params.by_children[bracket_key]
@@ -156,14 +330,15 @@ def _count_qualifying_children_eitc(dependents: List[Dict]) -> int:
 
     EITC qualifying child rules (differ from CTC):
     - Age: under 19; or under 24 if a full-time student (SCHL >= 16); or any age if disabled (DIS=1)
-    - Relationship: biological child (22), adopted child (23), stepchild (24),
-                    grandchild (25), brother/sister (26), foster child (34)
+    - Relationship: own child (bio 25 / adopted 26 / step 27), sibling (28),
+                    grandchild (30), foster child (35) -- see
+                    ``relshipp_codes.EITC_QUALIFYING_CHILD_RELS``
     - Must be a US citizen/national/resident alien (CIT 1-4)
     - Cannot be married filing jointly (simplified: check MAR != 1)
 
     Note: EITC does NOT have the under-17 age cap that CTC uses.
     """
-    QUALIFYING_RELATIONSHIPS = {22, 23, 24, 25, 26, 34}
+    QUALIFYING_RELATIONSHIPS = EITC_QUALIFYING_CHILD_RELS
     count = 0
 
     for dep in dependents:
@@ -231,7 +406,10 @@ def _compute_credit(
     return credit
 
 
-def calculate_eitc_for_tax_units(tax_units_df: pd.DataFrame) -> pd.DataFrame:
+def calculate_eitc_for_tax_units(
+    tax_units_df: pd.DataFrame,
+    tax_year: int = 2023,
+) -> pd.DataFrame:
     """
     Calculate EITC for all tax units in a DataFrame.
 
@@ -240,6 +418,7 @@ def calculate_eitc_for_tax_units(tax_units_df: pd.DataFrame) -> pd.DataFrame:
     Args:
         tax_units_df: DataFrame of tax units (must include income, earned_income,
                       investment_income, filing_status, dependents_details).
+        tax_year: Tax year for parameter selection (default 2023).
 
     Returns:
         DataFrame with EITC columns added.
@@ -247,7 +426,7 @@ def calculate_eitc_for_tax_units(tax_units_df: pd.DataFrame) -> pd.DataFrame:
     results = []
     for _, row in tax_units_df.iterrows():
         unit = row.to_dict()
-        eitc = calculate_eitc(unit)
+        eitc = calculate_eitc(unit, tax_year=tax_year)
         unit.update(eitc)
         results.append(unit)
     return pd.DataFrame(results)

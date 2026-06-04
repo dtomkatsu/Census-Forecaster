@@ -22,6 +22,41 @@ If poverty_rate_factor < 1 (poverty decreased): EITC amounts shrink.
 correlated with B19013 and noisier, so a half-elasticity is conservative and
 avoids over-counting the distributional signal that B19013 partially captures.
 
+Empirical calibration status
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The 0.5 default is a literature half-elasticity (consistent with Tax
+Policy Center and ITEP state-model conventions). An empirical fit was
+attempted in 2026-Q2 using a 5-year Hawaii panel:
+
+  * **Data**: IRS SOI Historic Table 2 Hawaii EITC return counts for
+    TY 2015–2022 (bundled at ``data/external/irs_soi_hi_eitc_panel.csv``);
+    ACS 1-year B19013 median household income and S1701 poverty rate
+    for Honolulu County (GEOID 15003) as the state proxy.
+  * **Method**: see
+    :mod:`tax_modeler.calibration.eitc_alpha_calibration`. OLS in log-
+    space, no intercept (B19013 factor is the model's headline anchor).
+  * **Result**: α ≈ 0.71, RMSE 0.03 (in log-EITC-growth units), but
+    **n=2 year-pairs only** after excluding 2019→20 (COVID), 2020→21
+    (ARPA expansion), and 2021→22 (ARPA expiration). Per-pair α swings
+    widely (-0.43 to 1.01), so the OLS fit is statistically unidentified.
+
+**Decision: keep 0.5 as the production default** until a longer
+COVID-free / ARPA-free panel becomes available. The 0.71 empirical
+point estimate is within the existing 0.3 / 0.5 / 0.7 sweep band, so
+the sweep already brackets the empirical range. The calibration module
+is shipped as infrastructure — re-run after IRS publishes TY 2023 or
+when pre-2018 IRS files become accessible to extend the panel and
+restore statistical power.
+
+Refresh recipe::
+
+    python -m tax_modeler.scripts.fetch_irs_soi_historic_table2 \
+        --years 2015-2023
+    python -c "from tax_modeler.calibration.eitc_alpha_calibration \
+        import calibrate_eitc_poverty_alpha, write_calibration_artifact; \
+        write_calibration_artifact(calibrate_eitc_poverty_alpha())"
+
 The Hawaii low-income tax credit (``hi_low_income_credit``) is also scaled by
 the same factor, since it specifically targets filers below a poverty threshold.
 ``hi_tax_liability`` is updated consistently to preserve the post-credit total.

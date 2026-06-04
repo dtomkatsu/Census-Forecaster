@@ -119,7 +119,7 @@ def test_validate_household_coverage():
         'SERIALNO': ['hh1', 'hh1'],
         'SPORDER': ['1', '2'],
         'AGEP': [30, 25],
-        'RELSHIPP': [20, 22]  # 20=Householder, 22=Child
+        'RELSHIPP': [20, 25]  # 20=Householder, 25=Biological child
     }).set_index('SPORDER')
     
     issues = TaxUnitValidator.validate_household_coverage(tax_units, household_members)

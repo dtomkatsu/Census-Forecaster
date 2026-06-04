@@ -167,6 +167,40 @@ class TaxSystemRegistry:
         )
 
     @classmethod
+    def get_sb3125_cd2_system(cls, year: int) -> TaxSystemConfig:
+        """SB 3125 CD2 (2026 conference draft 2) — overrides Act 46 brackets for TY 2027+.
+
+        Bracket schedule is identical to the sb3125_cd1 tag in the CSV (which was
+        already loaded with CD2-vintage values):
+          - Lower 2nd/3rd brackets: 2.50% and 5.00% (vs 3.20%/5.50% in Act 46 TY2027)
+          - New 13% top bracket at $1,000,000+ MFJ / $750,000+ HoH / $500,000+ Single
+          - year=2027 schedule applies TY 2027-2028 (bill: "after Dec 31, 2026")
+          - year=2029 schedule applies TY 2029+      (bill: "after Dec 31, 2028")
+
+        CD2 adds vs CD1:
+          - AGI limits on REEC ($175K single / $350K MFJ) — already in credit overlay
+          - REEC aggregate cap ($40M/yr 2027-2030, $0 from 2031) — already in overlay
+          - CGEC sunset after Dec 31, 2027 — already in overlay
+          - TCRA acceleration to Jan 1, 2029 — already in overlay
+          - §235-110.51 (Tech Infrastructure Renovation Credit) repeal TY2028+ — ~$0
+          - §235-110.9  (High Tech Business Investment Credit) repeal TY2029+ — ~$0
+
+        Standard deductions follow Act 46 phase-in (bill does not amend deductions).
+        """
+        if year < 2027:
+            raise ValueError(f"SB 3125 CD2 brackets only apply to year >= 2027, got {year}")
+        bracket_year = 2027 if year < 2029 else 2029
+        return TaxSystemConfig(
+            name=f"sb3125_cd2_{year}",
+            year=year,
+            bracket_year=bracket_year,
+            standard_deduction_year=year,
+            personal_exemption=cls.PERSONAL_EXEMPTIONS.get(year, 1200),
+            description=f"SB 3125 CD2 — TY {year} (lower mid-bracket rates, 13% at $1M+ MFJ)",
+            bracket_scenario='sb3125_cd2',
+        )
+
+    @classmethod
     def get_sb3125_original_2027_system(cls) -> TaxSystemConfig:
         """SB3125 original proposal (2026 session, before SD1 amendments).
 

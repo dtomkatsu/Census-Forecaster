@@ -8,6 +8,7 @@ __pycache__/
 htmlcov/
 build/
 dist/
+!dashboard/dist/
 .tox/
 
 # Virtual envs
@@ -36,3 +37,10 @@ data/tax_modeler/processed/
 !data/tax_modeler/raw/.gitkeep
 !data/tax_modeler/external/.gitkeep
 !data/tax_modeler/processed/.gitkeep
+
+# Raw PUMS microdata (downloaded on demand from
+# https://www2.census.gov/programs-surveys/acs/data/pums/2022/5-Year/)
+packages/data/raw/pums/*.csv
+packages/data/raw/pums/*.parquet
+packages/data/raw/pums/*.zip
+packages/data/raw/pums/*.pdf

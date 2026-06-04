@@ -44,8 +44,13 @@ def load_hawaii_pums(
     year: int = 2022,
     variables: Sequence[str] = (),
     api_key: str | None = None,
+    *,
+    state_config=None,
 ) -> pd.DataFrame:
-    """Fetch Hawaii (state FIPS 15) PUMS records as a flat DataFrame.
+    """Fetch state PUMS records as a flat DataFrame.
+
+    Despite the historical name, the state FIPS is read from
+    ``state_config.state_fips`` — defaults to Hawaii (``"15"``).
 
     Each row is one ``PumsRecord`` flattened so its ``variables`` dict is
     expanded into top-level columns. The first three columns are always
@@ -62,6 +67,9 @@ def load_hawaii_pums(
     api_key:
         Optional Census API key (override / supplement the
         ``CENSUS_API_KEY`` environment variable).
+    state_config:
+        State configuration object.  Defaults to
+        :data:`tax_modeler.config.HAWAII`.
 
     Returns
     -------
@@ -69,8 +77,11 @@ def load_hawaii_pums(
         One row per PUMS housing unit; columns ``serial``, ``puma``,
         ``weight`` plus each requested variable.
     """
+    from tax_modeler.config.state_config import HAWAII
+
+    cfg = state_config if state_config is not None else HAWAII
     records: list[PumsRecord] = fetch_pums(
-        state_fips="15",
+        state_fips=cfg.state_fips,
         variables=tuple(variables),
         year=year,
         api_key=api_key,

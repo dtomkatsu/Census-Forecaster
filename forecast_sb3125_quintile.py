@@ -1,4 +1,12 @@
-"""SB 3125 CD1 quintile distributional analysis (MID scenario, TY 2027-2031).
+"""SB 3125 quintile distributional analysis (MID scenario, TY 2027-2031).
+
+Usage:
+  python forecast_sb3125_quintile.py --cd cd1   # SB 3125 CD1 (default)
+  python forecast_sb3125_quintile.py --cd sd1   # SB 3125 SD1
+
+Replaces:
+  forecast_sb3125_quintile.py   (was CD1-only)
+  forecast_sb3125_sd1_quintile.py  (SD1 variant)
 
 Uses the full revised pipeline:
   - use_forward_targets:  rake to forward DOTAX-shaped filer counts;
@@ -14,13 +22,19 @@ REEC credit overlay applied via compute_credit_overlay (REEC §235-12.5,
 CGEC §235-110.31, TCRA §235-15) at MID scenario parameters:
     obbba_mid REEC demand, eff_share=0.65, cgec_growth=1.5%/yr, reec_cf_m=$6M.
 
-Outputs:
+Outputs (CD1):
   /tmp/sb3125_quintile_revised_2027_2031.csv
   /tmp/sb3125_bracket_revised_2027_2031.csv
   /tmp/sb3125_quintile_distributional_report.pdf
+
+Outputs (SD1):
+  /tmp/sb3125_sd1_quintile_revised_2027_2031.csv
+  /tmp/sb3125_sd1_bracket_revised_2027_2031.csv
+  /tmp/sb3125_sd1_quintile_distributional_report.pdf
 """
 from __future__ import annotations
 
+import argparse
 import logging
 import sys
 import traceback
@@ -68,13 +82,28 @@ TARGET_YEARS        = [2027, 2028, 2029, 2030, 2031]
 CALIBRATED_PKL = Path("/tmp/sb3125_calibrated_base.pkl")
 
 
-def main() -> None:
+def _parse_args():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument(
+        "--cd", choices=["cd1", "sd1"], default="cd1",
+        help="Conference draft to model: cd1=CD1 (default), sd1=SD1",
+    )
+    return p.parse_args()
+
+
+def main(cd: str = "cd1") -> None:
     if not CALIBRATED_PKL.exists():
-        print(f"ERROR: {CALIBRATED_PKL} not found. Run forecast_sb3125_cd1_enhanced.py first.")
+        print(f"ERROR: {CALIBRATED_PKL} not found. Run forecast_sb3125_enhanced.py --cd {cd} first.")
         sys.exit(1)
 
     import time
     wall = time.perf_counter()
+
+    get_scenario_system = (
+        TaxSystemRegistry.get_sb3125_cd1_system if cd == "cd1"
+        else TaxSystemRegistry.get_sb3125_sd1_system
+    )
+    cd_label = cd.upper()  # "CD1" or "SD1"
 
     print("Loading calibrated base...", flush=True)
     base = pd.read_pickle(CALIBRATED_PKL)
@@ -137,7 +166,7 @@ def main() -> None:
         )
 
         baseline_cfg = TaxSystemRegistry.get_act46_system(yr)
-        sb3125_cfg   = TaxSystemRegistry.get_sb3125_cd1_system(yr)
+        sb3125_cfg   = get_scenario_system(yr)
 
         # COR scaling: ratio of official COR FY{yr} IIT projection to our
         # microsim Act 46 baseline. Brings totals into ITEP/COR comparable units.
@@ -173,8 +202,9 @@ def main() -> None:
     all_quintiles = pd.concat(quintile_frames, ignore_index=True)
     all_brackets  = pd.concat(bracket_frames,  ignore_index=True)
 
-    Q_CSV = Path("/tmp/sb3125_quintile_revised_2027_2031.csv")
-    B_CSV = Path("/tmp/sb3125_bracket_revised_2027_2031.csv")
+    _prefix = "" if cd == "cd1" else f"_{cd}_"
+    Q_CSV = Path(f"/tmp/sb3125{_prefix}quintile_revised_2027_2031.csv")
+    B_CSV = Path(f"/tmp/sb3125{_prefix}bracket_revised_2027_2031.csv")
     all_quintiles.to_csv(Q_CSV, index=False)
     all_brackets.to_csv(B_CSV, index=False)
     print(f"Saved: {Q_CSV}", flush=True)
@@ -184,7 +214,7 @@ def main() -> None:
     q27 = all_quintiles[all_quintiles["tax_year"] == 2027]
     pd.set_option("display.float_format", "{:,.1f}".format)
     print("\n" + "=" * 100, flush=True)
-    print("SB 3125 CD1 vs Act 46 — MID Scenario, TY 2027 (full revised pipeline)", flush=True)
+    print(f"SB 3125 {cd_label} vs Act 46 — MID Scenario, TY 2027 (full revised pipeline)", flush=True)
     print("=" * 100, flush=True)
     print(q27[[
         "quintile", "household_count",
@@ -194,16 +224,22 @@ def main() -> None:
     ]].to_string(index=False), flush=True)
 
     total_act46 = (all_quintiles[all_quintiles["tax_year"]==2027]["total_act46_$M"]).sum()
-    total_sb    = (all_quintiles[all_quintiles["tax_year"]==2027]["total_cd1_$M"]).sum()
+    # Scenario column: try cd-specific name, fall back to either known variant
+    _scen_col = next(
+        (c for c in [f"total_{cd}_$M", "total_cd1_$M", "total_sd1_$M"]
+         if c in all_quintiles.columns),
+        "total_change_$M",
+    )
+    total_sb    = (all_quintiles[all_quintiles["tax_year"]==2027][_scen_col]).sum()
     total_brk   = (all_quintiles[all_quintiles["tax_year"]==2027]["total_bracket_$M"]).sum()
     total_crd   = (all_quintiles[all_quintiles["tax_year"]==2027]["total_credit_loss_$M"]).sum()
     print(
         f"\nTY 2027 totals:"
-        f"\n  Act 46 baseline:        ${total_act46:>9.1f}M"
-        f"\n  SB 3125 CD1 scenario:   ${total_sb:>9.1f}M"
-        f"\n  Bracket delta:          ${total_brk:>+9.1f}M"
-        f"\n  Credit-loss overlay:    ${total_crd:>+9.1f}M"
-        f"\n  Total fiscal impact:    ${total_sb-total_act46+total_crd:>+9.1f}M",
+        f"\n  Act 46 baseline:          ${total_act46:>9.1f}M"
+        f"\n  SB 3125 {cd_label} scenario:   ${total_sb:>9.1f}M"
+        f"\n  Bracket delta:            ${total_brk:>+9.1f}M"
+        f"\n  Credit-loss overlay:      ${total_crd:>+9.1f}M"
+        f"\n  Total fiscal impact:      ${total_sb-total_act46+total_crd:>+9.1f}M",
         flush=True,
     )
 
@@ -230,12 +266,12 @@ def main() -> None:
 
     # Generate PDF
     print("\nGenerating PDF...", flush=True)
-    _make_pdf(all_quintiles)
+    _make_pdf(all_quintiles, cd=cd)
 
     print(f"Total elapsed: {time.perf_counter()-wall:.1f}s", flush=True)
 
 
-def _make_pdf(df: pd.DataFrame) -> None:
+def _make_pdf(df: pd.DataFrame, *, cd: str = "cd1") -> None:
     import matplotlib
     matplotlib.rcParams["text.parse_math"] = False
     matplotlib.rcParams["font.family"] = ["DejaVu Sans"]
@@ -243,7 +279,9 @@ def _make_pdf(df: pd.DataFrame) -> None:
     import numpy as np
     from matplotlib.backends.backend_pdf import PdfPages
 
-    PDF_OUT = Path("/tmp/sb3125_quintile_distributional_report.pdf")
+    _prefix = "" if cd == "cd1" else f"_{cd}_"
+    PDF_OUT = Path(f"/tmp/sb3125{_prefix}quintile_distributional_report.pdf")
+    cd_label = cd.upper()
 
     HH_BREAKS = [28_336, 60_915, 100_510, 168_638]
     Q_LABELS  = ["Q1 (bottom 20%)", "Q2", "Q3", "Q4", "Q5 (top 20%)"]
@@ -284,7 +322,7 @@ def _make_pdf(df: pd.DataFrame) -> None:
     def table_page(pdf):
         fig = plt.figure(figsize=(11, 11))
         fig.suptitle(
-            "SB 3125 CD1 vs Act 46 — Distributional Impact (MID Scenario)",
+            f"SB 3125 {cd_label} vs Act 46 — Distributional Impact (MID Scenario)",
             fontsize=15, fontweight="bold", y=0.97, color=NAVY,
         )
         fig.text(
@@ -401,24 +439,25 @@ def _make_pdf(df: pd.DataFrame) -> None:
     with PdfPages(PDF_OUT) as pdf:
         table_page(pdf)
         chart_page(pdf, avg_chart_title,
-                   "SB 3125 CD1 vs Act 46 — MID Scenario",
+                   f"SB 3125 {cd_label} vs Act 46 — MID Scenario",
                    avg_col, "dollar", BLUE)
         chart_page(pdf, "Share of Households with a Tax Increase",
-                   "SB 3125 CD1 vs Act 46 — MID Scenario",
+                   f"SB 3125 {cd_label} vs Act 46 — MID Scenario",
                    "pct_pay_more", "pct", NAVY)
         chart_page(pdf, "Total Tax Change by Quintile",
-                   "SB 3125 CD1 vs Act 46 — MID Scenario",
+                   f"SB 3125 {cd_label} vs Act 46 — MID Scenario",
                    tot_col, "millions", BLUE)
         m = pdf.infodict()
-        m["Title"] = "SB 3125 CD1 Distributional Analysis (Revised Pipeline)"
+        m["Title"] = f"SB 3125 {cd_label} Distributional Analysis (Revised Pipeline)"
         m["Author"] = "Census-Forecaster"
 
     print(f"Saved: {PDF_OUT}", flush=True)
 
 
 if __name__ == "__main__":
+    args = _parse_args()
     try:
-        main()
+        main(cd=args.cd)
     except Exception as e:
         traceback.print_exc()
         sys.exit(1)

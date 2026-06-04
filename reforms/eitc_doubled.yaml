@@ -1,0 +1,14 @@
+name: eitc_doubled
+benefit_overrides:
+  eitc:
+    amount_pct: 2.0       # Federal EITC doubled
+  hi_eitc:
+    rate_of_federal: 0.80   # HI EITC from 40% to 80% of federal
+metadata:
+  created: 2026-05-09
+  author: dtomkatsu
+  description: >
+    Federal EITC × 2 paired with raising the HI state EITC rate from
+    its current-law 40% (Act 209, 2023) to 80% of federal. Headline
+    bottom-quintile expansion.
+  citation: Phase 6 demo (forecast_eitc_doubled.py)
