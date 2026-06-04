@@ -347,6 +347,49 @@ Key facts feeding this methodology:
   Census-recommended treatment for charitable cash disbursements
   (Census P60-280 §III).
 
+### Updated literature review (data collected 2026-06)
+
+A second, more thorough pass through the RxKids evidence base
+(`rxkids.org/about`, `/impact`, `/dashboard`, `/research/publications`):
+
+**Program design (validates the model's parameters):**
+- Payments: **$1,500 prenatal + $500/mo for 6 *or* 12 months** — the
+  duration is set per community by funds raised. (Confirms our payment
+  amounts and the modeled 6-vs-12-month option.)
+- **Universal, residency-based, no income test** in Michigan. (Confirms
+  Michigan offers no income-eligibility-grain precedent — the Hawaiʻi
+  income test is the bill's own design.)
+
+**Take-up (empirical anchor for `takeup_rate`):**
+- **98% of eligible newborns** enrolled (Jan 2024–Sept 2025); **>90% of
+  mothers enroll prenatally** — "far exceeds WIC and SNAP." This is the
+  direct evidence for the delivery-channel anchoring (§2) and shows the
+  0.90 default is *conservative* vs Flint. It also distinguishes the arms:
+  **postnatal ~0.98, prenatal ~0.90** (a possible model refinement).
+- Dashboard (May 2026): **$41.77M disbursed, 11,751 families, 8,936 births**
+  (~$3,553/family *to date* — a mid-stream snapshot, not the lifetime
+  per-birth entitlement, so consistent with our ~$4,500 6-month per-birth).
+
+**Fertility response (sources the +10% scenario):**
+- **"Births rise nearly 10% following launch"** — *Rx Kids Flint Birth
+  Report (2026)*. This is the basis for `--fertility-response 0.10`.
+  **Caveat:** Flint's rise may blend a conception response with in-migration
+  of pregnant residents into eligible areas; Hawaiʻi (island geography)
+  would see far less migration, so the transferable fertility effect is
+  uncertain — keep it an explicit, off-by-default scenario.
+
+**Health/economic outcomes (enable a gross-vs-net framing):**
+- *Lancet Public Health (2026)*, Richterman & Thirumurthy: **18% fewer
+  preterm births, 27% fewer low-birthweight births.**
+- *JAMA Network Open (2025)*, Hanna et al.: improved adequate prenatal care.
+- *JAMA Pediatrics (2026)*, Agarwal et al.: ~**32% fewer infant-maltreatment
+  investigations.**
+- *Upjohn Institute (2025)*, Bartik et al.: **$0.60–$3.00 returned per $1**
+  to the state economy.
+- These are **offsets/benefits, not cost inputs** — the gross program cost
+  (~$54M) is partly offset by downstream health savings and economic return.
+  A Hawaiʻi-scaled net-cost estimate is a natural extension (not yet built).
+
 Cached research notes: `/tmp/rxkids-research.md` (session-scoped).
 
 ## 9. Verification
@@ -468,11 +511,13 @@ behavioral response). Two Flint-observed assumptions raise it:
 
 `--takeup-rate 0.98 --fertility-response 0.10` produces the Flint scenario.
 Take-up scales both arms linearly; the **fertility response**
-(`_apply_fertility`) models Flint's documented ~10% post-launch birth rise
-as a uniform +10% on eligible births (×1.10 on both arms). From the 0.90
-default: $54M × (0.98/0.90) × 1.10 ≈ $65M. The fertility response is a real
-upside risk a static model would miss; it is off by default and surfaced as
-an explicit scenario.
+(`_apply_fertility`) models the ~10% post-launch birth rise documented in the
+*Rx Kids Flint Birth Report (2026)* as a uniform +10% on eligible births
+(×1.10 on both arms). From the 0.90 default: $54M × (0.98/0.90) × 1.10 ≈ $65M.
+It is a real upside risk a static model would miss, but **off by default**:
+Flint's rise may blend a conception response with in-migration of pregnant
+residents into eligible areas, and Hawaiʻi's island geography would see far
+less migration — so the transferable effect is uncertain.
 
 ### Eligible base vs recipients
 
