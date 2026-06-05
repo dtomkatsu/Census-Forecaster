@@ -125,6 +125,23 @@ def fetch_saipe_poverty_rates(
 
     resp = requests.get(SAIPE_API_BASE, params=params, timeout=timeout)
     resp.raise_for_status()
+    # The Census API returns HTTP 200 with an HTML error page (not JSON) for
+    # certain failures — most commonly a missing/invalid key, which Census now
+    # REQUIRES for this endpoint. Detect that and raise an actionable error
+    # rather than an opaque JSONDecodeError on resp.json().
+    ctype = resp.headers.get("content-type", "")
+    if "json" not in ctype.lower():
+        body = resp.text[:200].strip().replace("\n", " ")
+        if "key" in resp.text.lower():
+            raise RuntimeError(
+                "Census SAIPE API requires an API key (got an HTML 'Missing "
+                "Key' page). Set CENSUS_API_KEY (free signup at "
+                "https://api.census.gov/data/key_signup.html). "
+                f"Response: {body!r}"
+            )
+        raise RuntimeError(
+            f"Census SAIPE API returned non-JSON ({ctype or 'unknown'}): {body!r}"
+        )
     rows = resp.json()
     if not rows or len(rows) < 2:
         return {}
