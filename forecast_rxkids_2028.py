@@ -900,13 +900,15 @@ def main(argv: Optional[list] = None) -> int:
     # ---- By county (cost) ----
     county_rows = []
     if "county" in frame.columns:
-        # Group on a plain object Series: a categorical county with NaN values
-        # raises "Categorical categories cannot be null" under dropna=False on
-        # some pandas versions (Python 3.10's). Object NaN groups fine.
+        # Fill NaN with a sentinel before grouping: groupby(dropna=False) on a
+        # key with NaN builds an internal categorical grouper with a null group
+        # index, which raises on some pandas versions (Python 3.10's). A
+        # sentinel key avoids it on every version (unmapped rows -> "Unknown").
         county_key = frame["county"]
         if isinstance(county_key.dtype, pd.CategoricalDtype):
             county_key = county_key.astype(object)
-        for county, grp in frame.groupby(county_key, dropna=False):
+        county_key = county_key.fillna("Unknown")
+        for county, grp in frame.groupby(county_key):
             c_total, c_se = _cost_with_sdr(grp, "rxkids_amount")
             _, _, grp_rec = _expected_recipients(
                 grp, pre_payment=pre_payment, post_payment=post_payment,

@@ -165,14 +165,17 @@ def _aggregate(df: pd.DataFrame, group_col: Optional[str]) -> pd.DataFrame:
     if group_col is None:
         groups = [("__state__", df)]
     else:
+        # groupby(dropna=False) on a key with NaN values builds an internal
+        # categorical grouper whose group index includes NaN, which raises
+        # "Categorical categories cannot be null" on the pandas resolved for
+        # Python 3.10 (3.12's pandas tolerates it). Cast off categorical and
+        # fill NaN with a sentinel so there is no null group key on any version
+        # (previously-missing rows aggregate under "Unknown", same totals).
         gcol = df[group_col]
-        # A categorical column with NaN *values* raises "Categorical categories
-        # cannot be null" under groupby(dropna=False) on the pandas resolved for
-        # Python 3.10 (3.12's pandas tolerates it). Group on a plain object
-        # Series so NaN is handled as a normal missing key on every version.
         if isinstance(gcol.dtype, pd.CategoricalDtype):
             gcol = gcol.astype(object)
-        groups = list(df.groupby(gcol, observed=True, dropna=False))
+        gcol = gcol.fillna("Unknown")
+        groups = list(df.groupby(gcol, observed=True))
 
     rows = []
     for key, g in groups:
