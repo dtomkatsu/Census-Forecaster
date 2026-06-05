@@ -900,7 +900,13 @@ def main(argv: Optional[list] = None) -> int:
     # ---- By county (cost) ----
     county_rows = []
     if "county" in frame.columns:
-        for county, grp in frame.groupby("county", dropna=False):
+        # Group on a plain object Series: a categorical county with NaN values
+        # raises "Categorical categories cannot be null" under dropna=False on
+        # some pandas versions (Python 3.10's). Object NaN groups fine.
+        county_key = frame["county"]
+        if isinstance(county_key.dtype, pd.CategoricalDtype):
+            county_key = county_key.astype(object)
+        for county, grp in frame.groupby(county_key, dropna=False):
             c_total, c_se = _cost_with_sdr(grp, "rxkids_amount")
             _, _, grp_rec = _expected_recipients(
                 grp, pre_payment=pre_payment, post_payment=post_payment,
