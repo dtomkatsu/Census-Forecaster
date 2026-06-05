@@ -93,9 +93,12 @@ jobs:
           uv run python -m census_forecaster.scripts.refresh_bps_permits
 
       - name: Refresh Census SAIPE county poverty rates
+        env:
+          # Census now REQUIRES a key for this endpoint (a keyless request
+          # returns an HTML "Missing Key" page). Set the CENSUS_API_KEY repo
+          # secret (free signup: https://api.census.gov/data/key_signup.html).
+          CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
         run: |
-          # No API key strictly required, but CENSUS_API_KEY raises the
-          # rate limit; pass through if available.
           uv run python -m census_forecaster.scripts.refresh_saipe
 
       - name: Regenerate BLS v3 calibration
