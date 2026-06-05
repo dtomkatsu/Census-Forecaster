@@ -468,10 +468,19 @@ class TaxUnitConstructor:
             if not pd.api.types.is_string_dtype(self.tax_units[col]):
                 continue
                 
+            # Skip columns with missing values: a categorical with NaN values
+            # grouped via groupby(dropna=False) raises "Categorical categories
+            # cannot be null" on some pandas versions (e.g. the one resolved
+            # under Python 3.10). Geography columns like `county` carry nulls
+            # for group quarters / unmapped PUMAs and are grouped downstream,
+            # so leave any null-containing column as object.
+            if self.tax_units[col].isna().any():
+                continue
+
             # For string columns with low cardinality, use categorical
             num_unique = len(self.tax_units[col].unique())
             num_rows = len(self.tax_units)
-            
+
             if 1 < num_unique < (num_rows * 0.5):  # Less than 50% unique values
                 self.tax_units[col] = self.tax_units[col].astype('category')
                 
