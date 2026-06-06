@@ -30,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write   # needs to push the auto-commit back to main
+      issues: write     # the "Alert on failure" step opens an issue
 
     steps:
       - name: Checkout
@@ -124,8 +125,14 @@ jobs:
             echo "::warning::ACS calibration panel not present; skipping ACS calibration"
           fi
 
-      - name: Run tests against refreshed data
-        run: uv run pytest tests/ -v --tb=short
+      - name: Smoke-test the pipeline against refreshed data
+        # Run the structural smoke suite, NOT the full suite. The full suite
+        # includes ~40 data-pinned golden/MAPE assertions that legitimately
+        # drift with each external-data refresh; running them here turns normal
+        # drift into a hard block. Golden value tests still run in the regular
+        # `tests` workflow against committed data (where they catch real code
+        # regressions). This gate confirms the pipeline still runs end-to-end.
+        run: uv run pytest tests/ -m smoke -v --tb=short
 
       - name: Commit + push if data changed
         run: |
@@ -161,3 +168,24 @@ jobs:
           Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
           git commit -m "$MSG"
           git push
+
+      - name: Alert on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Surface a failed monthly refresh immediately instead of letting it
+          # go unnoticed. Reuse a single open issue so repeated failures comment
+          # rather than spam new issues; a fresh one opens after it's closed.
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          TITLE="refresh-data workflow is failing"
+          EXISTING=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number -q '.[0].number')
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "Failed again — run: $RUN_URL"
+          else
+            gh issue create --title "$TITLE" --body "The scheduled \`refresh-data\` workflow failed.
+
+          Latest run: $RUN_URL
+
+          Check which step failed (BLS / BEA / Zillow+LAUS / BPS / SAIPE refresh, calibration regen, or the smoke gate). Common causes: an external-data API change (e.g. Census requiring \`CENSUS_API_KEY\`) or a transient timeout. Auto-opened on failure; close once resolved."
+          fi
