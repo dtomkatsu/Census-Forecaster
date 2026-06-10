@@ -73,6 +73,30 @@ EXTENDED_POSTNATAL_MONTHS = 12
 # --takeup-rate 0.98 this recovers Flint's observed ~0.90 prenatal rate.
 PRENATAL_TAKEUP_RATIO = 0.92
 
+# Hawaiʻi resident births by year — CDC NVSR "Births: Final Data" series, by
+# mother's state of residence (the same basis as the 15,535 figure cited in
+# RXKIDS_METHODOLOGY.md §2 from NVSR 73-02). Used to project the birth cohort
+# forward with the repo's own damped-trend ensemble, so the demographic driver
+# is aged coherently with income (rather than frozen at the base-year level).
+# Update with each new NVSR final-data release.
+HI_BIRTHS_BY_YEAR = {
+    2018: 15404,
+    2019: 15403,
+    2020: 15730,
+    2021: 15620,
+    2022: 15535,
+    2023: 14643,
+}
+# PUMS construction / birth-observation base year (matches PUMS_CONSTRUCTION_YEAR).
+BIRTH_BASE_YEAR = 2022
+
+# Default administrative-load fraction. Program cost in this model is pure
+# benefit dollars (cash out the door); a real appropriation also carries
+# operating overhead (enrollment, disbursement, eligibility, outreach).
+# Cash-transfer admin loads typically run ~5-10%; reported as a separate line
+# so the benefit total stays clean. Override with --admin-load.
+DEFAULT_ADMIN_LOAD = 0.08
+
 _TEAL = (31, 111, 139)
 _DARK = (31, 59, 77)
 _GREY = (90, 90, 90)
@@ -88,10 +112,11 @@ def _ascii(s) -> str:
         .encode("latin-1", "replace").decode("latin-1")
     )
 
-# One-at-a-time assumption sweep. Cost is linear in each, so low/high values
-# bracket the band.
+# Assumption-band sweep multipliers for the birth-rate driver. Cost is linear
+# in the birth count, so the low/high multipliers bracket the band. (The
+# take-up corners are computed in _assumption_band relative to the run's
+# central take-up — see tk_low/tk_high there — not swept from a fixed pair.)
 _SWEEP = {
-    "takeup_rate": [0.60, 0.95],
     "child_under_age_share_mult": [0.75, 1.25],
 }
 
@@ -127,8 +152,136 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
     p.add_argument("--ramp-months", type=int, default=12,
                    help="Months for enrollment to ramp from zero to full take-up "
                         "in the launch year. Default 12 (gradual). Lower = faster.")
+    p.add_argument("--admin-load", type=float, default=DEFAULT_ADMIN_LOAD,
+                   help="Administrative overhead as a fraction of benefit cost "
+                        "(enrollment/disbursement/eligibility). Default %.2f; "
+                        "reported as a separate appropriation line." % DEFAULT_ADMIN_LOAD)
+    p.add_argument("--no-birth-projection", action="store_true", default=False,
+                   help="Hold the birth cohort at the base-year level instead of "
+                        "projecting it to --tax-year with the damped-trend ensemble. "
+                        "Still calibrates the observed infant count to vital stats.")
+    p.add_argument("--use-proxy-births", action="store_true", default=False,
+                   help="Use the legacy num_dependents × child_under_age_share birth "
+                        "proxy instead of observed (age-0 dependent) infant counts. "
+                        "For backward-comparison only; the proxy overstates births.")
     p.add_argument("-v", "--verbose", action="store_true")
     return p.parse_args(argv)
+
+
+# ---------------------------------------------------------------------------
+# Observed births (replaces the num_dependents × rate proxy)
+# ---------------------------------------------------------------------------
+
+
+def _observed_births(base_units: pd.DataFrame, out_col: str = "observed_births") -> pd.DataFrame:
+    """Attach a per-tax-unit OBSERVED birth count from age-0 dependents.
+
+    PUMS does carry individual ages: the tax-unit constructor records each
+    claimed dependent's real ``age`` in the ``dependents_details`` list-column.
+    An age-0 dependent is an infant born within the past ~12 months — i.e. the
+    annual birth flow, the correct basis for the full per-birth entitlement
+    (NOT a <6-month stock, which would understate ~2×). Counting age-0
+    dependents per unit (twins → 2) gives the observed births that drive both
+    arms, replacing the ``num_dependents × child_under_age_share`` proxy. The
+    proxy multiplies an all-dependents count (older kids, students, adult
+    dependents) by a children-only-calibrated rate, overstating births
+    materially; the weighted observed count matches CDC NVSR within ~1%.
+    """
+    if "dependents_details" not in base_units.columns:
+        LOG.warning(
+            "_observed_births: 'dependents_details' column absent (fixture/"
+            "synthetic frame?); leaving %r unset so the proxy fallback applies.",
+            out_col,
+        )
+        return base_units
+
+    def _count_infants(details) -> int:
+        if not isinstance(details, (list, tuple)):
+            return 0
+        return sum(
+            1 for d in details
+            if isinstance(d, dict) and _safe_age(d.get("age")) == 0
+        )
+
+    out = base_units.copy()
+    out[out_col] = out["dependents_details"].apply(_count_infants).astype(int)
+    return out
+
+
+def _safe_age(value) -> int:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return -1
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return -1
+
+
+def _project_births(target_year: int) -> dict:
+    """Project the Hawaiʻi birth cohort to ``target_year`` via the repo ensemble.
+
+    Feeds the CDC NVSR resident-births series (``HI_BIRTHS_BY_YEAR``) to the
+    package's damped-trend + AR(1) ensemble (``project_acs_ensemble``), the same
+    machinery the income forecast uses (φ=0.85/yr annual cadence). Returns the
+    point projection plus its 90% PI and the base-year level. Vital-statistics
+    counts are near-complete, so a small nominal Poisson SE (1.645·√n) is used
+    only to let the ensemble's inverse-variance weighting run.
+    """
+    import math
+
+    from census_forecaster import AcsObservation, project_acs_ensemble
+
+    obs = [
+        AcsObservation(
+            estimate=float(v), moe=1.645 * math.sqrt(v), year=y,
+            vintage="1y", geoid="15", indicator="births",
+        )
+        for y, v in sorted(HI_BIRTHS_BY_YEAR.items())
+    ]
+    base_level = float(HI_BIRTHS_BY_YEAR[BIRTH_BASE_YEAR])
+    fp = project_acs_ensemble(obs, target_year=target_year)
+    if fp is None:
+        return {"point": base_level, "ci90_low": base_level,
+                "ci90_high": base_level, "base_level": base_level,
+                "projected": False}
+    return {"point": float(fp.point), "ci90_low": float(fp.ci90_low),
+            "ci90_high": float(fp.ci90_high), "base_level": base_level,
+            "projected": True}
+
+
+def _calibrate_births(projected: pd.DataFrame, tax_year: int, args) -> dict:
+    """Scale ``observed_births`` so the weighted total hits the (projected) target.
+
+    Mutates ``projected['observed_births']`` in place. A single scalar factor
+    folds in two corrections: (1) PUMS-infant-count → vital-statistics base
+    level, and (2) the base-year → ``tax_year`` birth-cohort trend (the
+    ensemble projection, unless ``--no-birth-projection``). Returns metadata
+    for reporting. In ``--use-proxy-births`` mode (or when the observed column
+    is absent) it is a no-op and the proxy drives both arms downstream.
+    """
+    proj = _project_births(tax_year)
+    if args.use_proxy_births or "observed_births" not in projected.columns:
+        return {
+            "mode": "proxy", "raw_weighted": float("nan"),
+            "calibrated_weighted": float("nan"), "target": float("nan"),
+            "factor": 1.0, "projection": proj,
+            "trend_applied": False,
+        }
+
+    w = projected["weight"].fillna(0).to_numpy(dtype=float)
+    births = projected["observed_births"].fillna(0).to_numpy(dtype=float)
+    raw_weighted = float((births * w).sum())
+
+    trend_applied = not args.no_birth_projection and proj["projected"]
+    target = proj["point"] if trend_applied else proj["base_level"]
+    factor = (target / raw_weighted) if raw_weighted > 0 else 1.0
+    projected["observed_births"] = projected["observed_births"].astype(float) * factor
+
+    return {
+        "mode": "observed", "raw_weighted": raw_weighted,
+        "calibrated_weighted": raw_weighted * factor, "target": float(target),
+        "factor": factor, "projection": proj, "trend_applied": trend_applied,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -329,11 +482,19 @@ def _first_year_disbursement(
 
 
 def _load(pir, args):
-    """Load PUMS once (with replicate weights if requested) + attach SPM ids."""
+    """Load PUMS once (with replicate weights if requested) + attach SPM ids.
+
+    Attaches the observed per-unit infant count (``observed_births``) here, on
+    the base-year frame, BEFORE projection — ``dependents_details`` (the age
+    source) lives on the base frame, and a plain int column rides through
+    ``project_tax_units_forward`` unchanged.
+    """
     want_se = not args.use_fixture and not args.no_replicate_se
     base_units, persons = pir._load_units(
         args.pums_data_dir, args.use_fixture, with_replicate_weights=want_se,
     )
+    if not args.use_proxy_births:
+        base_units = _observed_births(base_units)
     from tax_modeler.pipeline import enrich_with_spm_unit_id
     base_units, persons = enrich_with_spm_unit_id(base_units, persons)
     return base_units, persons
@@ -385,33 +546,51 @@ def _attach_magi_household(units: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     return out, {"family_income_col": "_magi", "family_size_col": "_magi_size"}
 
 
-def _apply_rxkids(units: pd.DataFrame, *, tax_year: int, overrides: Optional[dict] = None) -> pd.DataFrame:
+def _apply_rxkids(
+    units: pd.DataFrame, *, tax_year: int, overrides: Optional[dict] = None,
+    birth_count_col: Optional[str] = "observed_births",
+) -> pd.DataFrame:
     """Medicaid flag (clause 1) then RxKids expected benefit on a tax-unit frame.
 
     Eligibility (both clauses) is tested on the MAGI household ≈ the tax unit
     (filer + spouse + tax dependents), the family concept Medicaid uses —
     consistent with the statute's clause-1 Medicaid anchor.
+
+    ``birth_count_col`` (default ``"observed_births"``) drives both arms from
+    the observed/calibrated infant count when that column is present;
+    ``compute_rxkids_for_units`` falls back to the proxy when it is absent
+    (e.g. a ``--use-proxy-births`` run, where the column is never attached).
     """
     from tax_modeler.benefits.medicaid_hi_quest import compute_medicaid_for_units
     from tax_modeler.programs import compute_rxkids_for_units
 
     out, fam = _attach_magi_household(units)
     out = compute_medicaid_for_units(out, tax_year=tax_year, **fam)
-    out = compute_rxkids_for_units(out, tax_year=tax_year, overrides=overrides, **fam)
+    out = compute_rxkids_for_units(
+        out, tax_year=tax_year, overrides=overrides,
+        birth_count_col=birth_count_col, **fam,
+    )
     return out
 
 
 def _assumption_band(
     units, persons, *, tax_year: int, base_cost: float,
-    central_takeup: float, fertility: float = 0.0,
+    central_takeup: float, fertility: float = 0.0, use_observed: bool = True,
 ) -> dict:
     """Joint (factorial-corner) assumption band over the two soft parameters.
 
-    take-up and the birth-rate (``child_under_age_share``) both scale total
-    cost, and cost is monotone increasing in each, so the true min/max sit at
-    the all-low and all-high corners — not a one-at-a-time perturbation. The
-    take-up sweep brackets ``central_takeup`` (mostly downside, since it is
-    capped at 1.0); ``fertility`` scales both corners.
+    take-up and the birth count both scale total cost, and cost is monotone
+    increasing in each, so the true min/max sit at the all-low and all-high
+    corners — not a one-at-a-time perturbation. The take-up sweep brackets
+    ``central_takeup`` (mostly downside, since it is capped at 1.0);
+    ``fertility`` scales both corners.
+
+    The ±25% birth multiplier (``child_under_age_share_mult``) brackets
+    birth-count uncertainty. In observed mode the birth driver is the
+    ``observed_births`` column (the ``child_under_age_share`` parameter is
+    inert), so the multiplier is applied to that column directly; the ±25%
+    band also comfortably covers the ensemble projection's ~±23% 90% PI. In
+    proxy mode it overrides ``child_under_age_share`` as before.
     """
     from tax_modeler.poverty.spm_aggregation import aggregate_to_spm_units
     from tax_modeler.programs import hawaii_rxkids_parameters
@@ -422,17 +601,28 @@ def _assumption_band(
     cm = _SWEEP["child_under_age_share_mult"]
     fmul = 1.0 + max(0.0, fertility)
 
-    def _cost_for(overrides: dict) -> float:
-        u = _apply_rxkids(units, tax_year=tax_year, overrides=overrides)
-        cost = _weighted_cost(aggregate_to_spm_units(u, persons), "rxkids_amount", "weight")
-        return cost * fmul
-
-    def _corner(takeup, child_mult):
-        return _cost_for({
+    def _corner(takeup, child_mult) -> float:
+        overrides = {
             "takeup_rate": takeup,
             "prenatal_takeup_rate": round(takeup * PRENATAL_TAKEUP_RATIO, 4),
-            "child_under_age_share": float(np.clip(base.child_under_age_share * child_mult, 0.0, 1.0)),
-        })
+        }
+        u = units
+        if use_observed and "observed_births" in units.columns:
+            # The observed column drives births, so scale it directly.
+            u = units.copy()
+            u["observed_births"] = u["observed_births"].astype(float) * child_mult
+        else:
+            # Proxy mode: scale the rate parameter.
+            overrides["child_under_age_share"] = float(
+                np.clip(base.child_under_age_share * child_mult, 0.0, 1.0)
+            )
+        cost = _weighted_cost(
+            aggregate_to_spm_units(
+                _apply_rxkids(u, tax_year=tax_year, overrides=overrides), persons,
+            ),
+            "rxkids_amount", "weight",
+        )
+        return cost * fmul
 
     low = _corner(tk_low, min(cm))
     high = _corner(tk_high, max(cm))
@@ -485,9 +675,11 @@ def _write_workbook(path: Path, *, ctx: dict) -> None:
 
     rows = [
         ("FISCAL COST (annual)", None, None),
-        ("Total program cost", ctx["cost_total"], money_fmt),
+        ("Total program cost (benefit)", ctx["cost_total"], money_fmt),
         ("  Prenatal arm", ctx["cost_prenatal"], money_fmt),
         ("  Postnatal arm", ctx["cost_postnatal"], money_fmt),
+        (f"  Administrative load ({100 * ctx['admin_load']:.0f}%)", ctx["admin_cost"], money_fmt),
+        ("Appropriation total (benefit + admin)", ctx["appropriation_total"], money_fmt),
     ]
     if ctx["cost_se"] > 0:
         rows += [
@@ -709,9 +901,11 @@ def _write_pdf(path: Path, *, ctx: dict) -> None:
         pdf.cell(0, 6, _ascii(value), new_x="LMARGIN", new_y="NEXT")
 
     section("Fiscal cost (annual)")
-    kv("Total program cost", money(ctx["cost_total"]))
+    kv("Total program cost (benefit)", money(ctx["cost_total"]))
     kv("Prenatal arm", money(ctx["cost_prenatal"]), 1)
     kv("Postnatal arm", money(ctx["cost_postnatal"]), 1)
+    kv(f"Administrative load ({100 * ctx['admin_load']:.0f}%)", money(ctx["admin_cost"]), 1)
+    kv("Appropriation total (benefit + admin)", money(ctx["appropriation_total"]))
     if ctx["cost_se"] > 0:
         kv("Sampling 90% CI",
            f"{money(ctx['cost_total'] - ctx['moe'])} - {money(ctx['cost_total'] + ctx['moe'])}")
@@ -794,15 +988,17 @@ def _write_pdf(path: Path, *, ctx: dict) -> None:
     pdf.set_font("Helvetica", "I", 7.5)
     pdf.set_text_color(*_GREY)
     pdf.multi_cell(0, 4, _ascii(
-        "Both arms are driven by birth events (dependents x annual birth rate); "
-        "each eligible birth draws one prenatal + one postnatal payment. Cost = "
-        "the take-up-adjusted benefit weighted by the household (WGTP) weight. "
-        "Eligibility is tested on MAGI at the tax-unit (MAGI-household) grain, "
-        "the family Medicaid uses. Benefits-by-quintile rank SPM units on summed "
-        "income into population-equal fifths. Sampling CI is ACS sampling error "
-        "(SDR, 80 replicate weights); the assumption band sweeps take-up and the "
-        "birth rate. 2026-2028 FPL is CPI-projected off the 2025 HHS table. Full "
-        "methodology: RXKIDS_METHODOLOGY.md."))
+        "Both arms are driven by OBSERVED births (age-0 dependents in each PUMS "
+        "tax unit), calibrated to CDC NVSR resident births and projected to the "
+        "target year with the repo's damped-trend ensemble. Each eligible birth "
+        "draws one prenatal + one postnatal payment. Cost = the take-up-adjusted "
+        "benefit weighted by the household (WGTP) weight. Eligibility is tested on "
+        "MAGI at the tax-unit (MAGI-household) grain, the family Medicaid uses. "
+        "Benefits-by-quintile rank SPM units on summed income into population-equal "
+        "fifths. Sampling CI is ACS sampling error (SDR, 80 replicate weights); the "
+        "assumption band sweeps take-up and the birth count (+/-25%). 2026-2028 FPL "
+        "is CPI-projected off the 2025 HHS table. Full methodology: "
+        "RXKIDS_METHODOLOGY.md."))
 
     pdf.output(str(path))
 
@@ -834,11 +1030,25 @@ def main(argv: Optional[list] = None) -> int:
     LOG.info("Projecting income to TY %d", ty)
     projected = _project(pir, base_units, ty)
 
+    # ---- Birth driver: observed infant counts, calibrated to (projected)
+    #      vital statistics. Replaces the num_dependents × rate proxy, which
+    #      multiplies an all-dependents count by a children-only-calibrated
+    #      rate and overstates total births materially. ----
+    birth_info = _calibrate_births(projected, ty, args)
+    use_observed = birth_info["mode"] == "observed"
+
     fert = max(0.0, args.fertility_response)
     pre_takeup = round(args.takeup_rate * PRENATAL_TAKEUP_RATIO, 4)
     calib = {"takeup_rate": args.takeup_rate, "prenatal_takeup_rate": pre_takeup}
     LOG.info("Take-up: postnatal %.2f / prenatal %.2f; fertility response %+.0f%%",
              args.takeup_rate, pre_takeup, 100 * fert)
+    if use_observed:
+        LOG.info("Birth driver: observed; weighted births %.0f -> calibrated %.0f "
+                 "(target %.0f, ×%.3f)", birth_info["raw_weighted"],
+                 birth_info["calibrated_weighted"], birth_info["target"],
+                 birth_info["factor"])
+    else:
+        LOG.info("Birth driver: legacy proxy (num_dependents × rate)")
 
     units = _apply_rxkids(projected, tax_year=ty, overrides=calib)
     frame = _apply_fertility(aggregate_to_spm_units(units, persons), fert)
@@ -922,12 +1132,17 @@ def main(argv: Optional[list] = None) -> int:
                 "recipients": round(grp_rec, 0),
             })
 
+    # ---- Administrative load (separate appropriation line) ----
+    admin_cost = total_cost * max(0.0, args.admin_load)
+    appropriation_total = total_cost + admin_cost
+
     # ---- Assumption band ----
     band = None
     if not args.no_assumption_band:
         LOG.info("Running assumption-band sweep")
         band = _assumption_band(units, persons, tax_year=ty, base_cost=total_cost,
-                                central_takeup=args.takeup_rate, fertility=fert)
+                                central_takeup=args.takeup_rate, fertility=fert,
+                                use_observed=use_observed)
 
     # ---- Assemble context ----
     assumptions = [
@@ -941,8 +1156,17 @@ def main(argv: Optional[list] = None) -> int:
          f"{PRENATAL_TAKEUP_RATIO:.2f}× postnatal (Flint: ~90% prenatal vs 98% newborn)"),
         ("Fertility response", f"{100 * fert:+.0f}%",
          "Induced eligible-birth increase (Flint ~+10%); scales both arms"),
-        ("Birth rate / dependent", p.child_under_age_share,
-         "Annual births ÷ dependents (FLOW); drives both arms; swept ±25%"),
+        ("Birth driver", "observed (age-0 deps)" if use_observed else "proxy (n_dep × rate)",
+         "Observed: age-0 dependents in PUMS, calibrated to NVSR; drives both arms; swept ±25%"
+         if use_observed else "Legacy proxy: num_dependents × child_under_age_share"),
+        ("Birth cohort — base / target",
+         f"{birth_info['raw_weighted']:,.0f} -> {birth_info['target']:,.0f}"
+         if use_observed else "n/a",
+         (f"NVSR {BIRTH_BASE_YEAR} basis; "
+          + (f"ensemble-projected to {ty}" if birth_info.get("trend_applied")
+             else "held at base level")) if use_observed else "proxy mode"),
+        ("Administrative load", f"{100 * args.admin_load:.0f}%",
+         "Operating overhead on benefit cost; separate appropriation line"),
         ("Pregnancy Medicaid pathway", f"{p.pregnant_fpl_cap:.2f}× FPL",
          "Clause 1 prenatal pathway (196% FPL); subsumed by the 300% income test"),
         ("FPL table year", ty, "benefits/_fpl.py (2025 published; 2026-28 CPI-projected)"),
@@ -950,14 +1174,32 @@ def main(argv: Optional[list] = None) -> int:
         ("Fiscal weight", "WGTP (household)", "SPM-grain household weight; not the EITC-reweighted tax-unit weight"),
         ("Income quintiles", "WGTP-weighted", "SPM units ranked on summed income; population-equal fifths"),
     ]
+    birth_note = (
+        (f"Both arms are driven by OBSERVED births — the count of age-0 dependents "
+         f"in each PUMS tax unit (an infant <1yr ≈ a birth in the last 12 months, the "
+         f"annual flow). The weighted count is calibrated to CDC NVSR resident births "
+         f"(by-residence basis, {BIRTH_BASE_YEAR}=15,535), then "
+         + (f"projected to {ty} with the repo's damped-trend ensemble "
+            f"(point {birth_info['projection']['point']:,.0f}, 90% PI "
+            f"[{birth_info['projection']['ci90_low']:,.0f}, "
+            f"{birth_info['projection']['ci90_high']:,.0f}])."
+            if birth_info.get("trend_applied")
+            else "held at the base-year level (--no-birth-projection).")
+         + " Each birth draws one prenatal + one postnatal payment. This replaces the "
+           "legacy num_dependents × rate proxy, which multiplied an all-dependents "
+           "count (incl. older children, students, adult dependents) by a "
+           "children-only-calibrated rate and overstated total births ~1.7×.")
+        if use_observed else
+        ("Both arms are driven by the LEGACY proxy (num_dependents × the annual birth "
+         "rate per dependent) — --use-proxy-births. This overstates total births; "
+         "prefer the observed-infant basis (default).")
+    )
     notes = [
         f"RxKids Hawaiʻi — methodology notes (TY {ty})",
         "",
-        "Both arms are driven by birth events (num_dependents × the annual birth "
-        "rate per dependent); each eligible birth draws one prenatal + one postnatal "
-        "payment. Cost = the take-up-adjusted benefit weighted by the household (WGTP) "
-        "weight, summed to SPM-unit grain. Per-unit amounts are expectations, not "
-        "literal payments.",
+        birth_note + " Cost = the take-up-adjusted benefit weighted by the household "
+        "(WGTP) weight, summed to SPM-unit grain. Per-unit amounts are expectations, "
+        "not literal payments.",
         "",
         "Eligibility is tested on MAGI (gross income with 100% of Social Security) at "
         "the tax-unit / MAGI-household grain — the family Medicaid defines (42 CFR "
@@ -972,15 +1214,22 @@ def main(argv: Optional[list] = None) -> int:
         "",
         "Sampling 90% CI is ACS sampling error only (SDR over 80 PUMS replicate weights). "
         "The assumption band is the joint (all-low/all-high corner) sweep over the two "
-        "soft, unanchored drivers — take-up and the birth rate — cost is linear in each.",
+        "soft drivers — take-up and the birth count (±25%) — cost is linear in each. The "
+        "±25% birth band comfortably covers the ensemble birth-projection's ~±23% 90% PI.",
+        "",
+        "The reported program cost is benefit dollars (cash out the door). The "
+        f"administrative line ({100 * args.admin_load:.0f}% of benefit) covers operating "
+        "overhead (enrollment, disbursement, eligibility, outreach); the appropriation "
+        "total is benefit + admin.",
         "",
         "The base run prices the 6-month postnatal window (Flint's lower bound). The "
         "'potential' line prices the optional extension to the full 12 months — the "
         "program may or may not opt in. Postnatal cost is linear in months, so the "
         "additional 6 months roughly equals the base postnatal arm again.",
         "",
-        "Caveats: 2026-2028 FPL is CPI-projected off the 2025 HHS table; the birth rate "
-        "is held at the base-year value (no 2028 birth-trend adjustment).",
+        "Caveats: 2026-2028 FPL is CPI-projected off the 2025 HHS table. The birth "
+        "cohort is projected with the ensemble (vital-statistics counts, not survey "
+        "estimates); update HI_BIRTHS_BY_YEAR as new NVSR final-data releases land.",
         "",
         "Full methodology: RXKIDS_METHODOLOGY.md (program origin, parameter sourcing, "
         "eligibility approximations, limitations).",
@@ -999,6 +1248,9 @@ def main(argv: Optional[list] = None) -> int:
         "rec_infants": rec_infants, "avg_benefit": avg_benefit,
         "quintiles": quintiles, "band": band, "county_rows": county_rows,
         "assumptions": assumptions, "notes": notes,
+        "admin_load": args.admin_load, "admin_cost": admin_cost,
+        "appropriation_total": appropriation_total,
+        "birth_info": birth_info,
     }
 
     # ---- Write outputs ----
@@ -1018,6 +1270,13 @@ def main(argv: Optional[list] = None) -> int:
         "cost_total_se_$": round(total_se, 0),
         "cost_total_ci90_low_$": round(total_cost - moe, 0),
         "cost_total_ci90_high_$": round(total_cost + moe, 0),
+        "admin_load_pct": round(100 * args.admin_load, 1),
+        "admin_cost_$": round(admin_cost, 0),
+        "appropriation_total_$": round(appropriation_total, 0),
+        "birth_driver": birth_info["mode"],
+        "births_calibrated": round(birth_info["calibrated_weighted"], 0)
+        if use_observed else None,
+        "births_target": round(birth_info["target"], 0) if use_observed else None,
         "potential_additional_6mo_cost_$": round(additional_cost, 0),
         "potential_total_12mo_cost_$": round(ext_total, 0),
         "first_year_total_$": round(first_year["total"], 0),
@@ -1041,6 +1300,16 @@ def main(argv: Optional[list] = None) -> int:
         print(f"  Sampling 90% CI            : ${total_cost - moe:,.0f} – ${total_cost + moe:,.0f}")
     if band is not None:
         print(f"  Assumption band            : ${band['min']:,.0f} – ${band['max']:,.0f}")
+    print(f"  Admin load ({100*args.admin_load:.0f}%)          : +${admin_cost:>15,.0f}"
+          f"  (appropriation ${appropriation_total:,.0f})")
+    if use_observed:
+        bi = birth_info
+        trend = (f"projected {ty}" if bi.get("trend_applied") else "base level")
+        print(f"  Birth driver               : observed age-0 deps, "
+              f"{bi['raw_weighted']:,.0f} -> {bi['calibrated_weighted']:,.0f} "
+              f"({trend}, ×{bi['factor']:.3f})")
+    else:
+        print("  Birth driver               : legacy proxy (n_dep × rate)")
     print(f"  POTENTIAL +6 months        : +${additional_cost:>15,.0f}"
           f"  (12-mo total ${ext_total:,.0f})")
     print(f"  FIRST FY (launch)          : ${first_year['total']:>16,.0f}"

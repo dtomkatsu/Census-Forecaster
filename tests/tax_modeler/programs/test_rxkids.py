@@ -87,6 +87,44 @@ def test_rxkids_postnatal_scales_with_children():
     assert four_kids == pytest.approx(4.0 * one_kid, rel=1e-9)
 
 
+def test_rxkids_birth_count_col_overrides_proxy():
+    """When birth_count_col is supplied, it drives births (not the n_dep proxy)."""
+    # Two units, same num_dependents but different OBSERVED birth counts.
+    units = _make_units([
+        {"num_dependents": 3, "num_qualifying_children": 3, "income": 15_000.0,
+         "observed_births": 0},
+        {"num_dependents": 3, "num_qualifying_children": 3, "income": 15_000.0,
+         "observed_births": 1},
+    ])
+    out = compute_rxkids_for_units(
+        units, tax_year=2024, birth_count_col="observed_births",
+    )
+    # Unit with 0 observed births gets nothing despite having dependents;
+    # the proxy (n_dep × rate) would have paid it.
+    assert out["rxkids_amount"].iloc[0] == pytest.approx(0.0)
+    assert out["rxkids_amount"].iloc[1] > 0.0
+    # Amount uses the observed count (1 birth), not n_dep=3.
+    p = hawaii_rxkids_parameters()
+    expected_post = 1 * p.postnatal_monthly_per_child * p.postnatal_months * p.takeup_rate
+    assert out["rxkids_postnatal_amount"].iloc[1] == pytest.approx(expected_post)
+
+
+def test_rxkids_birth_count_col_absent_falls_back_to_proxy():
+    """A missing birth_count_col silently falls back to the n_dep proxy."""
+    units = _make_units([
+        {"num_dependents": 2, "num_qualifying_children": 2, "income": 15_000.0},
+    ])
+    proxy = compute_rxkids_for_units(units, tax_year=2024)
+    # Naming a column that does not exist must reproduce the proxy result.
+    fallback = compute_rxkids_for_units(
+        units, tax_year=2024, birth_count_col="not_a_column",
+    )
+    assert fallback["rxkids_amount"].iloc[0] == pytest.approx(
+        proxy["rxkids_amount"].iloc[0]
+    )
+    assert proxy["rxkids_amount"].iloc[0] > 0.0
+
+
 def test_rxkids_is_nontaxable_in_spm():
     """With is_taxable=False, rxkids_amount lands in spm_resources but
     NOT in total_cash_income.

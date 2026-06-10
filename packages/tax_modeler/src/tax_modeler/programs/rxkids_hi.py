@@ -73,11 +73,14 @@ Universal variant (advocacy framing)
 
 Caveats
 -------
-* PUMS does not observe pregnancy or individual child ages → both arms are
-  probabilistic, driven by ``child_under_age_share`` (default 0.066 =
-  Hawaii annual births ÷ dependents 0-17), the annual birth FLOW per
-  dependent. Population totals are reliable; per-unit amounts are
-  expectations, not literal payments. Sensitivity: linear in this share.
+* Birth driver: prefer an OBSERVED per-unit birth count (age-0 dependents
+  from PUMS) supplied via ``birth_count_col``. The library default, when no
+  such column is given, is the proxy ``num_dependents × child_under_age_share``
+  (0.066 = Hawaii annual births ÷ dependents 0-17) — probabilistic, with
+  reliable population totals but per-unit expectations, not literal payments.
+  The proxy multiplies an all-dependents count by a children-only-calibrated
+  rate and overstates births; see ``compute_rxkids_for_units`` and
+  ``RXKIDS_METHODOLOGY.md`` §3.
 * The Flint RxKids program is universal (no income/Medicaid test). The
   default parameters here model a Medicaid-eligibility-gated variant
   for cost reasons. Override ``income_fpl_cap`` to a high value to
@@ -255,6 +258,7 @@ def compute_rxkids_for_units(
     medicaid_col: str = "medicaid_receives",
     family_income_col: Optional[str] = None,
     family_size_col: Optional[str] = None,
+    birth_count_col: Optional[str] = None,
 ) -> pd.DataFrame:
     """Compute the annual RxKids Hawaiʻi benefit amount per tax unit.
 
@@ -275,12 +279,25 @@ def compute_rxkids_for_units(
       family includes the child either way, so one family-size test serves
       both arms. ``tax_year`` selects the FPL table.
 
-    Arms (both driven by birth events = ``num_dependents × child_under_age_share``)
-    -------------------------------------------------------------------------------
-    * **Postnatal**: ``num_dependents > 0`` AND (clause 1 OR clause 2).
+    Birth events (the common driver of both arms)
+    ---------------------------------------------
+    By default, ``birth_events = num_dependents × child_under_age_share`` —
+    a *proxy* that imputes the family's expected qualifying births this year
+    from its dependent count. If ``birth_count_col`` is supplied and present
+    on the frame, that column is used directly as the per-unit birth count
+    instead (the **observed** basis — e.g. a count of age-0 dependents from
+    PUMS, optionally calibrated to a vital-statistics total). The proxy
+    multiplies an all-dependents count (which includes older children,
+    students, and adult dependents) by a flat rate calibrated against a
+    children-only denominator, so it overstates total births materially;
+    prefer ``birth_count_col`` whenever observed infant counts are available.
+
+    Arms (both driven by ``birth_events``)
+    --------------------------------------
+    * **Postnatal**: ``birth_events > 0`` AND (clause 1 OR clause 2).
       Amount = ``birth_events × postnatal_monthly_per_child ×
       postnatal_months × takeup_rate``.
-    * **Prenatal**: ``num_dependents > 0`` AND (clause 1 incl. pregnancy
+    * **Prenatal**: ``birth_events > 0`` AND (clause 1 incl. pregnancy
       pathway OR clause 2). Amount = ``birth_events × prenatal_monthly ×
       prenatal_months × takeup_rate``. Captures first and repeat births
       across all filing statuses (each birth's newborn appears as a
@@ -378,13 +395,22 @@ def compute_rxkids_for_units(
     preg_medicaid_eligible = fpl_ratio <= p.pregnant_fpl_cap
 
     # ---- Birth events: the common driver of both arms ----
-    # n_dep × the annual birth-rate-per-dependent estimates the family's
-    # qualifying births this year. A first birth shows up as the newborn
-    # dependent in the cross-section, so this captures first AND repeat
-    # births across ALL filing statuses (married couples included) — not
-    # just the single/HoH-no-dependent proxy used previously.
-    birth_events = n_dep.astype(float) * p.child_under_age_share
-    has_birth = n_dep > 0
+    # Preferred basis: an OBSERVED per-unit birth count supplied via
+    # ``birth_count_col`` (e.g. age-0 dependents from PUMS, calibrated to a
+    # vital-statistics total). Fallback proxy: n_dep × the annual
+    # birth-rate-per-dependent. The proxy multiplies an all-dependents count
+    # by a rate calibrated against a children-only denominator, so it
+    # overstates total births — use the observed column when available.
+    # Either way a birth shows up as the newborn dependent in the
+    # cross-section, capturing first AND repeat births across ALL filing
+    # statuses (married couples included).
+    if birth_count_col is not None and birth_count_col in df.columns:
+        birth_events = (
+            df[birth_count_col].fillna(0).clip(lower=0).astype(float).to_numpy()
+        )
+    else:
+        birth_events = n_dep.astype(float) * p.child_under_age_share
+    has_birth = birth_events > 0
 
     # Postnatal: eligible via Medicaid (adult/child pathways) OR 300% FPL.
     postnatal_eligible = (medicaid_eligible | income_eligible) & has_birth
