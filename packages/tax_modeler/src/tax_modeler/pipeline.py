@@ -408,6 +408,7 @@ def apply_credit_takeup(
     year: int = 2022,
     programs: tuple[str, ...] = ("eitc", "actc"),
     stratify_eitc_by_children: bool = True,
+    scale_eitc_dollars: bool = True,
 ) -> pd.DataFrame:
     """Apply IRS-anchored take-up imputation to federal EITC/CTC dollars.
 
@@ -441,6 +442,15 @@ def apply_credit_takeup(
         pooled target lets them absorb the whole take-up slack, inflating
         the childless-claimer share. Bucketing caps the childless bucket at
         its IRS share. ACTC and any other programs are unaffected.
+    scale_eitc_dollars:
+        When True (default), after the count take-up the surviving EITC
+        dollars are rescaled to the caseload table's *nominal dollar*
+        target for ``year`` (and the same scalar is applied to ``hi_eitc``).
+        Set False when ``year`` is a fallback vintage that does NOT match
+        the projection year — otherwise the rescale refreezes income-aged
+        EITC back to the table's (e.g. 2022) nominal dollars, nullifying the
+        aging (audit F2). The count anchor still applies; only the dollar
+        re-peg is skipped, so per-claimant amounts keep their aged values.
 
     Notes
     -----
@@ -459,6 +469,7 @@ def apply_credit_takeup(
         year=year,
         programs=programs,
         stratify_eitc_by_children=stratify_eitc_by_children,
+        scale_eitc_dollars=scale_eitc_dollars,
     )
 
 

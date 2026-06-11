@@ -414,20 +414,29 @@ def _apply_credit_takeup(
     overstated by ~25% / ~15% respectively when this step is skipped.
     """
     from tax_modeler.pipeline import apply_credit_takeup
+    from tax_modeler.errors import ConfigError, MissingDataError
     LOG.info(
         "Applying IRS-anchored take-up imputation for %s at year=%d",
         ",".join(programs), tax_year,
     )
     try:
         return apply_credit_takeup(units, year=tax_year, programs=programs)
-    except Exception as exc:
+    except (ConfigError, MissingDataError) as exc:
+        # No caseload row for this projection year (EITC only has TY2022).
+        # Apply the 2022 take-up COUNT anchor as a constant behavioral rate,
+        # but DO NOT rescale EITC dollars to the 2022 nominal target — that
+        # would refreeze income-aged EITC back to 2022 dollars and nullify the
+        # aging (audit F2). Per-claimant amounts keep their projection-year
+        # (aged) values; only the claimant *count* is anchored.
         LOG.warning(
-            "apply_credit_takeup failed for year=%d (%s); falling back to "
-            "TY2022 IRS SOI anchor. Eligibility totals will be partially "
-            "scaled but the IRS rate is treated as behavioral and constant.",
+            "apply_credit_takeup: no caseload target for year=%d (%s). Falling "
+            "back to the TY2022 take-up COUNT anchor with scale_eitc_dollars=False "
+            "so income-aged EITC dollars are preserved (NOT re-pegged to 2022 $).",
             tax_year, exc,
         )
-        return apply_credit_takeup(units, year=2022, programs=programs)
+        return apply_credit_takeup(
+            units, year=2022, programs=programs, scale_eitc_dollars=False
+        )
 
 
 # ---------------------------------------------------------------------------

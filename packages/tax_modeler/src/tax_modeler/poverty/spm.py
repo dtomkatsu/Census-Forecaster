@@ -139,6 +139,30 @@ def compute_spm_resources(
     else:
         zeroed.append(state_tax_col)
 
+    # F3 de-duplication: hi_tax_liability is NET of a simplified low-income
+    # food/excise credit (column ``hi_low_income_credit``, HRS §235-55.85). If
+    # the caller ALSO supplies the dedicated graduated model in
+    # ``hi_food_excise_col``, the same statutory credit would be counted twice —
+    # once implicitly via the reduced state_tax, once explicitly via
+    # +hi_food_excise. Gross state_tax back up by the embedded credit so the
+    # credit is counted exactly once (through the dedicated hi_food_excise line,
+    # the better model). Callers that don't model hi_food_excise (e.g. the
+    # poverty_impact_report path) are unaffected — the credit stays counted once
+    # via the netted liability.
+    if hi_food_excise_col and hi_food_excise_col in df.columns:
+        if "hi_low_income_credit" in df.columns:
+            embedded_credit = _col("hi_low_income_credit")
+            state_tax = state_tax + embedded_credit
+            used.append("hi_low_income_credit(grossed-up:F3)")
+        else:
+            import logging
+            logging.getLogger(__name__).warning(
+                "compute_spm_resources: hi_food_excise_col=%r present but no "
+                "'hi_low_income_credit' column to un-net from %r — the §235-55.85 "
+                "food/excise credit may be double-counted in SPM resources.",
+                hi_food_excise_col, state_tax_col,
+            )
+
     # Federal tax: prefer column → real calculator → flat-rate fallback → zero
     if federal_tax_col and federal_tax_col in df.columns:
         federal_tax = _col(federal_tax_col)

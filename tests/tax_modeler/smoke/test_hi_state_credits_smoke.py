@@ -209,3 +209,35 @@ def test_spm_includes_hi_state_credits(taxed_units):
     assert "hi_eitc" not in meta.zeroed_components
     assert "hi_food_excise" not in meta.zeroed_components
     assert "hi_renters" not in meta.zeroed_components
+
+
+def test_spm_does_not_double_count_food_excise_credit():
+    """Regression (audit F3): the §235-55.85 food/excise credit must be counted
+    once. ``hi_tax_liability`` is NET of a simplified version of the credit
+    (``hi_low_income_credit``); when the dedicated ``hi_food_excise_amount`` is
+    also supplied, compute_spm_resources must gross the tax line back up so the
+    credit isn't counted twice (once via reduced tax, once via +food_excise).
+    """
+    import pandas as pd
+
+    # tax_before_credits = 300; embedded credit = 110; net liability = 190.
+    # The dedicated model also reports the same $110 credit.
+    df = pd.DataFrame({
+        "total_cash_income": [20_000.0],
+        "hi_tax_liability": [190.0],            # net of the $110 embedded credit
+        "hi_low_income_credit": [110.0],        # the embedded §235-55.85 credit
+        "hi_food_excise_amount": [110.0],       # dedicated graduated model
+        "weight": [100.0],
+        "filing_status": ["single"],
+        "num_dependents": [0],
+    })
+    resources, _ = compute_spm_resources(df, federal_tax_fallback=False)
+    # Counted once: income - tax_before_credits + food_excise = 20000 - 300 + 110.
+    assert resources["spm_resources"].iloc[0] == pytest.approx(19_810.0)
+
+    # Without the embedded-credit column the function cannot un-net, so it falls
+    # back to the (double-counting) behavior and warns — diff is exactly $110.
+    df_nocol = df.drop(columns=["hi_low_income_credit"])
+    res_double, _ = compute_spm_resources(df_nocol, federal_tax_fallback=False)
+    assert res_double["spm_resources"].iloc[0] == pytest.approx(19_920.0)
+    assert res_double["spm_resources"].iloc[0] - resources["spm_resources"].iloc[0] == pytest.approx(110.0)

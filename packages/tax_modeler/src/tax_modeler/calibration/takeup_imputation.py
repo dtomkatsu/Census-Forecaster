@@ -346,6 +346,7 @@ def calibrate_benefits(
     programs: tuple[str, ...] = ("snap", "ssi", "ssi_hi_supplement"),
     weight_col: str = "weight",
     stratify_eitc_by_children: bool = False,
+    scale_eitc_dollars: bool = True,
 ) -> pd.DataFrame:
     """Apply take-up imputation to one or more programs in a single pass.
 
@@ -441,7 +442,11 @@ def calibrate_benefits(
                 weight_col=weight_col,
             )
 
-        if program == "eitc" and target.annual_dollars_millions > 0:
+        if (
+            program == "eitc"
+            and scale_eitc_dollars
+            and target.annual_dollars_millions > 0
+        ):
             df, eitc_dollar_scalar = scale_benefit_to_dollar_target(
                 df,
                 benefit_col=benefit_col,

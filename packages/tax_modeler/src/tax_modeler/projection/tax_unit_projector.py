@@ -68,8 +68,12 @@ _KALAWAO_FALLBACK = "15009"
 # Honolulu used as Hawaii-wide proxy when a county is not in the panel.
 _STATE_PROXY_GEOID = "15003"
 
-# Default anchor year when base_year is not supplied
-_DEFAULT_BASE_YEAR = 2022
+# Default anchor year when base_year is not supplied. This is the dollar-year
+# of the input PUMS incomes (2024 for the 2020-2024 5-year file) — aging grows
+# FROM here, so it must match the data vintage, not a hardcoded 2022.
+from tax_modeler.loaders.pums_loader import PUMS_INCOME_DOLLAR_YEAR
+
+_DEFAULT_BASE_YEAR = PUMS_INCOME_DOLLAR_YEAR
 
 # 90% Gaussian multiplier — used to translate income_se into factor CI bounds.
 _Z90 = 1.645

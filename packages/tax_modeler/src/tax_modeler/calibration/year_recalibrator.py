@@ -209,11 +209,14 @@ def project_and_recalibrate(
         from tax_modeler.calibration.cbo_aging import (
             age_filers_with_components, load_cbo_rates,
         )
+        from tax_modeler.loaders.pums_loader import PUMS_INCOME_DOLLAR_YEAR
         cbo_rates = load_cbo_rates(vintage=cbo_vintage)
         projected = age_filers_with_components(
             units,
             target_year=target_year,
-            base_year=2022,
+            # Input incomes are in PUMS dollar-year dollars (2024), not 2022;
+            # age_filers re-bases the cumulative CBO factors to this year.
+            base_year=PUMS_INCOME_DOLLAR_YEAR,
             cbo_rates=cbo_rates,
             hawaii_factors=cbo_hawaii_factors,
         )

@@ -34,6 +34,46 @@ DEFAULT_STATE = '15'      # Hawaii FIPS code
 DEFAULT_DATA_DIR = Path(__file__).parent.parent.parent.parent.parent / 'data' / 'raw' / 'pums'
 DEFAULT_PUMS_TYPE = '5yr' # 5-year data
 
+# Single source of truth for the dollar-year of the loaded PUMS incomes.
+# PUMS incomes are inflation-adjusted (via ADJINC) to the file's final survey
+# year. The current local file is the 2020-2024 5-year ACS PUMS, so incomes are
+# in 2024 dollars. EVERY income-aging entry point (CBO component aging, county
+# scalar growth, BLS occupation growth) must grow FROM this year — growing from
+# a hardcoded 2022 double-counts ~2 years of growth. See PIPELINE_AUDIT_ROUND2.
+PUMS_INCOME_DOLLAR_YEAR = 2024
+
+
+def detect_pums_dollar_year(
+    person_df: pd.DataFrame,
+    *,
+    default: int = PUMS_INCOME_DOLLAR_YEAR,
+) -> int:
+    """Best-effort detection of the income dollar-year of a PUMS person frame.
+
+    PUMS incomes are inflation-adjusted to the file's final survey year via
+    ``ADJINC``; the count of distinct ADJINC values equals the number of survey
+    years (1 for a 1-year file, 5 for a 5-year file). The exact calendar year is
+    not recoverable from the raw columns alone, so this logs the vintage
+    fingerprint as a guard against silently feeding a different-vintage file and
+    returns the configured ``default``. Callers thread the result into the aging
+    engines instead of assuming a hardcoded base year.
+    """
+    if "ADJINC" not in person_df.columns:
+        logger.warning(
+            "detect_pums_dollar_year: no ADJINC column; assuming dollar-year %d",
+            default,
+        )
+        return default
+    distinct = person_df["ADJINC"].dropna().round(0).unique()
+    n = len(distinct)
+    span = "1-year" if n == 1 else f"{n}-year"
+    logger.info(
+        "PUMS vintage fingerprint: %d distinct ADJINC value(s) (%s file); "
+        "income dollar-year assumed %d",
+        n, span, default,
+    )
+    return default
+
 # PUMS replicate weight column names (Census ships 80 for variance estimation
 # via Successive Difference Replication). PWGTP1..PWGTP80 on the person file,
 # WGTP1..WGTP80 on the household file. For the SPM poverty pipeline we only

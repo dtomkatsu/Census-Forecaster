@@ -687,3 +687,38 @@ def test_calibrate_benefits_eitc_dollar_calibration_scales_hi_eitc(taxed_units):
         pytest.skip("no joint eitc+hi_eitc recipients in fixture")
     ratio = recipients["hi_eitc_amount"] / recipients["eitc_amount"]
     np.testing.assert_allclose(ratio.to_numpy(), 0.4, rtol=1e-6)
+
+
+def test_scale_eitc_dollars_false_preserves_aged_dollars():
+    """Regression (audit F2): with scale_eitc_dollars=False the EITC dollar
+    re-peg to the caseload's nominal target is skipped — the count anchor still
+    applies, but per-claimant (income-aged) amounts are preserved. With the
+    default True, the aggregate is clamped to the table's nominal $ target.
+
+    This is the fallback used when projecting to a year with no caseload row
+    (EITC only has TY2022): clamping would refreeze aged EITC to 2022 dollars.
+    """
+    n = 200
+    df = pd.DataFrame({
+        "eitc_amount": [3_000.0] * n,
+        "weight": [2_000.0] * n,  # 400k weighted eligibles >> 84k count target
+        "eitc_qualifying_children": [2] * n,
+    })
+    caseload = AdminCaseload(pd.DataFrame([
+        {"program": "eitc", "year": 2022, "unit": "return",
+         "count": 84_010, "annual_dollars_millions": 184.7},
+    ]))
+    scaled = calibrate_benefits(
+        df.copy(), caseload=caseload, year=2022, programs=("eitc",),
+        stratify_eitc_by_children=False, scale_eitc_dollars=True,
+    )
+    preserved = calibrate_benefits(
+        df.copy(), caseload=caseload, year=2022, programs=("eitc",),
+        stratify_eitc_by_children=False, scale_eitc_dollars=False,
+    )
+    agg_scaled = float((scaled["eitc_amount"] * scaled["weight"]).sum()) / 1e6
+    agg_preserved = float((preserved["eitc_amount"] * preserved["weight"]).sum()) / 1e6
+    # Clamped to the nominal target...
+    assert agg_scaled == pytest.approx(184.7, abs=1.0)
+    # ...vs preserved aged dollars (count-anchored only), well above the clamp.
+    assert agg_preserved > 200.0

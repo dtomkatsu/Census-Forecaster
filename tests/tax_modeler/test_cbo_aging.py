@@ -129,6 +129,41 @@ def test_hawaii_factors_reduce_growth(cbo_rates: CBOComponentRates):
     )
 
 
+def test_base_year_rebases_cumulative_factors(cbo_rates: CBOComponentRates):
+    """Regression (audit F1/R0): incomes already in a later dollar-year must be
+    aged FROM that year. The cumulative-from-2022 CBO factors are re-based to
+    base_year, so aging 2024-dollar income to 2027 grows ~3 years, not 5 — and
+    strictly less than aging from 2022. Growing from 2022 double-counts the
+    2022->2024 growth (~10% overstatement).
+    """
+    units = _make_units()
+    hi_off = {c: 1.0 for c in CBO_COMPONENTS}
+    from_2022 = age_filers_with_components(
+        units, target_year=2027, base_year=2022, cbo_rates=cbo_rates,
+        hawaii_factors=hi_off,
+    )
+    from_2024 = age_filers_with_components(
+        units, target_year=2027, base_year=2024, cbo_rates=cbo_rates,
+        hawaii_factors=hi_off,
+    )
+    t2022 = (from_2022["income"] * from_2022["weight"]).sum()
+    t2024 = (from_2024["income"] * from_2024["weight"]).sum()
+    assert t2024 < t2022, "2024-based aging must be smaller than 2022-based"
+    # Wages: 2024->2027 factor = factor(2027)/factor(2024) = 1.252/1.100 = 1.138.
+    wages_2027 = cbo_rates.factor("wages", 2027)
+    wages_2024 = cbo_rates.factor("wages", 2024)
+    expected = wages_2027 / wages_2024
+    # _make_units is 70% wages; the aggregate ratio is dominated by but not equal
+    # to the wage factor, so just bound the per-wage re-basing directly:
+    one = pd.DataFrame({"income": [100_000.0], "agi": [100_000.0], "weight": [1.0],
+                        "filing_status": ["single"], "primary_wagp": [100_000.0]})
+    aged = age_filers_with_components(
+        one, target_year=2027, base_year=2024, cbo_rates=cbo_rates,
+        hawaii_factors=hi_off,
+    )
+    np.testing.assert_allclose(aged["income"].iloc[0] / 100_000.0, expected, rtol=1e-6)
+
+
 def test_round_trip_to_base_year_preserves_income(cbo_rates: CBOComponentRates):
     units = _make_units()
     pre = (units["income"] * units["weight"]).sum()

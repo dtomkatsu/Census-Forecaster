@@ -297,8 +297,14 @@ def age_filers_with_components(
     target_year:
         Calendar year to age to.
     base_year:
-        CBO factor base year (default 2022). Aging is from base_year to
-        target_year.
+        The dollar-year of the *input* incomes (i.e. the PUMS income
+        vintage — 2024 for the 2020-2024 5-year file). Aging runs from this
+        year to ``target_year``; the cumulative-from-CSV-base CBO factors
+        are re-based to it (``factor(target)/factor(base_year)``). Defaults
+        to 2022 for backward compatibility, but production callers should
+        pass the detected income dollar-year (see
+        ``loaders.pums_loader.PUMS_INCOME_DOLLAR_YEAR`` /
+        ``detect_pums_dollar_year``).
     cbo_rates:
         Pre-loaded ``CBOComponentRates``. Loaded from default vintage if
         None.
@@ -333,10 +339,23 @@ def age_filers_with_components(
     out = df.copy()
     components = _component_amounts_for_filer(out)
 
+    # Re-base the cumulative CBO factors to the *income dollar-year*.
+    # ``cbo_rates.factor(comp, year)`` is cumulative growth from the CSV's
+    # base_year (2022). The input incomes are already in ``base_year`` dollars
+    # (e.g. the 2020-2024 5-year PUMS is in 2024 dollars), so applying the raw
+    # cumulative-from-2022 factor double-counts the 2022→base_year growth. The
+    # correct aging factor over the window is factor(target)/factor(base_year).
+    # When base_year == cbo_rates.base_year this is a no-op (the prior behavior).
+    rebase = base_year != cbo_rates.base_year
+
     # Aged total per component
     aged_total = pd.Series(0.0, index=out.index)
     for comp, amt in components.items():
         cbo_f = cbo_rates.factor(comp, target_year)
+        if rebase:
+            base_f = cbo_rates.factor(comp, base_year)
+            if base_f > 0:
+                cbo_f = cbo_f / base_f
         hi_f = hawaii_factors.get(comp, 1.0)
         net_f = net_growth_factor(cbo_f, hi_f)
         aged_amt = amt * net_f
@@ -400,6 +419,10 @@ def age_filers_with_components(
                 top_M = float((out.loc[top, col] * out.loc[top, "weight"]).sum() / 1e6)
                 if top_M > 1.0:
                     cbo_f = cbo_rates.factor(comp, target_year)
+                    if rebase:
+                        base_f = cbo_rates.factor(comp, base_year)
+                        if base_f > 0:
+                            cbo_f = cbo_f / base_f
                     hi_f = hawaii_factors.get(comp, 1.0)
                     logger.info(
                         "  $1M+ %-13s: $%6.0fM aged (factor=%.3f × HI %.2f = %.3f)",
