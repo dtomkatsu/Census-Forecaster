@@ -1214,11 +1214,15 @@ class TaxUnitConstructor:
                 members_to_include.append(dep)
                 person_weights.append(dep.get('PWGTP', 1.0))
         
-        # Create DataFrame from Series objects for income calculation
-        income_df = pd.DataFrame(members_to_include)
+        # Tax-unit AGI is the FILERS' income only (the two spouses) — a
+        # dependent's earnings are not the filers' AGI (audit B5). person_weights
+        # above still includes dependents, so the unit's weight basis
+        # (household-vs-person, used by _calculate_hybrid_weight /
+        # _compute_replicate_weights) is unchanged; only the income sum drops them.
+        income_df = pd.DataFrame([adult1, adult2])
         # Disable 2026 growth projection for SOI 2022 comparison
         income = calculate_tax_unit_income(income_df, apply_2026_growth=False)
-        
+
         # Calculate hybrid weight
         hh_weight = float(hh_data.get('WGTP', 1.0))
         hybrid_weight = self._calculate_hybrid_weight(hh_weight, person_weights, 'married_filing_jointly')
@@ -1322,16 +1326,20 @@ class TaxUnitConstructor:
             # which represents the couple as a single tax filing unit
             hybrid_weight = hh_weight
         
-        # Apply calibration factors to match DOTAX benchmarks
-        # These factors adjust for PUMS sampling limitations and ensure accurate filing status distribution
-        # Note: After fixing weight calculation bug, these are recalibrated
+        # Apply calibration factors to match DOTAX TY2022 filing-status shares
+        # (single 52.8% / MFJ 34.1% / HoH 10.6% / MFS 2.5%, normalized MFJ=1.0).
+        # Re-derived 2026-06 after the B2-B5 construction fixes (SCH enrollment,
+        # canonical HoH RELSHIPP codes, 18-23 dependent support test, filer-only
+        # AGI) changed the natural mix: HoH dropped 1.88->1.30 (it no longer
+        # over-counts via mis-decoded partner/roommate codes), MFS rose
+        # 1.05->1.35, single 0.85->0.82. See scripts/diagnose_filing_status.py.
         calibration_factors = {
-            'single': 0.85,
+            'single': 0.82,
             'married_filing_jointly': 1.0,
-            'head_of_household': 1.88,
-            'married_filing_separately': 1.05,
+            'head_of_household': 1.30,
+            'married_filing_separately': 1.35,
         }
-        
+
         adjustment = calibration_factors.get(filing_status, 1.0)
         calibrated_weight = hybrid_weight * adjustment
 
@@ -1370,18 +1378,19 @@ class TaxUnitConstructor:
         ``len(person_weights)`` from the caller.
 
         The same per-filing-status calibration factor that scales the
-        main weight (single 0.85, MFJ 1.0, HoH 1.88, MFS 1.05) is
+        main weight (single 0.82, MFJ 1.0, HoH 1.30, MFS 1.35) is
         applied to each replicate, so SDR ratios at the tax-unit level
-        are dimensionally consistent with the main weight.
+        are dimensionally consistent with the main weight. Keep this dict in
+        lockstep with _calculate_hybrid_weight.
         """
         if not self._wgtp_replicate_cols:
             return {}
 
         calibration_factors = {
-            'single': 0.85,
+            'single': 0.82,
             'married_filing_jointly': 1.0,
-            'head_of_household': 1.88,
-            'married_filing_separately': 1.05,
+            'head_of_household': 1.30,
+            'married_filing_separately': 1.35,
         }
         adjustment = calibration_factors.get(filing_status, 1.0)
         # Mirror _calculate_hybrid_weight: only a *one-person* tax unit uses
@@ -1550,9 +1559,12 @@ class TaxUnitConstructor:
                     logger.error(f"Available household member IDs: {list(hh_members.index)}")
                     continue
         
-        # Calculate income
+        # Calculate income — FILER ONLY. A dependent's earnings are not the
+        # filer's AGI (audit B5). person_weights above still includes dependents
+        # so the unit's weight basis is unchanged; only the income sum drops them.
         try:
-            income_df = pd.DataFrame([m.to_dict() if hasattr(m, 'to_dict') else m for m in members_to_include])
+            adult_row = adult.to_dict() if hasattr(adult, 'to_dict') else adult
+            income_df = pd.DataFrame([adult_row])
             # Disable 2026 growth projection for SOI 2022 comparison
             income = calculate_tax_unit_income(income_df, apply_2026_growth=False)
         except Exception as e:

@@ -285,21 +285,21 @@ class TestReplicateWeightPropagation:
         assert rep_cols[-1] == 'weight_r80'
 
     def test_replicates_match_hybrid_weight_formula_single(self):
-        """Single filer: weight_r<R> = PWGTP<R> * single_calibration_factor (0.85)."""
+        """Single filer: weight_r<R> = PWGTP<R> * single_calibration_factor (0.82)."""
         per, hh = self._fixture_with_replicates()
         ctor = TaxUnitConstructor(per, hh, num_processes=1, progress_bar=False,
                                   use_soi_calibration=False)
         units = ctor.create_rule_based_units(parallel=False)
-        # Row 0: PWGTP=100, PWGTPr = 100+r, single ⇒ weight × 0.85
+        # Row 0: PWGTP=100, PWGTPr = 100+r, single ⇒ weight × 0.82
         row = units.iloc[0]
         assert row['filing_status'] == 'single', f"expected single, got {row['filing_status']}"
-        # Main weight: 100 * 0.85 = 85
+        # Main weight: 100 * 0.82 = 82
         # rtol=1e-5 because the constructor stores weights as float32 internally.
-        np.testing.assert_allclose(row['weight'], 85.0, rtol=1e-5)
-        # weight_r01: 101 * 0.85 = 85.85
-        np.testing.assert_allclose(row['weight_r01'], 85.85, rtol=1e-5)
-        # weight_r80: 180 * 0.85 = 153.0
-        np.testing.assert_allclose(row['weight_r80'], 153.0, rtol=1e-5)
+        np.testing.assert_allclose(row['weight'], 82.0, rtol=1e-5)
+        # weight_r01: 101 * 0.82 = 82.82
+        np.testing.assert_allclose(row['weight_r01'], 82.82, rtol=1e-5)
+        # weight_r80: 180 * 0.82 = 147.6
+        np.testing.assert_allclose(row['weight_r80'], 147.6, rtol=1e-5)
 
     def test_replicates_propagate_to_joint_filer(self):
         """Regression (audit A1): married-filing-jointly tax units must also
@@ -397,13 +397,13 @@ class TestReplicateWeightPropagation:
         )
         row = hoh.iloc[0]
         assert row['num_dependents'] == 1
-        # Main weight uses WGTP (>=2 members) x HoH factor 1.88: 100 * 1.88 = 188.
-        np.testing.assert_allclose(row['weight'], 188.0, rtol=1e-5)
-        # Replicates must therefore be WGTPr * 1.88, NOT the householder's PWGTPr.
-        # weight_r01: WGTP1(101) * 1.88 = 189.88  (bug would give PWGTP1(61)*1.88=114.68)
-        np.testing.assert_allclose(row['weight_r01'], 189.88, rtol=1e-5)
-        # weight_r80: WGTP80(180) * 1.88 = 338.4  (bug would give 240*... no: 140*1.88=263.2)
-        np.testing.assert_allclose(row['weight_r80'], 338.4, rtol=1e-5)
+        # Main weight uses WGTP (>=2 members) x HoH factor 1.30: 100 * 1.30 = 130.
+        np.testing.assert_allclose(row['weight'], 130.0, rtol=1e-5)
+        # Replicates must therefore be WGTPr * 1.30, NOT the householder's PWGTPr.
+        # weight_r01: WGTP1(101) * 1.30 = 131.30  (bug would give PWGTP1(61)*1.30=79.30)
+        np.testing.assert_allclose(row['weight_r01'], 131.30, rtol=1e-5)
+        # weight_r80: WGTP80(180) * 1.30 = 234.0
+        np.testing.assert_allclose(row['weight_r80'], 234.0, rtol=1e-5)
 
     def test_flag_off_suppresses_replicates(self):
         per, hh = self._fixture_with_replicates()
@@ -486,3 +486,29 @@ class TestAdultDependentNotOverSplit:
         assert isinstance(details, list) and len(details) == 1
         assert details[0]['age'] == 7
         assert details[0]['relationship'] == 25
+
+    def test_dependent_income_excluded_from_filer_agi(self):
+        """Regression (audit B5): a claimed dependent's earnings are NOT folded
+        into the filer's tax-unit income (AGI). The parent's unit income is the
+        parent's own income only. (ADJINC=1_000_000 → factor 1.0.)"""
+        person_rows = [
+            {'SERIALNO': '92', 'SPORDER': '1', 'AGEP': 40, 'SEX': 2, 'MAR': 5,
+             'RELSHIPP': 20, 'WAGP': 50000, 'PINCP': 50000, 'CIT': 1, 'SEMP': 0,
+             'ADJINC': 1_000_000, 'SCHL': 18, 'DIS': 2, 'SCH': 0},
+            {'SERIALNO': '92', 'SPORDER': '2', 'AGEP': 10, 'SEX': 1, 'MAR': 0,
+             'RELSHIPP': 25, 'WAGP': 6000, 'PINCP': 6000, 'CIT': 1, 'SEMP': 0,
+             'ADJINC': 1_000_000, 'SCHL': 3, 'DIS': 2, 'SCH': 2},
+        ]
+        hh_rows = [{'SERIALNO': '92', 'HINCP': 56000, 'ADJINC': 1_000_000, 'WGTP': 100}]
+        person_df, hh_df = _make_df(person_rows, hh_rows)
+
+        units = TaxUnitConstructor(
+            person_df, hh_df, use_soi_calibration=False, progress_bar=False
+        ).create_rule_based_units(parallel=False)
+
+        hh92 = units[units['hh_id'] == '92']
+        assert len(hh92) == 1, "expected one unit (parent claims the child)"
+        row = hh92.iloc[0]
+        assert row['num_dependents'] == 1  # child is claimed...
+        # ...but the child's $6k is NOT in the filer's income — parent's $50k only.
+        np.testing.assert_allclose(row['income'], 50000.0, rtol=1e-4)

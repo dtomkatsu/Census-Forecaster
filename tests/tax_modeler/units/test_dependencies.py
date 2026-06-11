@@ -20,16 +20,17 @@ def create_test_household():
         {'SERIALNO': '1', 'SPORDER': '1', 'AGEP': 35, 'SEX': 1, 'MAR': 5, 'RELSHIPP': 20, 'SCHL': 16, 'SCH': 0, 'WAGP': 50000},
         # Spouse
         {'SERIALNO': '1', 'SPORDER': '2', 'AGEP': 33, 'SEX': 2, 'MAR': 1, 'RELSHIPP': 21, 'SCHL': 16, 'SCH': 0, 'WAGP': 45000},
-        # Qualifying child 1 (under 19, biological child)
-        {'SERIALNO': '1', 'SPORDER': '3', 'AGEP': 10, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 25, 'SCHL': 3, 'SCH': 1, 'WAGP': 0},
-        # Qualifying child 2 (student under 24, biological child)
-        {'SERIALNO': '1', 'SPORDER': '4', 'AGEP': 20, 'SEX': 2, 'MAR': 0, 'RELSHIPP': 25, 'SCHL': 16, 'SCH': 1, 'WAGP': 5000},
+        # Qualifying child 1 (under 19, biological child). SCH=2 = enrolled
+        # (public school) per real PUMS coding; SCH=1 means NOT enrolled.
+        {'SERIALNO': '1', 'SPORDER': '3', 'AGEP': 10, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 25, 'SCHL': 3, 'SCH': 2, 'WAGP': 0},
+        # Qualifying child 2 (enrolled student under 24, biological child)
+        {'SERIALNO': '1', 'SPORDER': '4', 'AGEP': 20, 'SEX': 2, 'MAR': 0, 'RELSHIPP': 25, 'SCHL': 16, 'SCH': 2, 'WAGP': 5000},
         # Non-qualifying person (unrelated adult, other nonrelative)
         {'SERIALNO': '1', 'SPORDER': '5', 'AGEP': 25, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 36, 'SCHL': 16, 'SCH': 0, 'WAGP': 30000},
         # Qualifying relative (elderly parent)
         {'SERIALNO': '1', 'SPORDER': '6', 'AGEP': 70, 'SEX': 2, 'MAR': 3, 'RELSHIPP': 29, 'SCHL': 10, 'SCH': 0, 'WAGP': 10000},
         # Foster child
-        {'SERIALNO': '1', 'SPORDER': '7', 'AGEP': 12, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 35, 'SCHL': 4, 'SCH': 1, 'WAGP': 0},
+        {'SERIALNO': '1', 'SPORDER': '7', 'AGEP': 12, 'SEX': 1, 'MAR': 0, 'RELSHIPP': 35, 'SCHL': 4, 'SCH': 2, 'WAGP': 0},
     ]
     
     # Create DataFrame and set index
@@ -172,11 +173,45 @@ class TestAdultDependentAttachment:
         hh = _household([
             {'SERIALNO': '11', 'SPORDER': 1, 'AGEP': 50, 'SEX': 1, 'MAR': 1,
              'RELSHIPP': 20, 'SCHL': 21, 'SCH': 0, 'WAGP': 60000},
+            # SCH=2 = enrolled (public school) per real PUMS coding.
             {'SERIALNO': '11', 'SPORDER': 2, 'AGEP': 20, 'SEX': 2, 'MAR': 5,
-             'RELSHIPP': 25, 'SCHL': 16, 'SCH': 1, 'WAGP': 8000},
+             'RELSHIPP': 25, 'SCHL': 16, 'SCH': 2, 'WAGP': 8000},
         ])
         dependents = identify_dependents(hh)
         assert '11_2' in dependents['11_1']
+
+    def test_enrolled_student_over_self_support_floor_is_independent(self):
+        """Regression (audit B4): an ENROLLED 20-year-old earning above the
+        student self-support floor ($20k) provides over half their own support
+        and is NOT a dependent — they file for themselves. Previously the
+        18-23 path applied no support test, so any working student child was
+        folded into the parent's unit."""
+        hh = _household([
+            {'SERIALNO': '13', 'SPORDER': 1, 'AGEP': 50, 'SEX': 1, 'MAR': 1,
+             'RELSHIPP': 20, 'SCHL': 21, 'SCH': 0, 'WAGP': 60000},
+            {'SERIALNO': '13', 'SPORDER': 2, 'AGEP': 20, 'SEX': 2, 'MAR': 5,
+             'RELSHIPP': 25, 'SCHL': 16, 'SCH': 2, 'WAGP': 35000},  # enrolled, $35k
+        ])
+        dependents = identify_dependents(hh)
+        assert all('13_2' not in deps for deps in dependents.values())
+
+    def test_sch_enrollment_direction(self):
+        """Regression (audit B2): SCH=1 means NOT enrolled (per real PUMS).
+
+        Income ($10k) is chosen to isolate the enrollment effect: above the
+        qualifying-relative gross-income limit (~$4.7k, so the non-student path
+        cannot attach them) but below the student self-support floor ($20k).
+        Enrolled (SCH=2) ⇒ qualifying child ⇒ dependent; not enrolled (SCH=1)
+        ⇒ independent filer. The inverted SCH==1-means-student bug flipped this.
+        """
+        base = {'SERIALNO': '14', 'SPORDER': 1, 'AGEP': 50, 'SEX': 1, 'MAR': 1,
+                'RELSHIPP': 20, 'SCHL': 21, 'SCH': 0, 'WAGP': 60000}
+        child = {'SERIALNO': '14', 'SPORDER': 2, 'AGEP': 20, 'SEX': 2, 'MAR': 5,
+                 'RELSHIPP': 25, 'SCHL': 16, 'WAGP': 10000}
+        not_enrolled = identify_dependents(_household([base, {**child, 'SCH': 1}]))
+        enrolled = identify_dependents(_household([base, {**child, 'SCH': 2}]))
+        assert all('14_2' not in deps for deps in not_enrolled.values())
+        assert '14_2' in enrolled['14_1']
 
     @pytest.mark.parametrize("income,year_qualifies", [
         (4_800, {2023: False, 2024: True}),

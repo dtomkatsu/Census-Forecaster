@@ -75,25 +75,41 @@ def identify_dependents(
     # We'll consider someone a student if they are enrolled in school (SCHL >= 15 for college)
     # However, householders (RELSHIPP=20) and spouses (RELSHIPP=21) are always filers,
     # even if they are students under 24.
+    # A young person 18-23 is only a potential *dependent* if they are actually
+    # ENROLLED in school (PUMS SCH), not merely if they have a high-school-level
+    # attainment (SCHL). The prior ``SCHL >= 15`` test (attainment) classified
+    # every 18-23-year-old with a HS diploma as a "young student", so working,
+    # non-enrolled adult children were pulled in as dependents with no support
+    # test (audit B4). ``_is_student`` reads SCH enrollment (2/3) with a SCHL
+    # fallback only when SCH is absent.
+    enrolled = household.apply(_is_student, axis=1)
     is_adult_age = (household['AGEP'] >= 18)
-    is_young_student = (household['AGEP'] < 24) & (household['SCHL'] >= 15)
+    is_young_student = (household['AGEP'] >= 18) & (household['AGEP'] < 24) & enrolled
     is_householder_or_spouse = household['RELSHIPP'].isin([20, 21, 1, 2])
     adults = household[
         is_adult_age & (~is_young_student | is_householder_or_spouse)
     ].copy()
-    
-    # Get all children and students in the household
+
+    # Children/students: anyone under 18, or an enrolled 18-23-year-old.
     children = household[
-        (household['AGEP'] < 18) |  # Under 18
-        ((household['AGEP'] < 24) & (household['SCHL'] >= 15))  # Students under 24 in college
+        (household['AGEP'] < 18)  # Under 18
+        | is_young_student        # enrolled 18-23
     ].copy()
-    
+
     # First, assign children and students to potential filers
     for _, child in children.iterrows():
         child_id = child.name
 
         # Skip if this is already an adult filer
         if child_id in adults.index:
+            continue
+
+        # An adult (18+) who provides over half of their own support is NOT a
+        # dependent (IRS qualifying-child support test). Without this, an
+        # enrolled 18-23-year-old with substantial earnings would be claimed as
+        # a dependent and their income folded into the guardian's unit (audit
+        # B4/B5). They fall through to filing for themselves in the constructor.
+        if child.get('AGEP', 0) >= 18 and _provides_over_half_own_support(child, household):
             continue
 
         # Find potential parents/guardians
@@ -379,19 +395,34 @@ def _is_child_relationship(
     return False
 
 def _is_student(person: pd.Series) -> bool:
-    """Check if a person is a student."""
-    # Check school enrollment
+    """Check if a person is currently enrolled in school.
+
+    PUMS ``SCH`` (school enrollment) coding:
+        1 = No, has NOT attended in the last 3 months
+        2 = Yes, public school / public college
+        3 = Yes, private school / private college / home school
+    Enrolled is therefore ``SCH in (2, 3)`` — the prior ``SCH == 1`` test was
+    inverted, flagging every non-enrolled person as a student and every actual
+    student as a non-student (audit B2).
+    """
+    # Check school enrollment (preferred — actual enrollment, not attainment).
     if 'SCH' in person:
-        return person['SCH'] == 1  # 1 = Yes, in school
-        
-    # Check age and education level
+        sch = person['SCH']
+        if pd.notna(sch):
+            try:
+                return int(sch) in (2, 3)
+            except (TypeError, ValueError):
+                pass
+
+    # Fallback when SCH is absent/NA: approximate with attainment + age.
+    # SCHL is educational ATTAINMENT, not enrollment, so this is only a proxy.
     age = person.get('AGEP', 0)
     education = person.get('SCHL', 0)
-    
+
     # In college or graduate school
     if education >= 16 and age <= 24:
         return True
-        
+
     return False
 
 def _lived_with_all_year(
