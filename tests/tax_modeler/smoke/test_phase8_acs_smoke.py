@@ -85,6 +85,39 @@ def test_poverty_by_geography_runs(taxed_units):
     assert (out["poverty_rate"] >= 0).all() and (out["poverty_rate"] <= 1).all()
 
 
+def test_poverty_by_geography_person_weighted(taxed_units):
+    """Regression (audit C2): the headcount poverty_rate must be person-weighted
+    (share of *people* poor), not unit-weighted. When poor units are larger than
+    non-poor units, the person-weighted rate exceeds the unit-weighted one, and
+    the dollar gap (always unit-weighted) is unchanged across both modes.
+    """
+    import pandas as pd
+
+    df = pd.DataFrame({
+        "PUMA": ["A", "A"],
+        "spm_resources": [10_000.0, 90_000.0],
+        "weight": [100.0, 100.0],
+        # Poor unit = MFJ + 3 deps (5 persons); non-poor = single (1 person).
+        "filing_status": ["married_filing_jointly", "single"],
+        "num_dependents": [3, 0],
+    })
+    thr = pd.Series([30_000.0, 30_000.0])
+    unit = poverty_by_geography(
+        df, resources_col="spm_resources", threshold=thr,
+        geo_col="PUMA", person_weighted=False,
+    )
+    pers = poverty_by_geography(
+        df, resources_col="spm_resources", threshold=thr,
+        geo_col="PUMA", person_weighted=True,
+    )
+    # Unit-weighted: 1 of 2 units poor -> 0.5. Person-weighted: 5 of 6 persons -> 5/6.
+    assert abs(float(unit.loc["A", "poverty_rate"]) - 0.5) < 1e-9
+    assert abs(float(pers.loc["A", "poverty_rate"]) - 5.0 / 6.0) < 1e-9
+    assert float(pers.loc["A", "count_weighted_persons"]) == 600.0
+    # Dollar gap is unit-weighted in both modes.
+    assert float(unit.loc["A", "poverty_gap_$"]) == float(pers.loc["A", "poverty_gap_$"])
+
+
 def test_distribution_by_geography_runs(taxed_units):
     if "PUMA" not in taxed_units.columns:
         pytest.skip("PUMA column unavailable on fixture")

@@ -1261,8 +1261,10 @@ class TaxUnitConstructor:
         }
         # PUMS replicate weights for SDR variance: weight_r01..weight_r80
         # (empty dict if include_replicate_weights=False or replicates absent).
+        # n_members = len(person_weights) so the WGTP/PWGTP choice matches
+        # the main weight (joint is always >= 2 members -> WGTPr).
         tax_unit.update(self._compute_replicate_weights(
-            hh_data, adult1, 'married_filing_jointly',
+            hh_data, adult1, 'married_filing_jointly', len(person_weights),
         ))
 
         logger.debug(f"Created joint tax unit: {tax_unit}")
@@ -1340,14 +1342,15 @@ class TaxUnitConstructor:
         hh_data: pd.Series,
         primary_person: pd.Series,
         filing_status: str,
+        n_members: int,
     ) -> Dict[str, float]:
         """Per-replicate tax-unit weight dict, mirroring _calculate_hybrid_weight.
 
         For each of WGTP1..WGTP80, compute the same hybrid-weight formula
         the main `weight` column uses, applied to the replicate household
-        weight (and the corresponding PWGTPr for single filers). Returns
-        a dict ``{"weight_r01": float, ..., "weight_r80": float}`` ready
-        to merge into the tax-unit row.
+        weight (and the corresponding PWGTPr for one-person tax units).
+        Returns a dict ``{"weight_r01": float, ..., "weight_r80": float}``
+        ready to merge into the tax-unit row.
 
         Empty dict (no replicate keys added) if:
           * ``include_replicate_weights=False`` was passed to __init__, or
@@ -1356,6 +1359,16 @@ class TaxUnitConstructor:
 
         Notes
         -----
+        The WGTP-vs-PWGTP choice MUST track ``_calculate_hybrid_weight``
+        exactly: that method keys on the *member count* of the tax unit
+        (1 member ⇒ the person's PWGTP; ≥2 members ⇒ the household WGTP),
+        **not** on filing status. A single/HoH filer *with dependents* has
+        ≥2 members and therefore uses WGTP for its main weight, so its
+        replicates must use WGTPr too — keying on filing status instead
+        (the prior bug) used PWGTPr there and biased every SDR standard
+        error for HoH and single-with-dependent units. ``n_members`` is
+        ``len(person_weights)`` from the caller.
+
         The same per-filing-status calibration factor that scales the
         main weight (single 0.85, MFJ 1.0, HoH 1.88, MFS 1.05) is
         applied to each replicate, so SDR ratios at the tax-unit level
@@ -1371,13 +1384,15 @@ class TaxUnitConstructor:
             'married_filing_separately': 1.05,
         }
         adjustment = calibration_factors.get(filing_status, 1.0)
-        is_single = filing_status in ('single', 'head_of_household')
+        # Mirror _calculate_hybrid_weight: only a *one-person* tax unit uses
+        # the per-person weight; 0 or ≥2 members use the household weight.
+        use_person_weight = n_members == 1
 
         out: Dict[str, float] = {}
         for r_idx, wgtp_col in enumerate(self._wgtp_replicate_cols, start=1):
             hh_w_r = float(hh_data.get(wgtp_col, 1.0))
-            if is_single:
-                # Single-person tax unit: per-replicate person weight when
+            if use_person_weight:
+                # One-person tax unit: per-replicate person weight when
                 # available, else fall back to the household replicate.
                 pwgtp_col = f"PWGTP{r_idx}"
                 if pwgtp_col in primary_person.index:
@@ -1385,96 +1400,14 @@ class TaxUnitConstructor:
                 else:
                     base = hh_w_r
             else:
-                # Joint / MFS tax unit: use the household replicate weight
-                # (consistent with _calculate_hybrid_weight returning hh_weight
-                # when len(person_weights) >= 2).
+                # Multi-person tax unit (joint, or single/HoH/MFS with
+                # dependents): use the household replicate weight, matching
+                # _calculate_hybrid_weight returning hh_weight when
+                # len(person_weights) >= 2.
                 base = hh_w_r
             calibrated = max(base * adjustment, 0.1)
             out[f"weight_r{r_idx:02d}"] = calibrated
         return out
-
-    def _create_joint_filer(self, adult1: pd.Series, adult2: pd.Series,
-                           hh_members: pd.DataFrame, hh_data: pd.Series,
-                           available_deps: List[str] = None) -> Optional[dict]:
-        """
-        Create a tax unit for a joint filer.
-
-        Args:
-            adult1: First adult in the joint filing couple
-            adult2: Second adult in the joint filing couple
-            hh_members: All members of the household
-            hh_data: Household-level data
-            available_deps: List of available dependent person_ids that can be claimed
-
-        Returns:
-            Dictionary containing tax unit information or None if not valid
-        """
-        if available_deps is None:
-            available_deps = []
-            
-        logger.debug(f"Creating joint filer tax unit for {adult1.name} and {adult2.name} with {len(available_deps)} available dependents")
-        
-        # Filter available dependents to only include those actually in the household
-        valid_dependents = [d for d in available_deps if d in hh_members.index]
-        
-        # Combine all members for income calculation and collect person weights
-        members_to_include = [adult1, adult2]
-        person_weights = [adult1.get('PWGTP', 1.0), adult2.get('PWGTP', 1.0)]
-        
-        if valid_dependents:
-            for dep_id in valid_dependents:
-                dep = hh_members.loc[dep_id]
-                members_to_include.append(dep)
-                person_weights.append(dep.get('PWGTP', 1.0))
-        
-        # Create DataFrame from Series objects for income calculation
-        income_df = pd.DataFrame(members_to_include)
-        # Disable 2026 growth projection for SOI 2022 comparison
-        income = calculate_tax_unit_income(income_df, apply_2026_growth=False)
-        
-        # Calculate hybrid weight
-        hh_weight = float(hh_data.get('WGTP', 1.0))
-        hybrid_weight = self._calculate_hybrid_weight(hh_weight, person_weights, 'married_filing_jointly')
-
-        # Extract per-filer income components for source-specific growth projections
-        p1 = extract_person_income_components(adult1)
-        p2 = extract_person_income_components(adult2)
-
-        # Create tax unit with proper string IDs and include hybrid weight and geographic info
-        tax_unit = {
-            'filer_id': f"{hh_data['SERIALNO']}_joint_{adult1.name}_{adult2.name}",
-            'SERIALNO': str(hh_data['SERIALNO']),  # Ensure SERIALNO is string
-            'filing_status': 'married_filing_jointly',
-            'primary_filer_id': str(adult1.name),   # Convert to string
-            'secondary_filer_id': str(adult2.name), # Convert to string
-            'income': income,
-            'num_dependents': len(valid_dependents),
-            'dependents': [str(d) for d in valid_dependents],  # Ensure dependents are strings
-            'dependents_details': self._build_dependent_details(valid_dependents, hh_members),
-            'hh_id': str(adult1['SERIALNO']),  # Ensure hh_id is string
-            'weight': hybrid_weight,  # Use hybrid weight
-            'hh_weight': hh_weight,   # Store original household weight for reference
-            'person_weight_sum': sum(person_weights),  # Store sum of person weights for reference
-            'PUMA': hh_data.get('PUMA'),  # Add PUMA code for geographic analysis
-            'PUMA10': hh_data.get('PUMA10', hh_data.get('PUMA')),  # Handle both PUMA and PUMA10 fields
-            # Primary filer income components
-            'primary_wagp': p1['wagp'], 'primary_semp': p1['semp'],
-            'primary_intp': p1['intp'], 'primary_div': p1['div'],
-            'primary_retp': p1['retp'], 'primary_ssp': p1['ssp'],
-            'primary_ssp_full': p1['ssp_full'], 'primary_ssip': p1['ssip'],
-            'primary_pap': p1['pap'],
-            'primary_oip': p1['oip'], 'primary_agep': p1['agep'],
-            # Secondary filer income components
-            'secondary_wagp': p2['wagp'], 'secondary_semp': p2['semp'],
-            'secondary_intp': p2['intp'], 'secondary_div': p2['div'],
-            'secondary_retp': p2['retp'], 'secondary_ssp': p2['ssp'],
-            'secondary_ssp_full': p2['ssp_full'], 'secondary_ssip': p2['ssip'],
-            'secondary_pap': p2['pap'],
-            'secondary_oip': p2['oip'], 'secondary_agep': p2['agep'],
-        }
-
-        logger.debug(f"Created joint tax unit: {tax_unit}")
-        return tax_unit
 
     def _can_claim_dependent(self, tax_unit: dict, dependent: pd.Series, hh_members: pd.DataFrame) -> bool:
         """
@@ -1694,9 +1627,11 @@ class TaxUnitConstructor:
         }
         # PUMS replicate weights for SDR variance: weight_r01..weight_r80
         # (empty dict if include_replicate_weights=False or replicates absent).
-        # Single / HoH filers use the per-replicate PWGTPr from the adult.
+        # n_members = len(person_weights): a one-person unit uses PWGTPr; a
+        # single/HoH filer WITH dependents has >= 2 members and uses WGTPr,
+        # matching the main weight's member-count rule.
         tax_unit.update(self._compute_replicate_weights(
-            hh_data, adult, filing_status,
+            hh_data, adult, filing_status, len(person_weights),
         ))
 
         logger.debug(f"Created tax unit: {tax_unit}")

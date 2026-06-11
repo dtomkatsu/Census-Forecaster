@@ -301,6 +301,110 @@ class TestReplicateWeightPropagation:
         # weight_r80: 180 * 0.85 = 153.0
         np.testing.assert_allclose(row['weight_r80'], 153.0, rtol=1e-5)
 
+    def test_replicates_propagate_to_joint_filer(self):
+        """Regression (audit A1): married-filing-jointly tax units must also
+        carry all 80 weight_r columns. A duplicate `_create_joint_filer`
+        definition previously shadowed the replicate-emitting version, so
+        every MFJ unit silently lacked replicate weights — biasing all SDR
+        standard errors. MFJ uses the household replicate weight × 1.0.
+        """
+        hh = pd.DataFrame({
+            'SERIALNO': ['010'],
+            'WGTP': [100.0],
+            'HINCP': [80000.0],
+            'PUMA': [301],
+            'TYPEHUGQ': [1],
+            'TEN': [1],
+            **{f'WGTP{r}': [100.0 + r] for r in range(1, 81)},
+        })
+        per = pd.DataFrame({
+            'SERIALNO': ['010', '010'],
+            'SPORDER': [1, 2],
+            'AGEP': [40, 38],
+            'PWGTP': [100.0, 100.0],
+            'PINCP': [50000.0, 30000.0],
+            'WAGP': [50000.0, 30000.0],
+            'SCHL': [21, 21],
+            'MAR': [1, 1],            # married, spouse present
+            'RELSHIPP': [20, 21],     # householder + opposite-sex spouse
+            'SEX': [1, 2],
+            'CIT': [1, 1],
+            'SEMP': [0, 0],
+            'ADJINC': [1.0, 1.0],
+            **{f'PWGTP{r}': [100.0 + r, 100.0 + r] for r in range(1, 81)},
+        })
+        ctor = TaxUnitConstructor(per, hh, num_processes=1, progress_bar=False,
+                                  use_soi_calibration=False)
+        units = ctor.create_rule_based_units(parallel=False)
+        mfj = units[units['filing_status'] == 'married_filing_jointly']
+        assert len(mfj) == 1, (
+            "expected one MFJ unit, got "
+            f"{units['filing_status'].tolist()}"
+        )
+        rep_cols = sorted(c for c in units.columns if c.startswith('weight_r'))
+        assert len(rep_cols) == 80, f"expected 80 weight_r columns, got {len(rep_cols)}"
+        row = mfj.iloc[0]
+        # Every replicate must be populated (not NaN) — the core of the bug.
+        assert row[rep_cols].notna().all(), "MFJ unit has missing replicate weights"
+        # MFJ ⇒ household replicate weight × 1.0 calibration factor.
+        np.testing.assert_allclose(row['weight_r01'], 101.0, rtol=1e-5)
+        np.testing.assert_allclose(row['weight_r80'], 180.0, rtol=1e-5)
+
+    def test_replicates_use_household_base_for_hoh_with_dependent(self):
+        """Regression (audit B1): a HoH (or single) filer WITH a dependent has
+        >= 2 members, so its MAIN weight uses the household WGTP — therefore its
+        replicates must use WGTPr, not the householder's PWGTPr. The prior code
+        keyed the replicate base on filing_status ('head_of_household' -> PWGTPr),
+        mismatching the main weight and biasing SDR variance for every HoH and
+        single-with-dependent unit.
+
+        Fixture sets the householder's PWGTP (60+r) DISTINCT from WGTP (100+r) so
+        the assertion actually discriminates: correct => WGTPr-based, bug => PWGTPr.
+        """
+        hh = pd.DataFrame({
+            'SERIALNO': ['020'],
+            'WGTP': [100.0],
+            'HINCP': [40000.0],
+            'PUMA': [301],
+            'TYPEHUGQ': [1],
+            'TEN': [1],
+            **{f'WGTP{r}': [100.0 + r] for r in range(1, 81)},
+        })
+        per = pd.DataFrame({
+            'SERIALNO': ['020', '020'],
+            'SPORDER': [1, 2],
+            'AGEP': [40, 8],
+            # Householder PWGTP deliberately != WGTP to discriminate the base.
+            'PWGTP': [60.0, 50.0],
+            'PINCP': [40000.0, 0.0],
+            'WAGP': [40000.0, 0.0],
+            'SCHL': [21, 2],
+            'MAR': [5, 5],            # never married -> eligible for HoH
+            'RELSHIPP': [20, 25],     # householder + biological child
+            'SEX': [2, 1],
+            'CIT': [1, 1],
+            'SEMP': [0, 0],
+            'ADJINC': [1.0, 1.0],
+            **{f'PWGTP{r}': [60.0 + r, 50.0 + r] for r in range(1, 81)},
+        })
+        ctor = TaxUnitConstructor(per, hh, num_processes=1, progress_bar=False,
+                                  use_soi_calibration=False)
+        units = ctor.create_rule_based_units(parallel=False)
+        hoh = units[units['filing_status'] == 'head_of_household']
+        assert len(hoh) == 1, (
+            "expected one HoH unit (householder + dependent child), got "
+            f"{units['filing_status'].tolist()}"
+        )
+        row = hoh.iloc[0]
+        assert row['num_dependents'] == 1
+        # Main weight uses WGTP (>=2 members) x HoH factor 1.88: 100 * 1.88 = 188.
+        np.testing.assert_allclose(row['weight'], 188.0, rtol=1e-5)
+        # Replicates must therefore be WGTPr * 1.88, NOT the householder's PWGTPr.
+        # weight_r01: WGTP1(101) * 1.88 = 189.88  (bug would give PWGTP1(61)*1.88=114.68)
+        np.testing.assert_allclose(row['weight_r01'], 189.88, rtol=1e-5)
+        # weight_r80: WGTP80(180) * 1.88 = 338.4  (bug would give 240*... no: 140*1.88=263.2)
+        np.testing.assert_allclose(row['weight_r80'], 338.4, rtol=1e-5)
+
     def test_flag_off_suppresses_replicates(self):
         per, hh = self._fixture_with_replicates()
         ctor = TaxUnitConstructor(per, hh, num_processes=1, progress_bar=False,

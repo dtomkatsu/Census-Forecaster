@@ -29,6 +29,8 @@ def poverty_by_geography(
     threshold,
     weight_col: str = "weight",
     geo_col: str = "PUMA",
+    person_weighted: bool = True,
+    persons_per_unit_col: Optional[str] = None,
 ) -> pd.DataFrame:
     """Compute SPM-style poverty metrics broken down by a geographic column.
 
@@ -48,13 +50,27 @@ def poverty_by_geography(
         Geographic identifier to group on. Defaults to ``"PUMA"``;
         ``"county"`` and ``"house_district"`` are also valid if those
         columns exist on the units frame.
+    person_weighted:
+        When ``True`` (default), the *headcount* metrics (``poverty_rate``
+        and ``poverty_depth``) are weighted by **persons** — i.e. the
+        share of *people* below the threshold — matching the canonical SPM
+        path in :func:`tax_modeler.poverty.impact`. Person weight is
+        ``weight_col * persons_per_unit``. Dollar metrics (``poverty_gap_$``,
+        ``mean_resources_$``) always stay on the resource-unit weight.
+        Set ``False`` to recover the legacy unit-weighted rate.
+    persons_per_unit_col:
+        Optional column giving persons per resource unit. If omitted, the
+        count is auto-derived: the ``n_persons`` column (SPM-unit frames)
+        or ``1 + (filing_status == "married_filing_jointly") + num_dependents``
+        (tax-unit frames), via the shared
+        :func:`tax_modeler.poverty.impact._persons_per_unit` helper.
 
     Returns
     -------
     pd.DataFrame
-        One row per geography with: ``count_weighted``, ``poverty_rate``,
-        ``poverty_depth``, ``poverty_gap`` (in $ within that geography),
-        ``mean_resources``.
+        One row per geography with: ``count_weighted`` (resource units),
+        ``count_weighted_persons``, ``poverty_rate``, ``poverty_depth``,
+        ``poverty_gap_$`` (within that geography), ``mean_resources_$``.
     """
     for c in (resources_col, weight_col, geo_col):
         if c not in units.columns:
@@ -71,19 +87,46 @@ def poverty_by_geography(
     else:
         thr_arr = np.full(len(units), float(threshold))
 
+    # Persons-per-unit for person-weighted headcount rates. Derived once
+    # over the full frame so group subsets stay aligned by position.
+    if person_weighted:
+        if persons_per_unit_col is not None:
+            if persons_per_unit_col not in units.columns:
+                raise DataValidationError(
+                    f"poverty_by_geography requires column {persons_per_unit_col!r}",
+                    missing_columns=[persons_per_unit_col],
+                )
+            ppu_arr = (
+                units[persons_per_unit_col].fillna(0).clip(lower=0).to_numpy(dtype=float)
+            )
+        else:
+            # Canonical auto-detection (SPM-unit n_persons or tax-unit
+            # composition). Imported locally to avoid a metrics<->poverty
+            # import cycle at module load.
+            from tax_modeler.poverty.impact import _persons_per_unit
+
+            ppu_arr = _persons_per_unit(units)
+    else:
+        ppu_arr = np.ones(len(units), dtype=float)
+
     rows = []
     for geo, group in units.groupby(geo_col, observed=True):
         idx = group.index
-        thr_subset = thr_arr[units.index.get_indexer(idx)]
+        pos = units.index.get_indexer(idx)
+        thr_subset = thr_arr[pos]
         r = group[resources_col].fillna(0).to_numpy(dtype=float)
         w = group[weight_col].fillna(0).to_numpy(dtype=float)
         if w.sum() == 0:
             continue
+        # Person weight for headcount metrics; unit weight for $ metrics.
+        wp = w * ppu_arr[pos]
+        rate_w = wp if wp.sum() > 0 else w
         rows.append({
             geo_col: geo,
             "count_weighted": float(w.sum()),
-            "poverty_rate": poverty_rate(r, thr_subset, w),
-            "poverty_depth": poverty_depth(r, thr_subset, w),
+            "count_weighted_persons": float(wp.sum()),
+            "poverty_rate": poverty_rate(r, thr_subset, rate_w),
+            "poverty_depth": poverty_depth(r, thr_subset, rate_w),
             "poverty_gap_$": poverty_gap(r, thr_subset, w),
             "mean_resources_$": float((r * w).sum() / w.sum()),
         })
