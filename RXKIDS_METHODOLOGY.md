@@ -3,6 +3,132 @@
 > Companion documentation for `tax_modeler.programs.rxkids_hi`. Documents
 > sourcing, parameter calibration, eligibility approximations, and
 > known limitations. Required for advocacy use.
+>
+> **New to this document?** Start with §0 (Plain-language overview). It
+> explains, in everyday terms, what the program is, how we count births, and
+> where every number comes from. The later sections (§1–§10) are the detailed
+> technical reference.
+
+## 0. Plain-language overview
+
+### What RxKids is
+
+RxKids gives cash to families around the time a baby is born — no strings
+attached. A pregnant person gets a one-time **$1,500** payment, and after the
+baby arrives the family gets **$500 a month for 6 months** ($3,000). It started
+in Flint, Michigan in 2024 and has spread to 35+ Michigan communities. This
+document models what a similar program would cost and accomplish **in Hawaiʻi**.
+
+### Who would qualify (in this model)
+
+A family qualifies if **either** of these is true:
+
+1. **They already qualify for Hawaiʻi Medicaid (Med-QUEST)**, or
+2. **Their income is at or below 300% of the federal poverty line** (about
+   $85,000 for a family of three).
+
+This is broader than a Medicaid-only program but narrower than giving cash to
+everyone. On the real Hawaiʻi data, roughly **half of all birth families**
+clear this bar (~7,300 of ~13,632 projected 2028 births). Most of that
+eligibility — about **three-quarters** — comes from families who already
+qualify for Medicaid; the 300% FPL income test adds the rest. (See the
+decomposition in §10.)
+
+### How we estimate the cost — the short version
+
+1. **Count the babies.** We find every newborn (a baby under age 1) in the
+   Census microdata for Hawaiʻi, then check which of those families would
+   qualify under the rules above.
+2. **Add up the payments.** Each qualifying birth draws one $1,500 prenatal
+   payment and $3,000 in postnatal payments.
+3. **Adjust for real-world take-up.** Not everyone who qualifies will sign up.
+   We assume **90%** of newborn families enroll and **83%** of pregnant people
+   enroll prenatally — conservative next to Flint's observed 98%.
+4. **Project to 2028 and scale up to the whole state** using Census population
+   weights.
+
+**Bottom line:** about **$29 million a year** in cash benefits (≈$31M including
+8% administrative overhead), reaching roughly **12,700 people a year**. The
+realistic uncertainty range is **$17M–$37M** — driven mostly by how many
+families actually enroll, which no Hawaiʻi track record exists to pin down yet.
+
+### How the number of births is calculated — and where the data comes from
+
+This is the single most important input, so here is exactly how it works:
+
+1. **The official birth count comes from the CDC.** The federal government
+   publishes the actual number of babies born to Hawaiʻi residents each year in
+   its *"Births: Final Data"* reports (National Vital Statistics Reports). The
+   anchor figure is **15,535 births in 2022** (report NVSR 73-02), counted by
+   the mother's state of residence. The full year-by-year series we use:
+
+   | Year | Hawaiʻi resident births |
+   |---|---|
+   | 2018 | 15,404 |
+   | 2019 | 15,403 |
+   | 2020 | 15,730 |
+   | 2021 | 15,620 |
+   | 2022 | 15,535 |
+   | 2023 | 14,643 |
+
+   *Source: CDC National Vital Statistics Reports, "Births: Final Data" series.*
+
+2. **We find those same births inside the Census data, family by family.** The
+   model runs on **Census PUMS** (Public Use Microdata Sample — anonymized
+   individual records from the American Community Survey, 2018–2022 5-year
+   file). Every newborn shows up as a **baby listed at age 0** in a family's
+   records. We count those age-0 babies per family. (Twins → 2.) This is what
+   lets us tie each birth to a *specific family's income*, so we can test
+   whether that family would qualify.
+
+   - *Why age 0 and not "under 6 months"?* A baby under age 1 was born sometime
+     in the last ~12 months — that matches the **annual flow** of births, which
+     is the right basis for a yearly cost. Using a 6-month snapshot would
+     undercount the year's births by about half.
+
+3. **We check the counting against the CDC.** When we add up all the age-0
+   babies in the Census data (using population weights), we get **~15,419** —
+   within **1%** of the CDC's 15,535. That agreement is the proof the
+   birth-counting method is sound.
+
+4. **We project births forward to 2028.** Because the forecast is for 2028, not
+   2022, we age the birth count forward using the repo's standard trend model
+   (the same damped-trend forecaster used for income), fed the CDC year-by-year
+   series above. It projects **~13,632 births in 2028** (range ~10,500–16,800).
+   The drop from 15,535 is driven mainly by the real **2023 decline to 14,643**.
+   This is a **×0.884** adjustment on the 2022 level. (You can turn the
+   projection off with `--no-birth-projection` to hold births at the 2022 level.)
+
+So: **CDC tells us how many births there are; the Census data tells us which
+families they belong to; the trend model carries that forward to 2028.**
+
+> **Earlier method (now replaced).** A previous version estimated births
+> indirectly — multiplying each family's *total* dependent count by an average
+> birth rate. That overcounted, because it treated older kids, students, and
+> adult dependents as if they contributed births, and those larger families
+> skew lower-income, which inflated the eligible share. Switching to directly
+> counting age-0 babies roughly **halved the headline cost** (from ~$53M to
+> ~$29M). The old method is still available via `--use-proxy-births` for
+> comparison only.
+
+### Where every other number comes from
+
+| Input | Value | Source |
+|---|---|---|
+| Annual births | 15,535 (2022) → ~13,632 (2028 proj.) | CDC NVSR "Births: Final Data" |
+| Family records / incomes | Hawaiʻi sample | Census PUMS (ACS 2018–2022 5-yr) |
+| Payment amounts | $1,500 prenatal; $500/mo × 6 postnatal | RxKids Flint program (rxkids.org) |
+| Take-up (enrollment) | 90% newborn / 83% prenatal | RxKids Flint observed 98%/90%, set conservatively |
+| 300% FPL income line | ~$85k for family of 3 | HHS federal poverty guidelines (year-aware) |
+| Medicaid eligibility | Med-QUEST pathways (138%/196%/313% FPL) | Hawaiʻi Med-QUEST; KFF state health facts |
+| Share of births on Medicaid | ~40% (~6,200/yr) | KFF state health facts |
+| Tax treatment | Non-taxable cash | Flint design; Census SPM rules (P60-280) |
+| Admin overhead | 8% | Typical cash-transfer load (5–10%) |
+
+Every one of these is documented in detail in the sections below, and the
+forecast can be re-run with any of them overridden (see §10).
+
+---
 
 ## 1. Program origin
 
@@ -612,6 +738,28 @@ births = **~54% of births eligible**, on the MAGI-household grain.
   *floor* (the pregnancy-Medicaid pathway sits at 196% FPL). The model's 54%
   sits above it, as it should: the gate (≤300% FPL OR Medicaid/CHIP) is
   broader than the pregnancy threshold.
+- **Which clause drives eligibility (approximate decomposition).** The model
+  computes only the *combined* eligible share (~54%); it does not separately
+  report a clause-1-vs-clause-2 split. But we can decompose it against the
+  external Medicaid floor. On the projected 2028 base of ~13,632 births:
+
+  | Source | Eligible births | Share of births |
+  |---|---|---|
+  | Clause 1 — Medicaid families (≈40% floor, scaled to 2028) | ~5,450 | ~40% |
+  | Clause 2 — income-only (≤300% FPL, **not** on Medicaid) | ~1,900 | ~14% |
+  | **Combined eligible (model output)** | **~7,300** | **~54%** |
+
+  So roughly **three-quarters of eligibility is the Medicaid clause**, with the
+  300% FPL income test adding the remaining ~quarter on top. This is a useful
+  advocacy framing: most of the program's reach overlaps families the state
+  *already* identifies as low-income through Med-QUEST. Two caveats on the
+  precision: (1) the ~5,450 is derived from the **external** KFF
+  Medicaid-financed-birth rate, not a model-reported clause split; (2) clause 1
+  (`medicaid_receives`) is actually *broader* than "delivery financed by
+  Medicaid" — it also fires on the 138% adult and 313% children/CHIP pathways —
+  so the true Medicaid-clause share is likely a touch higher than ~40% and the
+  income-only residual a touch smaller. Treat the split as ±a few points, not
+  exact.
 - **Why ~54% (vs the proxy's inflated 86%)?** The proxy distributed
   *fractional* births across **all** families with dependents, in proportion
   to dependent count — and larger-dependent families skew lower-income, so the
