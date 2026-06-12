@@ -46,7 +46,12 @@ logger = logging.getLogger(__name__)
 
 # COR March 10, 2026 forecast for Hawaii Individual Income Tax.
 # Source: files.hawaii.gov/tax/useful/cor/2026gf03-10_attach_1.pdf
-# FY→TY mapping: FY(n+1) = TY(n) per DOTAX fiscal-note convention.
+#
+# YEAR CONVENTION: keys are TAX years (TY). COR publishes FISCAL years
+# (Jul-Jun); the mapping is FY(n+1) = TY(n) per DOTAX fiscal-note convention
+# — e.g. the FY 2026 collections forecast anchors TY 2025 liability. All
+# model outputs are labeled in TAX years; convert to FY (= TY+1) when
+# comparing against COR/fiscal-note tables.
 DEFAULT_COR_IIT_PROJECTIONS_M: Dict[int, float] = {
     2025: 2_986.920,   # FY 2026
     2026: 2_900.330,   # FY 2027
@@ -132,6 +137,15 @@ class ForwardTargets:
         ``{(tier_lo, tier_hi): aggregate_AGI_M}`` for the 5 SOI Table 1.4
         tiers within $1M+. Refines the within-$1M+ distribution so high
         income mobility is reflected (Auten/Gee/Turner 2013).
+    statutory_tax_M:
+        Filled in by ``project_and_recalibrate`` AFTER the Phase 1 rake:
+        the statutory (recomputed) baseline tax aggregate before Phase 2
+        scales ``hi_state_tax`` to the COR target. ``None`` until then.
+    statute_vs_cor_wedge:
+        ``statutory_tax_M / aggregate_tax_M``. The calibration residual the
+        Phase 2 multipliers absorb. Scenario scripts re-score statutorily and
+        so report STATUTORY levels, not COR-anchored ones — this wedge is the
+        gap between the two and should be reported alongside every level.
     """
     year: int
     filer_targets: Dict[Tuple[float, float], int]
@@ -140,6 +154,8 @@ class ForwardTargets:
     aggregate_tax_M: float
     agi_mass_targets: Optional[Dict[Tuple[float, float], float]] = None
     tier_agi_targets: Optional[Dict[Tuple[float, float], float]] = None
+    statutory_tax_M: Optional[float] = None
+    statute_vs_cor_wedge: Optional[float] = None
 
 
 def _back_cast_cor(year: int, cor_projections_M: Dict[int, float]) -> float:

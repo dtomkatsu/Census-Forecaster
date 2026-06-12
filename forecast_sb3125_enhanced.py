@@ -92,7 +92,10 @@ DATA_DIR = Path(
     os.environ.get("HAWAII_PUMS_DIR")
     or Path.home() / "ctc-and-eitc" / "data" / "raw" / "pums"
 )
-CACHE_FILE = Path("/tmp/tax_units_cache.parquet")
+# Versioned artifacts live in-repo (gitignored) — /tmp caches had no
+# invalidation and silently served stale bases across code changes.
+ARTIFACT_DIR = Path(__file__).parent / "data" / "artifacts"
+CACHE_FILE = ARTIFACT_DIR / "tax_units_cache.parquet"
 TARGET_YEARS = [2027, 2028, 2029, 2030, 2031]
 
 # Three calibrated scenarios. Calibration is anchored to (a) the official
@@ -193,17 +196,30 @@ def _scenario_worker(scenario_dict, target_years, calibrated_path, cd="1"):
     ``tax_modeler`` being installed in the spawned interpreter (it is
     when launched under ``uv run`` or after ``uv pip install -e``).
     """
-    import pandas as pd
-    base = pd.read_pickle(calibrated_path)
-    return run_one_scenario(base, scenario=scenario_dict, target_years=target_years, cd=cd)
+    from tax_modeler.artifacts import load_calibrated_base
+    base, ded_params, meta = load_calibrated_base(calibrated_path)
+    return run_one_scenario(
+        base, scenario=scenario_dict, target_years=target_years, cd=cd,
+        ded_params=ded_params, cal_tax_year=int(meta.get("tax_year", 2023)),
+    )
 
 
-def run_one_scenario(base_calibrated, *, scenario, target_years, cd="1"):
+def run_one_scenario(
+    base_calibrated, *, scenario, target_years, cd="1",
+    ded_params=None, cal_tax_year=2023,
+):
     """Run a single scenario across all target years and return per-year rows.
 
     Imports its dependencies internally so this function is self-contained
     and trivially executable in a worker process (ProcessPoolExecutor).
+
+    ``ded_params``/``cal_tax_year`` are the deduction params and vintage the
+    calibrated base was scored under — re-scoring here must use the SAME
+    basis or the synthetic-tail rescale derives a wrong ``tail_k`` (C3).
     """
+    if ded_params is None:
+        from tax_modeler.artifacts import load_canonical_deduction_params
+        ded_params = load_canonical_deduction_params()
     import time
     import warnings; warnings.filterwarnings("ignore")
     import logging; logging.disable(logging.WARNING)
@@ -259,12 +275,14 @@ def run_one_scenario(base_calibrated, *, scenario, target_years, cd="1"):
               f"dyn_refundable={dynamic_refundable_share}", end="", flush=True)
     print(f"\n{'='*78}", flush=True)
 
-    # Synthesize fresh from the calibrated (no-synthesis) base
+    # Synthesize fresh from the calibrated (no-synthesis) base.
+    # Re-score with the SAME deduction params the base was calibrated under —
+    # bare _compute_base_tax (SD-only) made tail_k inconsistent (C3).
     units = synthesize_top_filers(base_calibrated, pareto_alpha=alpha)
     units = impute_capital_gains_from_soi(units)    # Phase 3: CG rate cap for $100K-$1M filers
-    units = _compute_base_tax(units)
+    units = _compute_base_tax(units, deduction_params=ded_params, tax_year=cal_tax_year)
     units, tail_k = rescale_synthetic_tail_to_tax_target(units)
-    units = _compute_base_tax(units)
+    units = _compute_base_tax(units, deduction_params=ded_params, tax_year=cal_tax_year)
     v = validate_top_synthesis(units)
     print(f"  Synthesis: {v['filers_1m_plus']:,.0f} filers @ $1M+ "
           f"({100*v['filer_target_ratio']:.1f}%), ${v['tax_1m_plus_$M']:,.1f}M tax "
@@ -436,6 +454,8 @@ if __name__ == "__main__":
             sys.exit(1)
 
         print(f"Loading cached units from {CACHE_FILE}...", flush=True)
+        from tax_modeler.artifacts import check_cache_sidecar, load_canonical_deduction_params
+        check_cache_sidecar(CACHE_FILE)
         units = pd.read_parquet(CACHE_FILE)
         print(f"  {len(units):,} units loaded", flush=True)
 
@@ -447,10 +467,7 @@ if __name__ == "__main__":
         # deduction basis. Avoids the standard-only-vs-itemized "double
         # discount" at high incomes that previously made TY 2027 baseline
         # drop ~$349M below the calibration anchor.
-        import json
-        DED_PARAMS_PATH = REPO / "packages" / "tax_modeler" / "config" / "deduction_params.json"
-        with open(DED_PARAMS_PATH) as _f:
-            CAL_DED_PARAMS = json.load(_f)
+        CAL_DED_PARAMS = load_canonical_deduction_params()
         print(f"  Loaded itemized-deduction params for calibration", flush=True)
 
         units = _compute_base_tax(units, deduction_params=CAL_DED_PARAMS, tax_year=2023)
@@ -484,8 +501,15 @@ if __name__ == "__main__":
         # it independently. Pickle (not parquet) is required because the
         # ``dependents`` column holds Python objects (lists of dicts) that
         # parquet can't round-trip without lossy string conversion.
-        calibrated_pkl = Path("/tmp/sb3125_calibrated_base.pkl")
-        calibrated_base.to_pickle(calibrated_pkl)
+        # save_calibrated_base embeds CAL_DED_PARAMS + provenance metadata so
+        # consumers re-score on the SAME deduction basis (C3 fix).
+        from tax_modeler.artifacts import save_calibrated_base
+        calibrated_pkl = ARTIFACT_DIR / "sb3125_calibrated_base.pkl"
+        save_calibrated_base(
+            calibrated_base, calibrated_pkl,
+            deduction_params=CAL_DED_PARAMS, tax_year=2023,
+            extra_meta={"built_by": "forecast_sb3125_enhanced.py", "cd": CD},
+        )
 
         # Parallel: run all four scenarios concurrently. Each worker imports
         # its own modules and reads the calibrated parquet. With the
@@ -540,13 +564,14 @@ if __name__ == "__main__":
         mid_sc = next(s for s in SCENARIOS if s["label"] == "MID")
         q_calc = TaxCalculator()
 
-        # Re-synthesize MID (same params as the parallel worker)
+        # Re-synthesize MID (same params as the parallel worker); re-score on
+        # the calibration deduction basis (C3 fix — see run_one_scenario).
         q_units = synthesize_top_filers(calibrated_base, pareto_alpha=mid_sc["alpha"])
         q_units = _enrich_for_credits(q_units)           # adds total_cash_income for TCI quintile binning
         q_units = impute_capital_gains_from_soi(q_units) # Phase 3: CG rate cap for $100K-$1M filers
-        q_units = _compute_base_tax(q_units)
+        q_units = _compute_base_tax(q_units, deduction_params=CAL_DED_PARAMS, tax_year=2023)
         q_units, _ = rescale_synthetic_tail_to_tax_target(q_units)
-        q_units = _compute_base_tax(q_units)
+        q_units = _compute_base_tax(q_units, deduction_params=CAL_DED_PARAMS, tax_year=2023)
 
         # Anchor quintile boundaries to the 2026 base-year income distribution
         # so Q1–Q5 membership is fixed across all projection years.

@@ -16,7 +16,7 @@ Combinations:
   MID    = (alpha=1.5, reec=obbba_mid)     -- recommended default
   HIGH   = (alpha=1.4, reec=pre_obbba)     -- aggressive for revenue
 
-Requires tax-unit cache at /tmp/tax_units_cache.parquet (run forecast_sb3125.py first).
+Requires tax-unit cache at data/artifacts/tax_units_cache.parquet (run forecast_sb3125.py first).
 
 Output:
   /tmp/sb3125_cd{N}_sensitivity_2027_2031.csv
@@ -34,7 +34,9 @@ DATA_DIR = Path(
     os.environ.get("HAWAII_PUMS_DIR")
     or Path.home() / "ctc-and-eitc" / "data" / "raw" / "pums"
 )
-CACHE_FILE = Path("/tmp/tax_units_cache.parquet")
+# Versioned artifacts live in-repo (gitignored) — /tmp caches had no
+# invalidation and silently served stale bases across code changes.
+CACHE_FILE = Path(__file__).parent / "data" / "artifacts" / "tax_units_cache.parquet"
 TARGET_YEARS = [2027, 2028, 2029, 2030, 2031]
 
 SCENARIOS = [
@@ -60,12 +62,19 @@ def run_one_scenario(
     _compute_base_tax, project_tax_units_forward,
     TaxCalculator, TaxSystemRegistry, compare_systems,
     compute_credit_overlay, synthesize_top_filers, validate_top_synthesis,
+    ded_params=None, cal_tax_year=2023,
 ):
     import time
     print(f"\n{'='*70}\nSCENARIO {label}: pareto_alpha={pareto_alpha}, reec={reec_scenario}\n{'='*70}", flush=True)
 
+    if ded_params is None:
+        from tax_modeler.artifacts import load_canonical_deduction_params
+        ded_params = load_canonical_deduction_params()
+
+    # Re-score on the SAME deduction basis the base was calibrated under —
+    # bare _compute_base_tax (SD-only) made the tail validation inconsistent (C3).
     units = synthesize_top_filers(base_calibrated, pareto_alpha=pareto_alpha)
-    units = _compute_base_tax(units)
+    units = _compute_base_tax(units, deduction_params=ded_params, tax_year=cal_tax_year)
     v = validate_top_synthesis(units)
     print(f"  Synthesis: {v['filers_1m_plus']:,.0f} filers @ $1M+ "
           f"({100*v['filer_target_ratio']:.1f}%), ${v['tax_1m_plus_$M']:,.1f}M tax "
@@ -140,12 +149,17 @@ if __name__ == "__main__":
             sys.exit(1)
 
         print(f"Loading cached units from {CACHE_FILE}...", flush=True)
+        from tax_modeler.artifacts import check_cache_sidecar, load_canonical_deduction_params
+        check_cache_sidecar(CACHE_FILE)
         units = pd.read_parquet(CACHE_FILE)
         print(f"  {len(units):,} units loaded", flush=True)
 
         print("Enriching + base tax + calibrating (one-time)...", flush=True)
+        # Calibrate and re-score on the canonical itemized-deduction basis —
+        # bare _compute_base_tax (SD-only) diverged from downstream scoring (C3).
+        CAL_DED_PARAMS = load_canonical_deduction_params()
         units = _enrich_for_credits(units)
-        units = _compute_base_tax(units)
+        units = _compute_base_tax(units, deduction_params=CAL_DED_PARAMS, tax_year=2023)
         calibrated_base = _calibrate(units)
 
         all_rows = []
@@ -160,6 +174,7 @@ if __name__ == "__main__":
                 compute_credit_overlay=compute_credit_overlay,
                 synthesize_top_filers=synthesize_top_filers,
                 validate_top_synthesis=validate_top_synthesis,
+                ded_params=CAL_DED_PARAMS, cal_tax_year=2023,
             ))
 
         df = pd.DataFrame(all_rows)

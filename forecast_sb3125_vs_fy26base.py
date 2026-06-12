@@ -61,7 +61,7 @@ from tax_modeler.liability.hawaii import NO_ITEMIZING
 MID_ALPHA       = 1.5
 MID_TOP_PREMIUM = 0.010
 TARGET_YEARS    = [2027, 2028, 2029, 2030, 2031]
-CALIBRATED_PKL  = Path("/tmp/sb3125_calibrated_base.pkl")
+CALIBRATED_PKL  = REPO / "data" / "artifacts" / "sb3125_calibrated_base.pkl"
 
 INCOME_BINS = {
     "below_50K":   (0,          50_000),
@@ -106,14 +106,18 @@ def main(cd: str) -> None:
     )
 
     print(f"Loading calibrated base (CD{cd})...", flush=True)
-    base = pd.read_pickle(CALIBRATED_PKL)
+    from tax_modeler.artifacts import load_calibrated_base
+    base, cal_ded_params, cal_meta = load_calibrated_base(CALIBRATED_PKL)
+    cal_tax_year = int(cal_meta.get("tax_year", 2023))
     units = redistribute_mid_high_incomes(base, pareto_alpha=MID_ALPHA)
     units = synthesize_top_filers(units, pareto_alpha=MID_ALPHA)
     units = _enrich_for_credits(units)
     units = impute_capital_gains_from_soi(units)
-    units = _compute_base_tax(units)
+    # Re-score on the SAME deduction basis the base was calibrated under —
+    # bare _compute_base_tax (SD-only) made tail_k inconsistent (C3).
+    units = _compute_base_tax(units, deduction_params=cal_ded_params, tax_year=cal_tax_year)
     units, tail_k = rescale_synthetic_tail_to_tax_target(units)
-    units = _compute_base_tax(units)
+    units = _compute_base_tax(units, deduction_params=cal_ded_params, tax_year=cal_tax_year)
     print(f"  tail_k={tail_k:.4f}", flush=True)
 
     calc = TaxCalculator()
@@ -127,11 +131,12 @@ def main(cd: str) -> None:
 
     rows = []
     quintile_frames, bracket_frames = [], []
+    wedge_by_year = {}
 
     for yr in TARGET_YEARS:
         print(f"  TY {yr}...", flush=True)
 
-        projected, _ = project_and_recalibrate(
+        projected, fwd = project_and_recalibrate(
             units,
             target_year=yr,
             use_forward_targets=True,
@@ -144,6 +149,13 @@ def main(cd: str) -> None:
             top_bracket_differential=0.025,
             method="ensemble",
         )
+        if fwd is not None and fwd.statute_vs_cor_wedge is not None:
+            wedge_by_year[yr] = fwd
+            print(
+                f"    statute-vs-COR wedge: statutory ${fwd.statutory_tax_M:,.0f}M "
+                f"vs COR ${fwd.aggregate_tax_M:,.0f}M (ratio {fwd.statute_vs_cor_wedge:.3f})",
+                flush=True,
+            )
 
         inc = projected["income"].to_numpy(dtype=float)
         w   = projected["weight"].to_numpy(dtype=float)
@@ -182,9 +194,9 @@ def main(cd: str) -> None:
         sd = _bin_delta(inc, w, sd_effect)
         tt = _bin_delta(inc, w, total_effect)
 
-        rows.append({"year": yr, "component": "bracket_delta_$M", **br})
-        rows.append({"year": yr, "component": "sd_expansion_delta_$M", **sd})
-        rows.append({"year": yr, "component": "total_delta_$M", **tt})
+        rows.append({"tax_year": yr, "component": "bracket_delta_$M", **br})
+        rows.append({"tax_year": yr, "component": "sd_expansion_delta_$M", **sd})
+        rows.append({"tax_year": yr, "component": "total_delta_$M", **tt})
 
         empty_overlay = {}
         q_df, b_df, _ = generate_quintile_report(
@@ -222,7 +234,7 @@ def main(cd: str) -> None:
         print("-" * 78, flush=True)
         cum = {k: 0.0 for k in list(INCOME_BINS.keys()) + ["total"]}
         for yr in TARGET_YEARS:
-            r = df_summary[(df_summary["year"] == yr) & (df_summary["component"] == component_label)].iloc[0]
+            r = df_summary[(df_summary["tax_year"] == yr) & (df_summary["component"] == component_label)].iloc[0]
             for k in cum:
                 cum[k] += r[k]
             print(f"{yr:<6} {r['below_50K']:>+9.1f}M {r['50K_200K']:>+11.1f}M "
@@ -267,8 +279,8 @@ def main(cd: str) -> None:
     sum_br = 0.0
     sum_itep = 0.0
     for yr in TARGET_YEARS:
-        ours_br = df_summary[(df_summary["year"] == yr) & (df_summary["component"] == "bracket_delta_$M")].iloc[0]["total"]
-        ours_tt = df_summary[(df_summary["year"] == yr) & (df_summary["component"] == "total_delta_$M")].iloc[0]["total"]
+        ours_br = df_summary[(df_summary["tax_year"] == yr) & (df_summary["component"] == "bracket_delta_$M")].iloc[0]["total"]
+        ours_tt = df_summary[(df_summary["tax_year"] == yr) & (df_summary["component"] == "total_delta_$M")].iloc[0]["total"]
         itep    = ITEP_ANNUAL[yr]
         gap     = ours_tt - itep
         sum_tt   += ours_tt
@@ -285,7 +297,35 @@ def main(cd: str) -> None:
         f"{sum_itep:>+8.1f}M {sum_tt - sum_itep:>+16.1f}M",
         flush=True,
     )
-    print("(5yrΣ sums annual snapshots — fiscal-note style aggregate, not a stock figure.)", flush=True)
+    print(
+        "(All years above are TAX years. COR / fiscal-note tables are FISCAL "
+        "years — FY = TY+1 per DOTAX convention, e.g. TY2027 liability lands "
+        "in FY2028 collections. 5yrΣ sums annual snapshots.)",
+        flush=True,
+    )
+
+    # ── Statute-vs-COR wedge (calibration residual) ───────────────────────────
+    # Levels above are STATUTORY recomputes — Phase 2's COR anchoring is not
+    # carried into scenario scoring. The wedge below is the gap between the
+    # statutory baseline aggregate and the COR target each year.
+    if wedge_by_year:
+        print("\n--- Statute-vs-COR wedge (baseline calibration residual) ---", flush=True)
+        print(f"{'TY':<6} {'Statutory $M':>14} {'COR target $M':>15} {'Ratio':>8}", flush=True)
+        print("-" * 47, flush=True)
+        for yr in TARGET_YEARS:
+            f = wedge_by_year.get(yr)
+            if f is None:
+                continue
+            print(
+                f"{yr:<6} {f.statutory_tax_M:>13,.0f}M {f.aggregate_tax_M:>14,.0f}M "
+                f"{f.statute_vs_cor_wedge:>8.3f}",
+                flush=True,
+            )
+        print(
+            "(Reported levels are statutory, NOT COR-anchored; deltas are "
+            "differences of statutory recomputes and unaffected by the wedge.)",
+            flush=True,
+        )
 
     print(f"\nSaved: {Q_CSV}", flush=True)
     print(f"Saved: {B_CSV}", flush=True)

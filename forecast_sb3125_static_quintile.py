@@ -44,7 +44,9 @@ DATA_DIR = Path(
     os.environ.get("HAWAII_PUMS_DIR")
     or Path.home() / "ctc-and-eitc" / "data" / "raw" / "pums"
 )
-CACHE_FILE = Path("/tmp/tax_units_cache.parquet")
+# Versioned artifacts live in-repo (gitignored) — /tmp caches had no
+# invalidation and silently served stale bases across code changes.
+CACHE_FILE = Path(__file__).parent / "data" / "artifacts" / "tax_units_cache.parquet"
 TARGET_YEARS = [2027, 2028, 2029, 2030, 2031]
 
 # MID scenario parameters (calibrated best-estimate)
@@ -675,22 +677,27 @@ if __name__ == "__main__":
             sys.exit(1)
 
         print(f"Loading cached units from {CACHE_FILE}...", flush=True)
+        from tax_modeler.artifacts import check_cache_sidecar, load_canonical_deduction_params
+        check_cache_sidecar(CACHE_FILE)
         units = pd.read_parquet(CACHE_FILE)
         print(f"  {len(units):,} units loaded", flush=True)
 
         print("Enriching + base tax + calibrating...", flush=True)
         t0 = time.perf_counter()
+        # Score on the canonical itemized-deduction basis — bare
+        # _compute_base_tax (SD-only) made the tail rescale inconsistent (C3).
+        CAL_DED_PARAMS = load_canonical_deduction_params()
         units = _enrich_for_credits(units)
-        units = _compute_base_tax(units)
+        units = _compute_base_tax(units, deduction_params=CAL_DED_PARAMS, tax_year=2023)
         units = _calibrate(units)
         print(f"  Done in {time.perf_counter()-t0:.1f}s", flush=True)
 
         print(f"Synthesizing top-income filers (Pareto α={PARETO_ALPHA})...", flush=True)
         t0 = time.perf_counter()
         units = synthesize_top_filers(units, pareto_alpha=PARETO_ALPHA)
-        units = _compute_base_tax(units)
+        units = _compute_base_tax(units, deduction_params=CAL_DED_PARAMS, tax_year=2023)
         units, tail_k = rescale_synthetic_tail_to_tax_target(units)
-        units = _compute_base_tax(units)
+        units = _compute_base_tax(units, deduction_params=CAL_DED_PARAMS, tax_year=2023)
         v = validate_top_synthesis(units)
         print(f"  {v['filers_1m_plus']:,.0f} filers @ $1M+ "
               f"({100*v['filer_target_ratio']:.1f}%), "

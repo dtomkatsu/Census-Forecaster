@@ -9,7 +9,9 @@ DATA_DIR = Path(
     os.environ.get("HAWAII_PUMS_DIR")
     or Path.home() / "ctc-and-eitc" / "data" / "raw" / "pums"
 )
-CACHE_FILE = Path("/tmp/tax_units_cache.parquet")
+# Versioned artifacts live in-repo (gitignored) — /tmp caches had no
+# invalidation and silently served stale bases across code changes.
+CACHE_FILE = Path(__file__).parent / "data" / "artifacts" / "tax_units_cache.parquet"
 
 # Requires the workspace to be installed: `uv sync --all-packages`.
 # (run with `uv run python pipeline_run.py` or after `uv pip install -e packages/...`)
@@ -31,8 +33,13 @@ if __name__ == "__main__":
 
         wall_start = time.perf_counter()
 
+        from tax_modeler.artifacts import (
+            check_cache_sidecar, load_canonical_deduction_params, write_cache_sidecar,
+        )
+
         if CACHE_FILE.exists():
             print(f"Loading cached units from {CACHE_FILE}...", flush=True)
+            check_cache_sidecar(CACHE_FILE)
             units = pd.read_parquet(CACHE_FILE)
             print(f"  {len(units):,} units loaded from cache", flush=True)
         else:
@@ -59,7 +66,13 @@ if __name__ == "__main__":
             for col in safe_units.columns:
                 if safe_units[col].dtype == object:
                     safe_units[col] = safe_units[col].astype(str)
+            CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
             safe_units.to_parquet(CACHE_FILE, index=False)
+            write_cache_sidecar(CACHE_FILE, extra={
+                "built_by": "pipeline_run.py",
+                "pums": "HI 5yr 2020-24",
+                "n_units": int(len(safe_units)),
+            })
             print(f"  Units cached to {CACHE_FILE}", flush=True)
             del safe_units
 
@@ -69,10 +82,12 @@ if __name__ == "__main__":
         units = _enrich_for_credits(units)
         print(f"  Done in {time.perf_counter()-t0:.1f}s", flush=True)
 
-        # Stage 4: Base tax
+        # Stage 4: Base tax (canonical itemized-deduction basis — C3)
         t0 = time.perf_counter()
         print("Stage 4: Computing base tax...", flush=True)
-        units = _compute_base_tax(units)
+        units = _compute_base_tax(
+            units, deduction_params=load_canonical_deduction_params(), tax_year=2023,
+        )
         print(f"  agi range: {units['agi'].min():.0f}–{units['agi'].max():.0f}", flush=True)
         print(f"  Done in {time.perf_counter()-t0:.1f}s", flush=True)
 

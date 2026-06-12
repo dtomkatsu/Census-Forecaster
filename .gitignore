@@ -44,3 +44,6 @@ packages/data/raw/pums/*.csv
 packages/data/raw/pums/*.parquet
 packages/data/raw/pums/*.zip
 packages/data/raw/pums/*.pdf
+
+# Versioned forecast artifacts (caches + calibrated bases; rebuilt locally)
+data/artifacts/

@@ -56,7 +56,7 @@ MID_ALPHA       = 1.5
 MID_TOP_PREMIUM = 0.010
 TARGET_YEARS    = [2027, 2028, 2029, 2030, 2031]
 
-CALIBRATED_PKL = Path("/tmp/sb3125_calibrated_base.pkl")
+CALIBRATED_PKL = REPO / "data" / "artifacts" / "sb3125_calibrated_base.pkl"
 
 
 def main() -> None:
@@ -68,7 +68,9 @@ def main() -> None:
     wall = time.perf_counter()
 
     print("Loading calibrated base...", flush=True)
-    base = pd.read_pickle(CALIBRATED_PKL)
+    from tax_modeler.artifacts import load_calibrated_base
+    base, cal_ded_params, cal_meta = load_calibrated_base(CALIBRATED_PKL)
+    cal_tax_year = int(cal_meta.get("tax_year", 2023))
 
     print(f"Synthesizing top filers (MID alpha={MID_ALPHA})...", flush=True)
     # $500K-$1M income redistribution: rewrite each filer's income via
@@ -81,9 +83,11 @@ def main() -> None:
     units = synthesize_top_filers(units, pareto_alpha=MID_ALPHA)
     units = _enrich_for_credits(units)              # adds total_cash_income for TCI quintile binning
     units = impute_capital_gains_from_soi(units)    # Phase 3: CG rate cap for $100K-$1M filers
-    units = _compute_base_tax(units)
+    # Re-score on the SAME deduction basis the base was calibrated under —
+    # bare _compute_base_tax (SD-only) made tail_k inconsistent (C3).
+    units = _compute_base_tax(units, deduction_params=cal_ded_params, tax_year=cal_tax_year)
     units, tail_k = rescale_synthetic_tail_to_tax_target(units)
-    units = _compute_base_tax(units)
+    units = _compute_base_tax(units, deduction_params=cal_ded_params, tax_year=cal_tax_year)
     print(f"  tail_k={tail_k:.4f}", flush=True)
 
     calc = TaxCalculator()

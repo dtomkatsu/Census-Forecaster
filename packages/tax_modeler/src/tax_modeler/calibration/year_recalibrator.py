@@ -35,6 +35,7 @@ Order of operations (when re-anchoring is enabled)
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 from typing import Dict, Optional, Tuple
 
@@ -421,6 +422,26 @@ def project_and_recalibrate(
                 raked["hi_state_tax"] = raked["hi_tax_liability"]
 
     pre_tax_M = (raked["hi_state_tax"] * raked["weight"]).sum() / 1e6
+
+    # Record the statute-vs-COR wedge on the returned targets. pre_tax_M is
+    # the STATUTORY baseline aggregate (post-rake, pre-Phase-2); Phase 2's
+    # per-bracket multipliers absorb the gap to the COR target — but scenario
+    # scripts re-score statutorily, so their reported LEVELS carry this wedge,
+    # not the COR anchor. Callers should report it next to every level.
+    forward = dataclasses.replace(
+        forward,
+        statutory_tax_M=float(pre_tax_M),
+        statute_vs_cor_wedge=float(pre_tax_M / forward.aggregate_tax_M),
+    )
+    if abs(forward.statute_vs_cor_wedge - 1.0) > 0.02:
+        logger.warning(
+            "Statute-vs-COR wedge TY%d: statutory $%.0fM vs COR $%.0fM "
+            "(ratio %.3f). Scenario scripts recompute statutory tax and are "
+            "NOT COR-anchored — reported levels carry this wedge.",
+            target_year, pre_tax_M, forward.aggregate_tax_M,
+            forward.statute_vs_cor_wedge,
+        )
+
     calibrated = phase2_tax_calibrate(
         raked,
         tax_targets=forward.tax_targets,

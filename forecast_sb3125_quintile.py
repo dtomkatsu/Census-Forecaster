@@ -79,7 +79,7 @@ MID_REEC_CF_M       = 6.0
 MID_CORP_AGI_LIMIT  = False
 TARGET_YEARS        = [2027, 2028, 2029, 2030, 2031]
 
-CALIBRATED_PKL = Path("/tmp/sb3125_calibrated_base.pkl")
+CALIBRATED_PKL = REPO / "data" / "artifacts" / "sb3125_calibrated_base.pkl"
 
 
 def _parse_args():
@@ -106,16 +106,20 @@ def main(cd: str = "cd1") -> None:
     cd_label = cd.upper()  # "CD1" or "SD1"
 
     print("Loading calibrated base...", flush=True)
-    base = pd.read_pickle(CALIBRATED_PKL)
+    from tax_modeler.artifacts import load_calibrated_base
+    base, cal_ded_params, cal_meta = load_calibrated_base(CALIBRATED_PKL)
+    cal_tax_year = int(cal_meta.get("tax_year", 2023))
 
     print(f"Synthesizing top filers (MID alpha={MID_ALPHA})...", flush=True)
     units = redistribute_mid_high_incomes(base, pareto_alpha=MID_ALPHA)
     units = synthesize_top_filers(units, pareto_alpha=MID_ALPHA)
     units = _enrich_for_credits(units)
     units = impute_capital_gains_from_soi(units)
-    units = _compute_base_tax(units)
+    # Re-score on the SAME deduction basis the base was calibrated under —
+    # bare _compute_base_tax (SD-only) made tail_k inconsistent (C3).
+    units = _compute_base_tax(units, deduction_params=cal_ded_params, tax_year=cal_tax_year)
     units, tail_k = rescale_synthetic_tail_to_tax_target(units)
-    units = _compute_base_tax(units)
+    units = _compute_base_tax(units, deduction_params=cal_ded_params, tax_year=cal_tax_year)
     print(f"  tail_k={tail_k:.4f}", flush=True)
 
     calc = TaxCalculator()

@@ -52,22 +52,44 @@ _CTC_REFUNDABLE_LIMIT_BY_YEAR = {
 }
 
 
-def ctc_parameters_for_year(tax_year: int) -> CTCParameters:
+def ctc_parameters_for_year(tax_year: int, *, extrapolate: bool = False) -> CTCParameters:
     """Return CTC parameters for the requested tax year.
 
-    Raises ``KeyError`` for unsupported years.
+    With ``extrapolate=True``, years beyond the last published Rev. Proc. get
+    a CPI-extrapolated ACTC refundable cap (chained CPI per IRC §24(d)(4),
+    floored to the next-lowest $100 per §24(d)(4)(B)). The $2,000 max credit
+    and $200K/$400K phaseout thresholds are NOT indexed under TCJA and stay
+    fixed.
+
+    Raises ``KeyError`` for unsupported years when not extrapolating.
     """
-    if tax_year not in _CTC_REFUNDABLE_LIMIT_BY_YEAR:
-        raise KeyError(
-            f"CTC parameters not defined for tax year {tax_year}. "
-            f"Supported years: {sorted(_CTC_REFUNDABLE_LIMIT_BY_YEAR)}"
+    if tax_year in _CTC_REFUNDABLE_LIMIT_BY_YEAR:
+        return CTCParameters(
+            refundable_limit_per_child=_CTC_REFUNDABLE_LIMIT_BY_YEAR[tax_year],
         )
-    return CTCParameters(
-        refundable_limit_per_child=_CTC_REFUNDABLE_LIMIT_BY_YEAR[tax_year],
+    if extrapolate and tax_year > max(_CTC_REFUNDABLE_LIMIT_BY_YEAR):
+        from tax_modeler.credits.eitc import CREDIT_PARAM_CPI_GROWTH
+
+        base_year = max(_CTC_REFUNDABLE_LIMIT_BY_YEAR)
+        base_cap = _CTC_REFUNDABLE_LIMIT_BY_YEAR[base_year]
+        factor = (1.0 + CREDIT_PARAM_CPI_GROWTH) ** (tax_year - base_year)
+        # §24(d)(4)(B): round DOWN to the nearest multiple of $100. Cap at the
+        # statutory $2,000 max — the refundable portion cannot exceed it.
+        cap = min(int(base_cap * factor // 100) * 100, 2_000)
+        return CTCParameters(refundable_limit_per_child=cap)
+    raise KeyError(
+        f"CTC parameters not defined for tax year {tax_year}. "
+        f"Supported years: {sorted(_CTC_REFUNDABLE_LIMIT_BY_YEAR)}"
+        + ("" if extrapolate else " (pass extrapolate=True for later years)")
     )
 
 
-def calculate_ctc(tax_unit: Dict, tax_year: int = 2023) -> Dict[str, float]:
+def calculate_ctc(
+    tax_unit: Dict,
+    tax_year: int = 2023,
+    *,
+    extrapolate: bool = False,
+) -> Dict[str, float]:
     """
     Calculate Child Tax Credit for a tax unit.
 
@@ -78,6 +100,8 @@ def calculate_ctc(tax_unit: Dict, tax_year: int = 2023) -> Dict[str, float]:
             - dependents: List of dependent dictionaries
             - num_dependents: int
         tax_year: Tax year for calculation (default 2023)
+        extrapolate: CPI-extrapolate the ACTC cap for years beyond the last
+            published Rev. Proc. instead of raising KeyError.
 
     Returns:
         Dictionary with:
@@ -86,7 +110,7 @@ def calculate_ctc(tax_unit: Dict, tax_year: int = 2023) -> Dict[str, float]:
             - ctc_refundable: Refundable portion (ACTC)
             - qualifying_children: Number of qualifying children
     """
-    params = ctc_parameters_for_year(tax_year)
+    params = ctc_parameters_for_year(tax_year, extrapolate=extrapolate)
 
     # Initialize result
     result = {

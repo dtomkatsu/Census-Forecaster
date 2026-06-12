@@ -175,18 +175,62 @@ _EITC_PARAMS_BY_YEAR = {
     2025: _eitc_2025,
 }
 
+# Assumed chained-CPI growth for extrapolating IRS Rev. Proc. parameters past
+# the last published year (CBO Jan-2025 long-run chained-CPI projection).
+# IRC §32(j) indexes EITC dollar amounts to chained CPI with rounding rules:
+# credit/income amounts round to the nearest $10; the investment-income limit
+# rounds to the nearest $50 (IRC §32(j)(2)).
+CREDIT_PARAM_CPI_GROWTH = 0.021
 
-def eitc_parameters_for_year(tax_year: int) -> EITCParameters:
+
+def _round10(x: float) -> float:
+    return float(round(x / 10.0) * 10)
+
+
+def _round50(x: float) -> float:
+    return float(round(x / 50.0) * 50)
+
+
+def _eitc_extrapolated(tax_year: int) -> EITCParameters:
+    """Extrapolate EITC dollar parameters past the last published Rev. Proc.
+
+    Scales the latest published year's dollar amounts by an assumed
+    chained-CPI factor (``CREDIT_PARAM_CPI_GROWTH``/yr, compounded) and applies
+    the statutory rounding conventions. Phase-in/phase-out RATES are statutory
+    (IRC §32(b)) and are not scaled.
+    """
+    base_year = max(_EITC_PARAMS_BY_YEAR)
+    base = _EITC_PARAMS_BY_YEAR[base_year]()
+    factor = (1.0 + CREDIT_PARAM_CPI_GROWTH) ** (tax_year - base_year)
+    return _build_eitc_params(
+        investment_income_limit=_round50(base.investment_income_limit * factor),
+        max_credits={n: _round10(p.max_credit * factor) for n, p in base.by_children.items()},
+        phase_in_ends={n: _round10(p.phase_in_ends * factor) for n, p in base.by_children.items()},
+        phaseout_start_single={n: _round10(p.phaseout_start_single * factor) for n, p in base.by_children.items()},
+        phaseout_start_joint={n: _round10(p.phaseout_start_joint * factor) for n, p in base.by_children.items()},
+    )
+
+
+def eitc_parameters_for_year(tax_year: int, *, extrapolate: bool = False) -> EITCParameters:
     """Return EITC parameters for the requested tax year.
 
-    Raises ``KeyError`` for unsupported years.
+    With ``extrapolate=True``, years beyond the last published Rev. Proc. are
+    CPI-extrapolated (see :func:`_eitc_extrapolated`) instead of raising —
+    used by the forward projector so credits keep pace with projected nominal
+    income growth (otherwise they phase out too early in real terms).
+
+    Raises ``KeyError`` for unsupported years when not extrapolating (or for
+    years before the earliest published year regardless).
     """
-    if tax_year not in _EITC_PARAMS_BY_YEAR:
-        raise KeyError(
-            f"EITC parameters not defined for tax year {tax_year}. "
-            f"Supported years: {sorted(_EITC_PARAMS_BY_YEAR)}"
-        )
-    return _EITC_PARAMS_BY_YEAR[tax_year]()
+    if tax_year in _EITC_PARAMS_BY_YEAR:
+        return _EITC_PARAMS_BY_YEAR[tax_year]()
+    if extrapolate and tax_year > max(_EITC_PARAMS_BY_YEAR):
+        return _eitc_extrapolated(tax_year)
+    raise KeyError(
+        f"EITC parameters not defined for tax year {tax_year}. "
+        f"Supported years: {sorted(_EITC_PARAMS_BY_YEAR)}"
+        + ("" if extrapolate else " (pass extrapolate=True for later years)")
+    )
 
 
 def classify_eitc_region(
@@ -244,7 +288,12 @@ def classify_eitc_region(
     return region
 
 
-def calculate_eitc(tax_unit: Dict, tax_year: int = 2023) -> Dict[str, float]:
+def calculate_eitc(
+    tax_unit: Dict,
+    tax_year: int = 2023,
+    *,
+    extrapolate: bool = False,
+) -> Dict[str, float]:
     """
     Calculate the EITC for a single tax unit.
 
@@ -257,6 +306,8 @@ def calculate_eitc(tax_unit: Dict, tax_year: int = 2023) -> Dict[str, float]:
             - dependents_details: list of dicts (age, relationship, citizenship)
             - num_dependents: int
         tax_year: Tax year (default 2023)
+        extrapolate: CPI-extrapolate parameters for years beyond the last
+            published Rev. Proc. instead of raising KeyError.
 
     Returns:
         Dictionary with:
@@ -264,7 +315,7 @@ def calculate_eitc(tax_unit: Dict, tax_year: int = 2023) -> Dict[str, float]:
             - eitc_qualifying_children: Number of qualifying children for EITC
             - eitc_eligible: Whether the unit is eligible for EITC at all
     """
-    params = eitc_parameters_for_year(tax_year)
+    params = eitc_parameters_for_year(tax_year, extrapolate=extrapolate)
 
     result = {
         'eitc_amount': 0.0,
@@ -409,6 +460,8 @@ def _compute_credit(
 def calculate_eitc_for_tax_units(
     tax_units_df: pd.DataFrame,
     tax_year: int = 2023,
+    *,
+    extrapolate: bool = False,
 ) -> pd.DataFrame:
     """
     Calculate EITC for all tax units in a DataFrame.
@@ -419,6 +472,8 @@ def calculate_eitc_for_tax_units(
         tax_units_df: DataFrame of tax units (must include income, earned_income,
                       investment_income, filing_status, dependents_details).
         tax_year: Tax year for parameter selection (default 2023).
+        extrapolate: CPI-extrapolate parameters for years beyond the last
+            published Rev. Proc. instead of raising KeyError.
 
     Returns:
         DataFrame with EITC columns added.
@@ -426,7 +481,7 @@ def calculate_eitc_for_tax_units(
     results = []
     for _, row in tax_units_df.iterrows():
         unit = row.to_dict()
-        eitc = calculate_eitc(unit, tax_year=tax_year)
+        eitc = calculate_eitc(unit, tax_year=tax_year, extrapolate=extrapolate)
         unit.update(eitc)
         results.append(unit)
     return pd.DataFrame(results)

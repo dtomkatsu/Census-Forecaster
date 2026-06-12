@@ -198,7 +198,12 @@ def _apply_bls_income_projection(
     return df
 
 
-def _recalculate_ctc(df: pd.DataFrame, tax_year: int = 2023) -> pd.DataFrame:
+def _recalculate_ctc(
+    df: pd.DataFrame,
+    tax_year: int = 2023,
+    *,
+    extrapolate: bool = False,
+) -> pd.DataFrame:
     """
     Recalculate CTC on scaled incomes using the requested year's parameters.
 
@@ -210,13 +215,15 @@ def _recalculate_ctc(df: pd.DataFrame, tax_year: int = 2023) -> pd.DataFrame:
     ``tax_year`` selects the inflation-indexed refundable cap
     ($1,500 in TY 2022 → $1,700 in TY 2024-2025); the $2,000 max-credit
     and $200K/$400K phaseout thresholds are TCJA statutory and unchanged.
+    ``extrapolate=True`` CPI-extrapolates the cap for years past the latest
+    published Rev. Proc.
     """
     from tax_modeler.credits.ctc import calculate_ctc
 
     results = []
     for _, row in df.iterrows():
         unit = row.to_dict()
-        unit.update(calculate_ctc(unit, tax_year=tax_year))
+        unit.update(calculate_ctc(unit, tax_year=tax_year, extrapolate=extrapolate))
         results.append(unit)
     return pd.DataFrame(results)
 
@@ -559,20 +566,27 @@ def project_tax_units_forward(
     # ACTC refundable cap move with chained CPI each year; the projector
     # scales nominal income, so applying nominal target-year parameters is
     # the consistent treatment.  For target_year beyond the latest published
-    # Rev. Proc., the most-recent supported year is used (currently TY 2025).
+    # Rev. Proc., parameters are CPI-extrapolated (CREDIT_PARAM_CPI_GROWTH/yr)
+    # — clamping to TY2025 against 2027-2031 nominal incomes made credits
+    # phase out too early in real terms (overstated revenue, growing with
+    # the horizon).
     from tax_modeler.credits.eitc import (
         _EITC_PARAMS_BY_YEAR,
+        CREDIT_PARAM_CPI_GROWTH,
         calculate_eitc_for_tax_units,
     )
     supported = sorted(_EITC_PARAMS_BY_YEAR)
+    extrapolate_credits = False
     if target_year in _EITC_PARAMS_BY_YEAR:
         credit_year = target_year
     elif target_year > supported[-1]:
-        credit_year = supported[-1]
+        credit_year = target_year
+        extrapolate_credits = True
         logger.info(
-            "target_year %d beyond latest published credit parameters; "
-            "using TY %d statutory params for EITC/CTC.",
-            target_year, credit_year,
+            "target_year %d beyond latest published credit parameters (TY %d); "
+            "CPI-extrapolating EITC/CTC dollar params at %.1f%%/yr so credits "
+            "keep pace with projected nominal income growth.",
+            target_year, supported[-1], CREDIT_PARAM_CPI_GROWTH * 100,
         )
     else:
         credit_year = supported[0]
@@ -582,8 +596,8 @@ def project_tax_units_forward(
             target_year, credit_year,
         )
 
-    df = _recalculate_ctc(df, tax_year=credit_year)
-    df = calculate_eitc_for_tax_units(df, tax_year=credit_year)
+    df = _recalculate_ctc(df, tax_year=credit_year, extrapolate=extrapolate_credits)
+    df = calculate_eitc_for_tax_units(df, tax_year=credit_year, extrapolate=extrapolate_credits)
 
     # --- Poverty rate correction on EITC (S1701 signal) ----------------------
     # project_acs_supplement results are lru_cache'd from the deduction step,

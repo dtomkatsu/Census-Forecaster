@@ -29,7 +29,10 @@ DATA_DIR = Path(
     os.environ.get("HAWAII_PUMS_DIR")
     or Path.home() / "ctc-and-eitc" / "data" / "raw" / "pums"
 )
-CACHE_FILE = Path("/tmp/tax_units_cache.parquet")
+# Versioned artifacts live in-repo (gitignored) — /tmp caches had no
+# invalidation and silently served stale bases across code changes.
+ARTIFACT_DIR = Path(__file__).parent / "data" / "artifacts"
+CACHE_FILE = ARTIFACT_DIR / "tax_units_cache.parquet"
 TARGET_YEARS = [2027, 2028, 2029, 2030, 2031]
 
 # Requires the workspace to be installed: `uv sync --all-packages`.
@@ -71,9 +74,14 @@ if __name__ == "__main__":
 
         wall_start = time.perf_counter()
 
+        from tax_modeler.artifacts import (
+            check_cache_sidecar, load_canonical_deduction_params, write_cache_sidecar,
+        )
+
         # ---- Build calibrated base-year units (cached) ---------------------
         if CACHE_FILE.exists():
             print(f"Loading cached units from {CACHE_FILE}...", flush=True)
+            check_cache_sidecar(CACHE_FILE)
             units = pd.read_parquet(CACHE_FILE)
             print(f"  {len(units):,} units loaded from cache", flush=True)
         else:
@@ -97,14 +105,23 @@ if __name__ == "__main__":
             for col in safe_units.columns:
                 if safe_units[col].dtype == object:
                     safe_units[col] = safe_units[col].astype(str)
+            CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
             safe_units.to_parquet(CACHE_FILE, index=False)
+            write_cache_sidecar(CACHE_FILE, extra={
+                "built_by": "forecast_sb3125.py",
+                "pums": "HI 5yr 2020-24",
+                "n_units": int(len(safe_units)),
+            })
             print(f"  Units cached to {CACHE_FILE}", flush=True)
             del safe_units
 
         t0 = time.perf_counter()
         print("Enriching + base tax + calibrating...", flush=True)
+        # Score with the canonical itemized-deduction params — bare
+        # _compute_base_tax (SD-only) diverged from the calibrated basis (C3).
+        CAL_DED_PARAMS = load_canonical_deduction_params()
         units = _enrich_for_credits(units)
-        units = _compute_base_tax(units)
+        units = _compute_base_tax(units, deduction_params=CAL_DED_PARAMS, tax_year=2023)
         calibrated = _calibrate(units)
         print(f"  Done in {time.perf_counter()-t0:.1f}s", flush=True)
 
@@ -120,7 +137,7 @@ if __name__ == "__main__":
               f"${before['tax_1m_plus_$M']:,.1f}M tax "
               f"({100*before['tax_target_ratio']:.1f}% of $663M)", flush=True)
         calibrated = synthesize_top_filers(calibrated)
-        calibrated = _compute_base_tax(calibrated)
+        calibrated = _compute_base_tax(calibrated, deduction_params=CAL_DED_PARAMS, tax_year=2023)
         after = validate_top_synthesis(calibrated)
         print(f"  After:  {after['filers_1m_plus']:,.0f} filers "
               f"({100*after['filer_target_ratio']:.1f}% of target), "
