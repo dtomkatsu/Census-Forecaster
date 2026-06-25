@@ -28,11 +28,15 @@ A family qualifies if **either** of these is true:
    $85,000 for a family of three).
 
 This is broader than a Medicaid-only program but narrower than giving cash to
-everyone. On the real Hawaiʻi data, roughly **half of all birth families**
-clear this bar (~7,300 of ~13,632 projected 2028 births). Most of that
-eligibility — about **three-quarters** — comes from families who already
-qualify for Medicaid; the 300% FPL income test adds the rest. (See the
-decomposition in §10.)
+everyone. On the real Hawaiʻi data, roughly **60% of all birth families** clear
+this bar (~8,140 of ~13,632 projected 2028 births). Most of that eligibility —
+about **two-thirds** — comes from families who already qualify for Medicaid; the
+300% FPL income test adds the rest. (See the decomposition in §10.)
+
+We also price two **universal** designs (cash to every birth family, no income
+or Medicaid test) — one paying through 6 months and one through 12 — so the cost
+of going universal is on the table next to the statutory design. See the
+scenario comparison in §0 (bottom line) and §10.
 
 ### How we estimate the cost — the short version
 
@@ -47,10 +51,25 @@ decomposition in §10.)
 4. **Project to 2028 and scale up to the whole state** using Census population
    weights.
 
-**Bottom line:** about **$29 million a year** in cash benefits (≈$31M including
-8% administrative overhead), reaching roughly **12,700 people a year**. The
-realistic uncertainty range is **$17M–$37M** — driven mostly by how many
-families actually enroll, which no Hawaiʻi track record exists to pin down yet.
+**Bottom line (statutory design):** about **$32 million a year** in cash benefits
+(≈$35M including 8% administrative overhead), reaching roughly **14,100 people a
+year**. The realistic uncertainty range is **$19M–$41M** — driven mostly by how
+many families actually enroll, which no Hawaiʻi track record exists to pin down
+yet.
+
+**The three priced designs at a glance** (take-up held constant at 0.90 newborn
+/ 0.83 prenatal, so only eligibility and duration change):
+
+| Design | Who qualifies | Payments | Cash cost/yr | With 8% admin | Recipients/yr |
+|---|---|---|---|---|---|
+| **Statutory · 6 mo** | Medicaid OR ≤300% FPL | $1,500 + $500×6 | **~$32M** | ~$35M | ~14,100 |
+| **Universal · 6 mo** | every birth family | $1,500 + $500×6 | **~$50M** | ~$54M | ~21,800 |
+| **Universal · 12 mo** | every birth family | $1,500 + $500×12 | **~$84M** | ~$91M | ~21,800 |
+
+Going universal at 6 months adds ~$18M (it reaches ~7,700 more families); the
+extra 6 months of payments on top adds ~$34M more (the postnatal arm doubles,
+the same families). Per-county splits for all three are in
+`reports/rxkids_2028/cost_by_county_scenarios.csv`.
 
 ### How the number of births is calculated — and where the data comes from
 
@@ -86,10 +105,12 @@ This is the single most important input, so here is exactly how it works:
      is the right basis for a yearly cost. Using a 6-month snapshot would
      undercount the year's births by about half.
 
-3. **We check the counting against the CDC.** When we add up all the age-0
-   babies in the Census data (using population weights), we get **~15,419** —
-   within **1%** of the CDC's 15,535. That agreement is the proof the
-   birth-counting method is sound.
+3. **We anchor the count to the CDC.** When we add up all the age-0 babies in
+   the Census data (using population weights), we get **~14,176** — about **9%
+   below** the CDC's 15,535 (the Census sample misses some infants). So the model
+   doesn't trust the raw Census count: it **calibrates** it up to the official
+   CDC total, then projects forward (step 4). The final birth count is therefore
+   anchored to the vital-statistics figure, not to the raw survey count.
 
 4. **We project births forward to 2028.** Because the forecast is for 2028, not
    2022, we age the birth count forward using the repo's standard trend model
@@ -107,9 +128,9 @@ families they belong to; the trend model carries that forward to 2028.**
 > birth rate. That overcounted, because it treated older kids, students, and
 > adult dependents as if they contributed births, and those larger families
 > skew lower-income, which inflated the eligible share. Switching to directly
-> counting age-0 babies roughly **halved the headline cost** (from ~$53M to
-> ~$29M). The old method is still available via `--use-proxy-births` for
-> comparison only.
+> counting age-0 babies roughly **halved the headline cost** — the proxy
+> overstated births by about 1.7× (full decomposition in §10). The old method is
+> still available via `--use-proxy-births` for comparison only.
 
 ### Where every other number comes from
 
@@ -182,13 +203,17 @@ eligibility follows the **statutory** two-clause test (see §3): a unit
 qualifies if it **either** (1) qualifies for benefits under the State's
 Medicaid (Med-QUEST) program, **or** (2) has family income ≤ **300% FPL**
 for a family of applicable size *including the expected unborn child(ren)*.
-This is substantially broader than a Medicaid-only (138% FPL) gate and
-sits between the Medicaid-targeted (~$8–15M) and fully-universal (~$110M)
-cost poles.
+This statutory gate costs **~$32M/yr** (§10). It is substantially broader than a
+Medicaid-only (138% FPL) gate and sits below the **modeled universal** designs
+(no income/Medicaid test): **~$50M** at 6 months and **~$84M** at 12 months
+(§10 scenario set). (An earlier back-of-envelope put fully-universal-12-month at
+~$110M; the modeled figure is lower because it uses the 2028 projected birth
+cohort and the conservative 0.90 take-up rather than 2022 births at 0.95.)
 
 A Medicaid-adult-only income variant remains achievable by overriding
-`income_fpl_cap=1.38`; an effectively-universal variant by setting a high
-cap (e.g. `10.0`). See the module docstring for override recipes.
+`income_fpl_cap=1.38`; the universal scenarios set `income_fpl_cap=100.0`
+(≈ no income test — 100× FPL is ~$2.5M for a family of three, so every realistic
+birth family clears it). See the module docstring and §10 for override recipes.
 
 ### Hawaii context
 
@@ -276,17 +301,20 @@ IRS/USDA/CMS/RxKids estimates (see §8 for sourcing).
 ### Estimated annual cost (statutory eligibility)
 
 The 300%-FPL-OR-Medicaid gate is far more inclusive than the legacy 138%
-"Medicaid variant," so the modeled cost lands materially above the old
-~$8–15M back-of-envelope and below the ~$110M fully-universal figure. The
-authoritative figure is produced by `forecast_rxkids_2028.py` (see §10),
-which weights the per-unit expected benefit by the PUMS household weight on
-the real PUMS frame; the ranges below are only order-of-magnitude poles.
+"Medicaid variant," so the modeled cost (**~$32M/yr**) lands materially above the
+old ~$8–15M back-of-envelope and below the modeled universal designs (**~$50M**
+at 6 months, **~$84M** at 12 months — §10 scenario set). The authoritative
+figures are produced by `forecast_rxkids_2028.py` (see §10), which weights the
+per-unit expected benefit by the PUMS household weight on the real PUMS frame.
 
-For reference, a **universal Flint-equivalent variant**:
+For reference, an old back-of-envelope **universal Flint-equivalent variant**
+(superseded by the modeled universal scenarios in §10):
 
 - 15,535 births × $1,500 prenatal × 0.95 take-up = $22.1M
 - 15,535 births × $500/mo × 12 × 0.95 = $88.5M
-- **Total: ~$111M/yr**
+- **Total: ~$111M/yr** — higher than the modeled ~$84M because it uses 2022
+  births (vs the 2028 projected cohort) at 0.95 take-up (vs the conservative
+  0.90/0.83 split).
 
 ## 3. Statutory eligibility (Medicaid OR 300% FPL incl. unborn)
 
@@ -323,8 +351,11 @@ Both arms are driven by the same **birth events**. Two bases are supported:
   observed birth count = the number of age-0 dependents (twins → 2). The
   forecast attaches this as `observed_births` and passes it to
   `compute_rxkids_for_units(..., birth_count_col="observed_births")`. The
-  weighted observed count (~15,419 on the 2018–2022 5-yr frame) matches CDC
-  NVSR resident births (15,535, 2022) within ~1%.
+  weighted observed count (~14,176 on the 2018–2022 5-yr frame) sits ~9% below
+  CDC NVSR resident births (15,535, 2022); the calibration step
+  (`_calibrate_births`) scales it up to the vital-statistics total and then
+  projects it forward, so the final cohort is anchored to NVSR, not the raw
+  survey count.
 
 - **Proxy (library fallback; `--use-proxy-births`).**
   `birth_events = num_dependents × child_under_age_share`. The legacy basis,
@@ -351,9 +382,12 @@ resident-birth series (`HI_BIRTHS_BY_YEAR`, by state of residence) through the
 package's own damped-trend + AR(1) ensemble (`project_acs_ensemble`, φ=0.85/yr
 annual cadence — the same machinery the income forecast uses). For TY2028 the
 ensemble projects **~13,632 births** (90% PI ~[10,500, 16,800]) from a 2022
-base of 15,535 — a ×0.884 factor, driven mainly by the 2023 drop to 14,643 in
-an otherwise flat 2018–2022 series. Pass `--no-birth-projection` to hold the
-cohort at the base-year level instead.
+base of 15,535 — a **×0.878 vital-statistics trend**, driven mainly by the 2023
+drop to 14,643 in an otherwise flat 2018–2022 series. Combined with the
+PUMS→vital base correction (raw weighted ~14,176 scaled up to the 15,535 NVSR
+level, since the survey undercounts infants ~9%), the single scalar actually
+applied to `observed_births` is **×0.962** (14,176 → 13,632). Pass
+`--no-birth-projection` to hold the cohort at the base-year level instead.
 
 Each eligible birth draws one prenatal and one postnatal payment:
 
@@ -441,8 +475,8 @@ Projected Hawaii impact under default Medicaid-targeted parameters:
 |---|---|---|
 | Take-up | 98% | 0.90 postnatal / 0.83 prenatal (default) |
 | Avg disbursement / recipient | ~$3,505 (rolling) | ~$2,280 (prenatal+postnatal mix) |
-| Reach | 10,774 families (cumulative) | ~12,700 recipients/yr (~6,100 pregnancies + ~6,600 infants) |
-| Annual cost | ~$25-30M (single-city) | ~$29M benefit / ~$31M w/ admin (statutory 300%-FPL-OR-Medicaid); ~$111M (universal) |
+| Reach | 10,774 families (cumulative) | ~14,100 recipients/yr (~6,740 pregnancies + ~7,326 infants) |
+| Annual cost | ~$25-30M (single-city) | ~$32M benefit / ~$35M w/ admin (statutory 300%-FPL-OR-Medicaid); ~$50M (universal·6mo) / ~$84M (universal·12mo) |
 | Persons lifted out of poverty | Not yet published | Reported per `--apply-rxkids` run |
 
 The Hawaii model matches Flint's per-payment amounts ($1,500 one-time
@@ -558,7 +592,7 @@ A second, more thorough pass through the RxKids evidence base
 - *Upjohn Institute (2025)*, Bartik et al.: **$0.60–$3.00 returned per $1**
   to the state economy.
 - These are **offsets/benefits, not cost inputs** — the gross program cost
-  (~$29M benefit / ~$31M appropriation, statutory eligibility) is partly offset
+  (~$32M benefit / ~$35M appropriation, statutory eligibility) is partly offset
   by downstream health savings and economic return. A Hawaiʻi-scaled net-cost
   estimate is a natural extension (not yet built).
 
@@ -647,30 +681,43 @@ way and reported separately.
 
 ### Headline (real PUMS, TY2028)
 
+This headline is the **statutory 6-month** design (the first scenario in the
+§10 scenario set below); the two universal designs follow.
+
 | | Value |
 |---|---|
-| **Steady-state annual cost (benefit)** | **~$29M** (prenatal ~$9M + postnatal ~$20M) |
-| Administrative load (8%) | +~$2.3M |
-| **Appropriation total (benefit + admin)** | **~$31M** |
-| Sampling 90% CI | ~$26M–$32M |
-| **Assumption band (joint corners)** | **~$17M–$37M** |
-| Expected recipients / year | ~12,700 (≈6,100 pregnancies + 6,600 infants) |
+| **Steady-state annual cost (benefit)** | **~$32M** (prenatal ~$10M + postnatal ~$22M) |
+| Administrative load (8%) | +~$2.6M |
+| **Appropriation total (benefit + admin)** | **~$35M** |
+| Sampling 90% CI | ~$29M–$36M |
+| **Assumption band (joint corners)** | **~$19M–$41M** |
+| Expected recipients / year | ~14,100 (≈6,740 pregnancies + 7,326 infants) |
 | Avg benefit per recipient | ~$2,280 |
-| First fiscal year (launch, 12-mo ramp) | ~$12M (41% of steady) |
-| Optional +6-month postnatal | +~$20M (12-month-design total ~$49M) |
+| First fiscal year (launch, 12-mo ramp) | ~$13M (41% of steady) |
+| Optional +6-month postnatal (statutory) | +~$22M (12-month-design total ~$54M) |
 
 > **Methodology revision (2026-06).** The birth driver changed from the
 > ``num_dependents × child_under_age_share`` **proxy** to **observed** age-0
 > dependents (PUMS), calibrated to CDC NVSR resident births and projected to
 > 2028 with the repo's damped-trend ensemble. This roughly halves the headline
-> ($53M → $29M). Decomposition: the proxy multiplied an *all-dependents* count
-> (~410k weighted, incl. older children, students, adult dependents) by a rate
-> calibrated against a *children-only* denominator (~233k), overstating total
-> births ~1.7× and — because dependents skew toward lower-income families —
-> inflating the eligible-birth share. Switching to observed births at the
-> base-year level gives **~$33M** (−39%); the 2028 birth-cohort projection
-> (×0.884, see below) takes it to **~$29M**. The admin line is new (the prior
-> headline was pure benefit dollars).
+> (proxy ~$55M → observed ~$32M). Decomposition: the proxy multiplied an
+> *all-dependents* count (~410k weighted, incl. older children, students, adult
+> dependents) by a rate calibrated against a *children-only* denominator
+> (~233k), overstating total births ~1.7× and — because dependents skew toward
+> lower-income families — inflating the eligible-birth share. Switching to
+> observed births at the base-year level gives **~$37M** (−33% from the proxy);
+> the 2028 birth-cohort projection (×0.878 vital-stats trend, see below) takes
+> it to **~$32M**. The admin line is separate (the headline is benefit dollars).
+
+> **Baseline refresh (2026-06-22).** All figures in this doc were regenerated on
+> the current `tax_modeler` pipeline. The statutory headline moved from the
+> previously-published ~$29M to **~$32M** (recipients ~12,700 → ~14,100, eligible
+> share ~54% → ~60%) — this is **not** a parameter or methodology change here but
+> a consequence of upstream pipeline updates pulled into the package (tax-unit
+> construction, dependent assignment, income projection, Medicaid/credits). The
+> birth *target* (13,632) is unchanged; the raw PUMS-observed age-0 count fell
+> 15,419 → 14,176, so the calibration now scales up more (×0.962 vs ×0.884). The
+> same refresh also added the universal scenario set (above).
 
 Take-up is **arm-specific** (see §2): postnatal/newborn **0.90**, prenatal
 **0.83** (0.92 × postnatal, from Flint's ~90% prenatal vs ~98% newborn). So
@@ -687,35 +734,60 @@ resource-sharing family (which would pool cohabiting partners / separately-
 filing relatives whose income MAGI excludes) and NOT the physical household
 (which would count unrelated roommates). See §10.
 
-#### Scenarios (take-up + behavioral fertility)
+#### Scenario set — eligibility × postnatal duration
 
-The headline above is the **conservative** default (90% take-up, no
+`forecast_rxkids_2028.py` prices **three policy designs in one pass** (override
+with `--scenarios`). All hold take-up at the run's default (0.90 newborn / 0.83
+prenatal) and use the same projected births, so the cost differences isolate the
+two policy levers — the **eligibility gate** and the **postnatal duration**:
+
+| Scenario (`key`) | Eligibility | Postnatal | $/birth | Cash cost | Appropriation | Recipients/yr | Assumption band |
+|---|---|---|---|---|---|---|---|
+| `statutory_6mo` | Medicaid OR ≤300% FPL | 6 mo | $4,500 | **~$32M** | ~$35M | ~14,100 | ~$19M–$41M |
+| `universal_6mo` | universal (no test) | 6 mo | $4,500 | **~$50M** | ~$54M | ~21,800 | ~$30M–$63M |
+| `universal_12mo` | universal (no test) | 12 mo | $7,500 | **~$84M** | ~$91M | ~21,800 | ~$50M–$107M |
+
+- **Universal eligibility** (`income_fpl_cap=100.0`, ≈ no income/Medicaid test)
+  reaches essentially every birth family — ~21,800 recipients vs ~14,100 under
+  the statutory gate. Going universal at 6 months adds **~$18M** in cash cost
+  (it pulls in the ~7,700 birth families above the statutory gate).
+- **The extra 6 months** (`postnatal_months=12`) doubles the postnatal arm and
+  leaves the prenatal arm and the recipient count unchanged — it pays the **same**
+  universal families for twice as long, adding **~$34M** on top of universal·6mo.
+- Per-county splits for all three scenarios are written to
+  `cost_by_county_scenarios.csv` (and the workbook's *County × scenario* tab);
+  the state comparison is `cost_by_scenario.csv` (and the *By scenario* tab).
+
+#### Sensitivity: take-up + behavioral fertility (statutory design)
+
+The statutory headline is the **conservative** default (90% take-up, no
 behavioral response). Two Flint-observed assumptions raise it:
 
-| Scenario | Take-up (post/pre) | Fertility | Steady-state cost | Band |
+| Sensitivity | Take-up (post/pre) | Fertility | Steady-state cost | Band |
 |---|---|---|---|---|
-| Conservative (default) | 0.90 / 0.83 | — | **~$29M** | ~$17–37M |
-| **Flint-equivalent** | 0.98 / 0.90 | +10% | **~$35M** | ~$20–44M |
+| Conservative (default) | 0.90 / 0.83 | — | **~$32M** | ~$19–41M |
+| **Flint-equivalent** | 0.98 / 0.90 | +10% | **~$38M** | ~$23–49M |
 
 `--takeup-rate 0.98 --fertility-response 0.10` produces the Flint scenario —
 which sets postnatal take-up to 0.98 and prenatal to 0.98 × 0.92 ≈ 0.90,
 recovering Flint's *observed* arm rates exactly. The **fertility response**
 (`_apply_fertility`) models the ~10% post-launch birth rise documented in the
 *Rx Kids Flint Birth Report (2026)* as a uniform +10% on eligible births
-(×1.10 on both arms): ~$29M × (0.98/0.90 take-up lift) × 1.10 ≈ $35M.
+(×1.10 on both arms): ~$32M × (0.98/0.90 take-up lift) × 1.10 ≈ $38M.
 It is a real upside risk a static model would miss, but **off by default**:
 Flint's rise may blend a conception response with in-migration of pregnant
 residents into eligible areas, and Hawaiʻi's island geography would see far
-less migration — so the transferable effect is uncertain.
+less migration — so the transferable effect is uncertain. (These take-up /
+fertility levers compose with any of the three scenario designs above.)
 
 ### Eligible base vs recipients
 
-"Eligible families" (~8k weighted on the observed basis — families with an
+"Eligible families" (~8,200 weighted on the observed basis — families with an
 **observed birth** clearing the income/Medicaid test) is NOT the recipient
-count. Actual **expected recipients** (pregnancies + infants) are ~12,700/yr,
+count. Actual **expected recipients** (pregnancies + infants) are ~14,100/yr,
 recovered by dividing each arm's expected-dollar column by its full
 per-recipient payment ($1,500 prenatal, $3,000 postnatal). Report recipients,
-not the eligible base. (Under the legacy proxy the eligible base was ~96k —
+not the eligible base. (Under the legacy proxy the eligible base was ~100k —
 every family with *any* dependent contributed fractional births; the observed
 basis correctly restricts it to families with an actual infant.)
 
@@ -730,27 +802,27 @@ universe, which overcounted pregnancies ~2× and required a runtime
 
 ### Eligible-birth cross-check
 
-On the **observed** basis the model implies **~7,300 eligible births** (=
-~6,592 infant recipients ÷ 0.90 take-up) out of the ~13,632 projected 2028
-births = **~54% of births eligible**, on the MAGI-household grain.
+On the **observed** basis the model implies **~8,140 eligible births** (=
+~7,326 infant recipients ÷ 0.90 take-up) out of the ~13,632 projected 2028
+births = **~60% of births eligible**, on the MAGI-household grain.
 
 - **External anchor:** Hawaii Medicaid-financed births ≈ 40% (~6,200) — a
-  *floor* (the pregnancy-Medicaid pathway sits at 196% FPL). The model's 54%
+  *floor* (the pregnancy-Medicaid pathway sits at 196% FPL). The model's 60%
   sits above it, as it should: the gate (≤300% FPL OR Medicaid/CHIP) is
   broader than the pregnancy threshold.
 - **Which clause drives eligibility (approximate decomposition).** The model
-  computes only the *combined* eligible share (~54%); it does not separately
+  computes only the *combined* eligible share (~60%); it does not separately
   report a clause-1-vs-clause-2 split. But we can decompose it against the
   external Medicaid floor. On the projected 2028 base of ~13,632 births:
 
   | Source | Eligible births | Share of births |
   |---|---|---|
   | Clause 1 — Medicaid families (≈40% floor, scaled to 2028) | ~5,450 | ~40% |
-  | Clause 2 — income-only (≤300% FPL, **not** on Medicaid) | ~1,900 | ~14% |
-  | **Combined eligible (model output)** | **~7,300** | **~54%** |
+  | Clause 2 — income-only (≤300% FPL, **not** on Medicaid) | ~2,690 | ~20% |
+  | **Combined eligible (model output)** | **~8,140** | **~60%** |
 
-  So roughly **three-quarters of eligibility is the Medicaid clause**, with the
-  300% FPL income test adding the remaining ~quarter on top. This is a useful
+  So roughly **two-thirds of eligibility is the Medicaid clause**, with the
+  300% FPL income test adding the remaining ~third on top. This is a useful
   advocacy framing: most of the program's reach overlaps families the state
   *already* identifies as low-income through Med-QUEST. Two caveats on the
   precision: (1) the ~5,450 is derived from the **external** KFF
@@ -760,16 +832,16 @@ births = **~54% of births eligible**, on the MAGI-household grain.
   so the true Medicaid-clause share is likely a touch higher than ~40% and the
   income-only residual a touch smaller. Treat the split as ±a few points, not
   exact.
-- **Why ~54% (vs the proxy's inflated 86%)?** The proxy distributed
+- **Why ~60% (vs the proxy's inflated 86%)?** The proxy distributed
   *fractional* births across **all** families with dependents, in proportion
   to dependent count — and larger-dependent families skew lower-income, so the
   proxy over-weighted low-income families and pushed the eligible share to 86%
-  (well above the ~60–65% Census-family benchmark). The **observed** births
-  are the actual joint distribution of new infants × MAGI income; ~54% of them
-  clear the gate. For a high-cost, high-median-income state where 300% FPL for
-  a family of 3 is ~$85k, roughly half of birth families qualifying is
-  plausible. The shift from 86% to 54% is the largest *qualitative* correction
-  from the observed-births change.
+  (above the ~60–65% Census-family benchmark). The **observed** births
+  are the actual joint distribution of new infants × MAGI income; ~60% of them
+  clear the gate — right in the ~60–65% Census-family benchmark range. For a
+  high-cost, high-median-income state where 300% FPL for a family of 3 is ~$85k,
+  ~60% of birth families qualifying is plausible. The shift from 86% to 60% is
+  the largest *qualitative* correction from the observed-births change.
 - **Nuance:** clause 1 (Medicaid) is *broader* than clause 2 here because
   `medicaid_receives` includes the children's CHIP-equivalent pathway at
   **313% FPL** — slightly above the 300% income clause. That residual is the
@@ -827,13 +899,16 @@ is reported).
   not observable in PUMS, so MAGI ≈ gross + SS add-back (a standard survey-
   based proxy). Residual: PUMS tax units approximate but do not perfectly
   match the MAGI-household composition rules; if the bill defines "family"
-  more broadly than MAGI, the SPM-family grain (~$45M) is the alternative —
-  a ~$9M / ~18% lever.
+  more broadly than MAGI, the SPM-family (resource-sharing) grain is the
+  alternative — a material (~15–20%) lever on the headline, not separately
+  re-run on the current pipeline.
 - The birth cohort is **projected to 2028** with the package's damped-trend
   ensemble off the CDC NVSR resident-birth series (`HI_BIRTHS_BY_YEAR`), so the
-  demographic driver is aged coherently with income (×0.884 for 2028). Update
-  `HI_BIRTHS_BY_YEAR` as new NVSR final-data releases land; pass
-  `--no-birth-projection` to hold the cohort at the base-year level.
+  demographic driver is aged coherently with income (×0.878 vital-stats trend;
+  the single scalar applied to `observed_births` is ×0.962 once the PUMS→vital
+  base correction is folded in — see §3). Update `HI_BIRTHS_BY_YEAR` as new NVSR
+  final-data releases land; pass `--no-birth-projection` to hold the cohort at
+  the base-year level.
 - Program cost is **benefit dollars**; an 8% administrative load (override
   `--admin-load`) is reported as a separate appropriation line. Cash-transfer
   admin loads typically run 5–10%.
@@ -841,15 +916,26 @@ is reported).
 
 ### Outputs (`reports/rxkids_2028/`)
 
-- `cost_by_state.csv` — benefit cost, CI, admin load + appropriation total,
-  birth driver + calibrated/target births, potential +6mo, launch year,
+All `cost_by_state.csv` / `cost_by_county.csv` / quintile / Summary outputs are
+the **statutory 6-month** headline (backward-compatible). The scenario panel
+adds two cross-scenario files:
+
+- `cost_by_state.csv` — statutory benefit cost, CI, admin load + appropriation
+  total, birth driver + calibrated/target births, potential +6mo, launch year,
   recipients.
-- `cost_by_county.csv` — per-county cost + expected recipients.
-- `benefits_by_income_quintile.csv` — benefit received by income quintile.
-- `rxkids_2028_cost_and_impact.xlsx` — workbook (Summary / quintile / county
-  / assumptions / notes).
-- `rxkids_2028_cost_and_impact.pdf` — one-page shareable summary.
-- `spm_units.parquet` — SPM-grain frame.
+- `cost_by_county.csv` — per-county statutory cost + expected recipients.
+- **`cost_by_scenario.csv`** — state-level comparison of all priced scenarios
+  (statutory_6mo / universal_6mo / universal_12mo): cost, arms, CI, assumption
+  band, admin, appropriation, recipients, avg benefit, first-year.
+- **`cost_by_county_scenarios.csv`** — per-county cost + recipients for **every**
+  scenario (tidy long format: one row per county × scenario).
+- `benefits_by_income_quintile.csv` — benefit received by income quintile
+  (statutory).
+- `rxkids_2028_cost_and_impact.xlsx` — workbook (Summary / quintile / county /
+  **By scenario** / **County × scenario** / assumptions / notes).
+- `rxkids_2028_cost_and_impact.pdf` — one-page shareable summary (now includes a
+  scenario-comparison table).
+- `spm_units.parquet` — SPM-grain frame (statutory).
 
 Run:
 ```bash

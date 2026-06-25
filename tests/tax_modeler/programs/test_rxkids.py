@@ -486,3 +486,112 @@ def test_rxkids_missing_medicaid_column_falls_back_to_clause2(caplog):
     assert any("medicaid_receives" in r.message for r in caplog.records)
     assert float(out["rxkids_amount"].iloc[0]) > 0       # clause 2 still works
     assert float(out["rxkids_amount"].iloc[1]) == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# Forecast scenarios: universal eligibility + postnatal-duration variants
+# (forecast_rxkids_2028.py prices statutory_6mo / universal_6mo / universal_12mo)
+# ---------------------------------------------------------------------------
+
+
+def _forecast_module():
+    """Import the repo-root forecast script (mirrors the magi-proxy test)."""
+    import sys
+    from pathlib import Path
+    repo_root = Path(__file__).resolve().parents[3]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    import forecast_rxkids_2028 as fc
+    return fc
+
+
+def test_rxkids_universal_costs_at_least_statutory():
+    """Universal eligibility (income_fpl_cap ≈ ∞) reaches every birth family, so
+    weighted cost is ≥ the statutory (≤300% FPL OR Medicaid) gate — strictly
+    greater whenever a mid/high-income birth family exists on the frame."""
+    units = _make_units([
+        # ~1.3× FPL(2): income-eligible under BOTH gates.
+        {"num_dependents": 1, "num_qualifying_children": 1, "income": 30_000.0,
+         "medicaid_receives": False, "weight": 100.0},
+        # ~3.5× FPL(2): only the universal gate reaches this family.
+        {"num_dependents": 1, "num_qualifying_children": 1, "income": 80_000.0,
+         "medicaid_receives": False, "weight": 100.0},
+    ])
+    statutory = compute_rxkids_for_units(
+        units, tax_year=2024, overrides={"income_fpl_cap": 3.00})
+    universal = compute_rxkids_for_units(
+        units, tax_year=2024, overrides={"income_fpl_cap": 100.0})
+
+    def wsum(df):
+        return float((df["rxkids_amount"] * df["weight"]).fillna(0).sum())
+
+    assert wsum(universal) > wsum(statutory) > 0
+    # The mid-income family is excluded by the statutory gate, included universally.
+    assert float(statutory["rxkids_amount"].iloc[1]) == pytest.approx(0.0)
+    assert float(universal["rxkids_amount"].iloc[1]) > 0.0
+
+
+def test_rxkids_12mo_doubles_postnatal_prenatal_unchanged():
+    """The +6-month design doubles the postnatal arm (linear in months) and
+    leaves the one-time prenatal arm unchanged."""
+    units = _make_units([
+        {"num_dependents": 1, "num_qualifying_children": 1, "income": 30_000.0,
+         "medicaid_receives": False},
+    ])
+    six = compute_rxkids_for_units(
+        units, tax_year=2024,
+        overrides={"income_fpl_cap": 100.0, "postnatal_months": 6})
+    twelve = compute_rxkids_for_units(
+        units, tax_year=2024,
+        overrides={"income_fpl_cap": 100.0, "postnatal_months": 12})
+    assert float(twelve["rxkids_postnatal_amount"].iloc[0]) == pytest.approx(
+        2.0 * float(six["rxkids_postnatal_amount"].iloc[0]))
+    assert float(twelve["rxkids_prenatal_amount"].iloc[0]) == pytest.approx(
+        float(six["rxkids_prenatal_amount"].iloc[0]))
+
+
+def test_forecast_scenario_specs():
+    """The shipped scenario panel encodes the intended policy levers."""
+    fc = _forecast_module()
+    by = fc.SCENARIO_BY_KEY
+    assert by["statutory_6mo"]["overrides"] == {"income_fpl_cap": 3.00, "postnatal_months": 6}
+    assert by["universal_6mo"]["overrides"]["income_fpl_cap"] == fc.UNIVERSAL_FPL_CAP
+    assert by["universal_6mo"]["overrides"]["postnatal_months"] == 6
+    assert by["universal_12mo"]["overrides"]["income_fpl_cap"] == fc.UNIVERSAL_FPL_CAP
+    assert by["universal_12mo"]["overrides"]["postnatal_months"] == 12
+
+
+def test_forecast_selected_scenarios_validation():
+    """--scenarios resolves to validated specs, always including the headline."""
+    fc = _forecast_module()
+    chosen = fc._selected_scenarios("universal_12mo")
+    keys = [s["key"] for s in chosen]
+    # The default headline is prepended even if the user omits it (it backs the
+    # detailed legacy outputs), and canonical SCENARIOS order is preserved.
+    assert fc.DEFAULT_SCENARIO_KEY in keys
+    assert "universal_12mo" in keys
+    assert keys == [s["key"] for s in fc.SCENARIOS if s["key"] in set(keys)]
+    with pytest.raises(SystemExit):
+        fc._selected_scenarios("not_a_scenario")
+
+
+def test_forecast_county_rows_sum_to_state():
+    """Per-county program cost sums (within rounding) to the weighted state cost."""
+    fc = _forecast_module()
+    frame = pd.DataFrame({
+        "county": ["Honolulu", "Honolulu", "Maui", "Hawaii", "Kauai"],
+        "weight": [100.0, 50.0, 80.0, 60.0, 40.0],
+        "rxkids_prenatal_amount": [1500.0, 0.0, 1500.0, 750.0, 0.0],
+        "rxkids_postnatal_amount": [3000.0, 0.0, 3000.0, 1500.0, 0.0],
+    })
+    frame["rxkids_amount"] = (
+        frame["rxkids_prenatal_amount"] + frame["rxkids_postnatal_amount"])
+    rows = fc._county_rows(frame, pre_payment=1500.0, post_payment=3000.0)
+    county_total = sum(r["cost_total"] for r in rows)
+    state_total = fc._weighted_cost(frame, "rxkids_amount")
+    assert county_total == pytest.approx(state_total, abs=len(rows) + 1)
+    # Prenatal/postnatal county splits also reconcile to the state arms.
+    assert sum(r["cost_prenatal"] for r in rows) == pytest.approx(
+        fc._weighted_cost(frame, "rxkids_prenatal_amount"), abs=len(rows) + 1)
+    assert sum(r["cost_postnatal"] for r in rows) == pytest.approx(
+        fc._weighted_cost(frame, "rxkids_postnatal_amount"), abs=len(rows) + 1)
