@@ -1,0 +1,168 @@
+{
+  "fetch_date": "2026-07-14",
+  "n_tickers": 12,
+  "tickers": [
+    {
+      "affinity_indicators": [
+        "B19013_001E"
+      ],
+      "first_month": "2005-01",
+      "hypothesis": "Aggregate equity wealth and financial conditions lead household income and top-quintile spending with a 6-18 month lag.",
+      "last_month": "2026-06",
+      "n_obs": 258,
+      "name": "SPDR S&P 500",
+      "source": "yfinance",
+      "symbol": "SPY",
+      "tier": "broad"
+    },
+    {
+      "affinity_indicators": [
+        "B19013_001E"
+      ],
+      "first_month": "2005-01",
+      "hypothesis": "Growth-equity wealth effect; sharper cycle amplitude than SPY gives earlier turning-point signal for income.",
+      "last_month": "2026-06",
+      "n_obs": 258,
+      "name": "Invesco Nasdaq-100",
+      "source": "yfinance",
+      "symbol": "QQQ",
+      "tier": "broad"
+    },
+    {
+      "affinity_indicators": [
+        "B19013_001E"
+      ],
+      "first_month": "2005-01",
+      "hypothesis": "Broadest wealth-effect proxy; redundancy check against SPY.",
+      "last_month": "2026-06",
+      "n_obs": 258,
+      "name": "Vanguard Total Market",
+      "source": "yfinance",
+      "symbol": "VTI",
+      "tier": "broad"
+    },
+    {
+      "affinity_indicators": [
+        "S2301_C04_001E"
+      ],
+      "first_month": "2015-04",
+      "hypothesis": "Airline equity prices embed forward bookings; Hawaii tourism employment follows visitor arrivals, so JETS should lead the unemployment rate in tourism-dependent counties.",
+      "last_month": "2026-06",
+      "n_obs": 135,
+      "name": "US Global Jets ETF",
+      "source": "yfinance",
+      "symbol": "JETS",
+      "tier": "sector"
+    },
+    {
+      "affinity_indicators": [
+        "B25077_001E",
+        "B25058_001E",
+        "B25064_001E"
+      ],
+      "first_month": "2015-10",
+      "hypothesis": "REIT pricing embeds forward rent growth and cap-rate moves; leads measured home values and rents.",
+      "last_month": "2026-06",
+      "n_obs": 129,
+      "name": "Real Estate Select Sector",
+      "source": "yfinance",
+      "symbol": "XLRE",
+      "tier": "sector"
+    },
+    {
+      "affinity_indicators": [
+        "B25077_001E",
+        "B25058_001E",
+        "B25064_001E"
+      ],
+      "first_month": "2005-01",
+      "hypothesis": "Broader REIT universe than XLRE (longer history, pre-2015); same forward-rent channel.",
+      "last_month": "2026-06",
+      "n_obs": 258,
+      "name": "Vanguard Real Estate",
+      "source": "yfinance",
+      "symbol": "VNQ",
+      "tier": "sector"
+    },
+    {
+      "affinity_indicators": [
+        "B19013_001E"
+      ],
+      "first_month": "2005-01",
+      "hypothesis": "Bank equity prices lead credit availability, which leads household income and home purchases.",
+      "last_month": "2026-06",
+      "n_obs": 258,
+      "name": "Financial Select Sector",
+      "source": "yfinance",
+      "symbol": "XLF",
+      "tier": "sector"
+    },
+    {
+      "affinity_indicators": [],
+      "first_month": "2005-01",
+      "hypothesis": "Energy equity prices track oil; Hawaii imports ~80% of its energy, so XLE leads Honolulu CPI (electricity, gasoline, shipping surcharges).",
+      "last_month": "2026-06",
+      "n_obs": 258,
+      "name": "Energy Select Sector",
+      "source": "yfinance",
+      "symbol": "XLE",
+      "tier": "sector"
+    },
+    {
+      "affinity_indicators": [
+        "B19013_001E",
+        "S1701_C03_001E"
+      ],
+      "first_month": "2005-01",
+      "hypothesis": "Local bank equity embeds expected Hawaii credit quality and loan demand; leads household income and poverty.",
+      "last_month": "2026-06",
+      "n_obs": 258,
+      "name": "Bank of Hawaii",
+      "source": "yfinance",
+      "symbol": "BOH",
+      "tier": "hawaii"
+    },
+    {
+      "affinity_indicators": [
+        "B19013_001E",
+        "S1701_C03_001E"
+      ],
+      "first_month": "2016-08",
+      "hypothesis": "Second local-credit signal; IPO 2016 so history is short \u2014 confirmatory only.",
+      "last_month": "2026-06",
+      "n_obs": 119,
+      "name": "First Hawaiian Inc",
+      "source": "yfinance",
+      "symbol": "FHB",
+      "tier": "hawaii"
+    },
+    {
+      "affinity_indicators": [
+        "B19013_001E",
+        "S2301_C04_001E"
+      ],
+      "first_month": "2005-01",
+      "hypothesis": "Regulated utility with ~95% Hawaii revenue; equity shocks are Hawaii-specific shocks (2023 Maui-fire crash is a real local event signature, not market beta).",
+      "last_month": "2026-06",
+      "n_obs": 258,
+      "name": "Hawaiian Electric",
+      "source": "yfinance",
+      "symbol": "HE",
+      "tier": "hawaii"
+    },
+    {
+      "affinity_indicators": [
+        "B25077_001E"
+      ],
+      "first_month": "2005-01",
+      "hypothesis": "Dominant Hawaii ocean-freight carrier; shipping volumes/rates lead goods prices in Honolulu CPI and construction activity.",
+      "last_month": "2026-06",
+      "n_obs": 258,
+      "name": "Matson Inc",
+      "source": "yfinance",
+      "symbol": "MATX",
+      "tier": "hawaii"
+    }
+  ],
+  "version": 1
+}

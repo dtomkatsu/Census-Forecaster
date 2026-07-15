@@ -23,6 +23,7 @@ weighting is derived from out-of-sample back-tests, not hardcoded.
 | `qcew_hawaii_wages.json` | BLS QCEW (state of HI, all industries) | income (wage) | bls.gov |
 | `hud_fmr_honolulu.json` | HUD FMR (Honolulu MSA, 2BR) | rent | huduser.gov |
 | `fred_hi_hpi.json` | FRED HISTHPI (FHFA all-transactions) | home value | fred.stlouisfed.org |
+| `bls_national_unemployment.json` | BLS LNS14000000 (CPS, SA, annual avg) | unemployment rate — YoY direction only; unregistered until the market-signals Phase-3 ablation | bls.gov |
 
 To re-validate a series: open the upstream link in the JSON file and
 compare. Any updates should be paired with a re-run of the calibration

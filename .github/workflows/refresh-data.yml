@@ -50,7 +50,7 @@ jobs:
           version: "latest"
 
       - name: Install census-forecaster package
-        run: uv sync --package census-forecaster --extra dev
+        run: uv sync --package census-forecaster --extra dev --extra markets
 
       - name: Refresh BLS multi-MSA panel
         env:
@@ -102,6 +102,19 @@ jobs:
         run: |
           uv run python -m census_forecaster.scripts.refresh_saipe
 
+      - name: Refresh market prices panel + macro monthly series
+        env:
+          BLS_API_KEY: ${{ secrets.BLS_API_KEY }}
+        run: |
+          # Ticker prices need no API key (yfinance/Stooq are keyless);
+          # the script skips just the BLS unemployment block when
+          # BLS_API_KEY is absent. --tolerate-failures keeps the
+          # previously committed series for any ticker whose fetch fails
+          # (yfinance breaks periodically) so a flaky source never fails
+          # the whole refresh.
+          uv run python -m census_forecaster.scripts.refresh_market_panel \
+            --tolerate-failures
+
       - name: Regenerate BLS v3 calibration
         run: |
           # Only regenerate if the BLS panel exists. If neither key is
@@ -146,6 +159,8 @@ jobs:
             packages/census_forecaster/src/census_forecaster/data/bls_panel/ \
             packages/census_forecaster/src/census_forecaster/data/anchors/ \
             packages/census_forecaster/src/census_forecaster/data/calibration_panel/ \
+            packages/census_forecaster/src/census_forecaster/data/leading_indicators/ \
+            packages/census_forecaster/src/census_forecaster/data/markets/ \
             backtests/results/
 
           if git diff --staged --quiet; then
@@ -161,7 +176,9 @@ jobs:
           - BLS multi-MSA panel re-fetched from the BLS public API
           - BEA anchors re-fetched from the BEA Regional API
           - Zillow ZHVI/ZORI + BLS LAUS county anchors re-fetched
+          - Census BPS county permit counts re-fetched
           - Census SAIPE county poverty rates re-fetched
+          - Market prices panel + macro monthly series re-fetched
           - BLS v3 calibration regenerated against the new panel
           - ACS v3 calibration regenerated against the bundled panel
 
@@ -187,5 +204,5 @@ jobs:
 
           Latest run: $RUN_URL
 
-          Check which step failed (BLS / BEA / Zillow+LAUS / BPS / SAIPE refresh, calibration regen, or the smoke gate). Common causes: an external-data API change (e.g. Census requiring \`CENSUS_API_KEY\`) or a transient timeout. Auto-opened on failure; close once resolved."
+          Check which step failed (BLS / BEA / Zillow+LAUS / BPS / SAIPE / market-panel refresh, calibration regen, or the smoke gate). Common causes: an external-data API change (e.g. Census requiring \`CENSUS_API_KEY\`) or a transient timeout. Auto-opened on failure; close once resolved."
           fi

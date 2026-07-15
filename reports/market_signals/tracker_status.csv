@@ -1,0 +1,13 @@
+symbol,name,tier,last_month,last_close,mom_3m,mom_6m,mom_12m,vol_36m_ann,first_month,n_obs,source
+SPY,SPDR S&P 500,broad,2026-06,746.77,0.140835,0.096145,0.200531,0.1285,2005-01,258,yfinance
+QQQ,Invesco Nasdaq-100,broad,2026-06,736.4,0.244718,0.183632,0.293682,0.1661,2005-01,258,yfinance
+VTI,Vanguard Total Market,broad,2026-06,370.04,0.145634,0.104675,0.208423,0.1326,2005-01,258,yfinance
+JETS,US Global Jets ETF,sector,2026-06,33.22,0.299187,0.168451,0.37712,0.2864,2015-04,135,yfinance
+XLRE,Real Estate Select Sector,sector,2026-06,44.03,0.084179,0.102703,0.095004,0.1666,2015-10,129,yfinance
+VNQ,Vanguard Real Estate,sector,2026-06,96.43,0.092333,0.105336,0.117504,0.1669,2005-01,258,yfinance
+XLF,Financial Select Sector,sector,2026-06,53.61,0.08589,-0.012783,0.038801,0.1414,2005-01,258,yfinance
+XLE,Energy Select Sector,sector,2026-06,53.11,-0.135576,0.185866,0.255783,0.1926,2005-01,258,yfinance
+BOH,Bank of Hawaii,hawaii,2026-06,81.49,0.102141,0.19358,0.226809,0.3384,2005-01,258,yfinance
+FHB,First Hawaiian Inc,hawaii,2026-06,29.3,0.18311,0.166692,0.201671,0.2449,2016-08,119,yfinance
+HE,Hawaiian Electric,hawaii,2026-06,13.53,-0.092417,0.09531,0.241229,0.7909,2005-01,258,yfinance
+MATX,Matson Inc,hawaii,2026-06,192.23,0.161153,0.44622,0.556639,0.2938,2005-01,258,yfinance
