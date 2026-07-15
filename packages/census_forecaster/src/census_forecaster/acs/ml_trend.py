@@ -61,6 +61,7 @@ from .ml_features import (
     build_panel_index,
     load_bps_data,
     load_laus_data,
+    load_market_signals_data,
     load_saipe_data,
     make_feature_spec,
     make_inference_row,
@@ -142,6 +143,7 @@ def train_ml_model(
     horizons: Sequence[int] = (1, 2, 3, 4, 5),
     panel: Optional[PanelIndex] = None,
     bps_data: Optional[Mapping[str, Mapping[int, float]]] = None,
+    market_data: Optional[Mapping[str, Mapping[int, float]]] = None,
 ) -> Optional[TrainedMlModel]:
     """Fit one HGB model for one (indicator, cutoff_year).
 
@@ -157,11 +159,13 @@ def train_ml_model(
 
     if panel is None:
         _bps = bps_data if bps_data is not None else load_bps_data()
+        _mkt = market_data if market_data is not None else load_market_signals_data()
         panel = build_panel_index(
             series_by_key,
             bps_data=_bps,
             saipe_data=load_saipe_data(),
             laus_data=load_laus_data(),
+            market_data=_mkt,
         )
 
     matrix: TrainingMatrix = make_training_rows(
@@ -385,6 +389,7 @@ def project_ml_trend_one_shot(
     model_cache: Optional[dict[tuple[str, int], TrainedMlModel]] = None,
     panel: Optional[PanelIndex] = None,
     bps_data: Optional[Mapping[str, Mapping[int, float]]] = None,
+    market_data: Optional[Mapping[str, Mapping[int, float]]] = None,
 ) -> Optional[ForecastPoint]:
     """One-shot: train (or fetch cached) model and produce a forecast.
 
@@ -401,11 +406,13 @@ def project_ml_trend_one_shot(
 
     if panel is None:
         _bps = bps_data if bps_data is not None else load_bps_data()
+        _mkt = market_data if market_data is not None else load_market_signals_data()
         panel = build_panel_index(
             series_by_key,
             bps_data=_bps,
             saipe_data=load_saipe_data(),
             laus_data=load_laus_data(),
+            market_data=_mkt,
         )
 
     if cutoff_year is None:

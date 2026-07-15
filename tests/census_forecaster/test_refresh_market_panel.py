@@ -171,19 +171,55 @@ def test_macro_block_writes_monthly_series_and_anchor(
     assert anchor["values_by_year"]["2023"] == pytest.approx(expected, abs=1e-3)
 
 
-def test_macro_block_skips_unemployment_without_key(
+def test_macro_block_fetches_keylessly_without_key(
         tmp_path, fake_fetch_ok, monkeypatch, capsys):
+    """Without BLS_API_KEY the unemployment block runs keylessly."""
     monkeypatch.delenv("BLS_API_KEY", raising=False)
+    monkeypatch.setattr(script, "fetch_unemployment_monthly", _fake_unemp)
     monkeypatch.setattr(script, "fetch_zillow_county_csv", _fake_zillow)
 
     anchors = tmp_path / "anchors"
     rc = script.main(["--out", str(tmp_path), "--anchors-out", str(anchors)])
     assert rc == 0
     macro = json.loads((tmp_path / "macro_monthly.json").read_text())
+    assert script.NATIONAL_UNEMP_SID in macro["series"]
+    assert (anchors / "bls_national_unemployment.json").exists()
+    assert "keyless" in capsys.readouterr().err
+
+
+def test_macro_block_degrades_when_unemployment_fetch_fails(
+        tmp_path, fake_fetch_ok, monkeypatch, capsys):
+    def boom(api_key, *, start_year, end_year):
+        raise RuntimeError("BLS is down")
+    monkeypatch.setattr(script, "fetch_unemployment_monthly", boom)
+    monkeypatch.setattr(script, "fetch_zillow_county_csv", _fake_zillow)
+
+    anchors = tmp_path / "anchors"
+    rc = script.main(["--out", str(tmp_path), "--anchors-out", str(anchors)])
+    assert rc == 0                                        # never fails CI
+    macro = json.loads((tmp_path / "macro_monthly.json").read_text())
     assert script.NATIONAL_UNEMP_SID not in macro["series"]
-    assert "ZHVI_HONOLULU_MONTHLY" in macro["series"]     # Zillow keyless
+    assert "ZHVI_HONOLULU_MONTHLY" in macro["series"]     # Zillow still ran
     assert not (anchors / "bls_national_unemployment.json").exists()
-    assert "BLS_API_KEY not set" in capsys.readouterr().err
+    assert "unemployment fetch failed" in capsys.readouterr().err
+
+
+def test_fetch_unemployment_chunks_10yr_windows_when_keyless(monkeypatch):
+    calls = []
+
+    def fake_cpi(series_ids, start_year, end_year, api_key=None, **kw):
+        calls.append((start_year, end_year, api_key))
+        return {sid: [{"year": start_year, "period": "M01", "value": 4.0}]
+                for sid in series_ids}
+    monkeypatch.setattr(script, "fetch_cpi_data", fake_cpi)
+
+    script.fetch_unemployment_monthly(None, start_year=2005, end_year=2026)
+    assert calls == [(2005, 2014, None), (2015, 2024, None),
+                     (2025, 2026, None)]
+
+    calls.clear()
+    script.fetch_unemployment_monthly("key", start_year=2005, end_year=2026)
+    assert calls == [(2005, 2024, "key"), (2025, 2026, "key")]
 
 
 def test_build_national_unemployment_anchor_partial_year():

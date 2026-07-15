@@ -233,3 +233,29 @@ class TestCombinedAnchorRateGeoidPlumbing:
         assert without is not None and with_geoid is not None
         assert without.point_log_rate == pytest.approx(with_geoid.point_log_rate)
         assert without.se_log_rate == pytest.approx(with_geoid.se_log_rate)
+
+
+# ---------------------------------------------------------------------------
+# Market-signals Phase 3: national unemployment rate anchor
+# ---------------------------------------------------------------------------
+
+class TestNationalUnemploymentAnchor:
+    """The national-unemployment RATE anchor was tried and FAILED the
+    Phase-3 ship gate: blended-ensemble RMSE regression on S2301 plus a
+    rate-band violation (|log-rate| 0.47 in 2009 vs the 0.30 invariant).
+    See the registry comment in sources/base.py and
+    backtests/results/market_ml_ablation_2026-07-14.md. These tests pin
+    the *removal* so the failed experiment doesn't silently come back."""
+
+    def test_not_registered(self):
+        from census_forecaster.acs.sources.base import _REGISTRY_SPEC
+        assert not any(
+            s[0] == "bls_national_unemployment.json" for s in _REGISTRY_SPEC
+        ), "failed anchor experiment re-registered without new evidence"
+
+    def test_never_served_for_s2301(self):
+        from census_forecaster.acs.sources.base import available_sources
+        assert not any(
+            src.name == "bls_national_unemployment"
+            for src in available_sources("S2301_C04_001E")
+        )

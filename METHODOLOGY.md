@@ -1063,3 +1063,51 @@ pricing) — which is what a screen behaving honestly should find.
   they act as year-effects and are near-collinear with
   `anchor_year_norm`. The Phase-3 ablation must check permutation
   importance before trusting them.
+
+### Phase-3 integration (ML features + national anchor)
+
+Two paths, both ablation-gated by
+`scripts/compare_market_ablation.py` (report:
+`backtests/results/market_ml_ablation_<date>.md`):
+
+1. **ML features.** `markets/signals.py::derive_annual_signals` turns
+   the prices panel into annual **June-cutoff** channel momenta
+   (`mkt_energy_mom` = XLE, `mkt_shipping_mom` = MATX, `mkt_reit_mom` =
+   mean of screen-surviving REIT tickers), written to
+   `data/leading_indicators/market_signals.json` by
+   `refresh_market_panel --derive-signals`. A channel exists only if
+   the causal screen produced a BH survivor for its ticker that is
+   robust to 2020 exclusion. The values enter `acs/ml_features.py`
+   under the reserved `__national__` pseudo-geoid (sentinels
+   `_MKT_*`, excluded from cross-indicator features) as four
+   `mkt_*` columns — `energy/shipping/reit` lag-0 plus `reit` lag-1
+   (VNQ's Granger lead is ~12 months). June cutoff mirrors
+   `truncate_to_anchor`'s no-peeking: a July shock cannot move that
+   year's signal (tested). `ml_trend` remains `use_ml=False` by
+   default regardless of the ablation outcome.
+
+2. **National unemployment anchor — tried and REJECTED.**
+   `bls_national_unemployment.json` (CPS LNS14000000, annual average)
+   was registered as a RATE anchor on S2301 (levels don't transfer
+   US→county; the hypothesis was that YoY direction might). Verdict on
+   the full ablation (market_ml_ablation_2026-07-14.md), recorded
+   honestly because the evidence is mixed:
+
+   - Full window (2014–2022 anchors): blended S2301 RMSE *improves*
+     −1.2% absolute — but CI90 coverage drops 91.7% → 88.2% and the
+     gain concentrates in the 2020–2021 shock years.
+   - Recent window (2021–2022 anchors): RMSE *regresses* +2.7%
+     absolute vs the 2% gate — on the anchors most like the future,
+     the member (standalone RMSE 0.47) dilutes the trend (0.40).
+   - Structural: unemployment-rate YoY log-changes violate the
+     rate-anchor band invariant (|log(9.3/6.3)| = 0.47 in 2009 vs
+     0.30). The rate machinery's SE assumptions were built for
+     price/income indexes; recession swings in a *rate* series break
+     them — the mechanism behind the coverage loss.
+
+   Rejected on balance: an anchor that buys point accuracy in shock
+   years by making intervals overconfident is the wrong trade for this
+   repo's calibration-first discipline. The registry row was removed;
+   tests pin the removal. Future work: a damped/clamped variant or a
+   level-difference anchor type. The data file is still refreshed (the
+   causal screen uses the monthly series) — it just doesn't anchor.

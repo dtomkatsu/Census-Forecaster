@@ -168,21 +168,38 @@ def build_manifest(panel: PricesPanel) -> dict:
 # ---------------------------------------------------------------------------
 
 def fetch_unemployment_monthly(
-    api_key: str, *, start_year: int, end_year: int,
+    api_key: Optional[str], *, start_year: int, end_year: int,
 ) -> dict[str, list[dict]]:
     """Fetch national + Hawaii monthly unemployment via the BLS API.
+
+    Works keylessly: without ``api_key`` the BLS v2 API still serves
+    requests (25/day, ≤10-year window), so the year range is chunked to
+    10-year windows. With a key a single 20-year request suffices.
 
     Returns ``{sid: [{year, period, value}]}`` with M13 (annual-average)
     rows dropped — this file is strictly monthly cadence.
     """
-    raw = fetch_cpi_data(
-        series_ids=[NATIONAL_UNEMP_SID, HAWAII_UNEMP_SID],
-        start_year=start_year,
-        end_year=end_year,
-        api_key=api_key,
-    )
+    window = 20 if api_key else 10
+    chunks: list[tuple[int, int]] = []
+    s = start_year
+    while s <= end_year:
+        e = min(s + window - 1, end_year)
+        chunks.append((s, e))
+        s = e + 1
+
+    merged: dict[str, list[dict]] = {}
+    for ys, ye in chunks:
+        raw = fetch_cpi_data(
+            series_ids=[NATIONAL_UNEMP_SID, HAWAII_UNEMP_SID],
+            start_year=ys,
+            end_year=ye,
+            api_key=api_key,
+        )
+        for sid, points in raw.items():
+            merged.setdefault(sid, []).extend(points)
+
     out: dict[str, list[dict]] = {}
-    for sid, points in raw.items():
+    for sid, points in merged.items():
         monthly = [p for p in points
                    if p["period"].startswith("M") and p["period"] != "M13"]
         monthly.sort(key=lambda p: (p["year"], p["period"]))
@@ -299,6 +316,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
              "fails; abort only if ALL tickers fail. Use in CI.",
     )
     parser.add_argument(
+        "--derive-signals", action="store_true",
+        help="Also derive June-cutoff annual signals into "
+             "data/leading_indicators/market_signals.json. Requires a "
+             "prior causal-screen run (selected_signals.json); skipped "
+             "with a warning otherwise.",
+    )
+    parser.add_argument(
         "--dry-run", action="store_true",
         help="Print what would be fetched and exit (no network, no writes).",
     )
@@ -311,7 +335,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if not args.skip_macro:
             print(f"[dry-run] would fetch BLS {NATIONAL_UNEMP_SID} + "
                   f"{HAWAII_UNEMP_SID} ({args.start_year}-{args.end_year})"
-                  f"{' [BLS_API_KEY set]' if os.environ.get('BLS_API_KEY') else ' [NO BLS_API_KEY — would skip]'}",
+                  f"{' [BLS_API_KEY set]' if os.environ.get('BLS_API_KEY') else ' [keyless: chunked 10-yr windows]'}",
                   file=sys.stderr)
             print(f"[dry-run] would GET {ZHVI_COUNTY_CSV}", file=sys.stderr)
             print(f"[dry-run] would GET {ZORI_COUNTY_CSV}", file=sys.stderr)
@@ -347,12 +371,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
         api_key = os.environ.get("BLS_API_KEY")
         if not api_key:
-            print("::warning::BLS_API_KEY not set; skipping unemployment "
-                  "block of macro_monthly.json (Zillow block still runs)",
+            print("::warning::BLS_API_KEY not set; fetching unemployment "
+                  "keylessly (25 req/day BLS limit — fine for this script, "
+                  "set the key if other BLS refreshes run the same day)",
                   file=sys.stderr)
-        else:
-            print(f"[macro] fetching {NATIONAL_UNEMP_SID} + "
-                  f"{HAWAII_UNEMP_SID} from BLS …", file=sys.stderr)
+        print(f"[macro] fetching {NATIONAL_UNEMP_SID} + "
+              f"{HAWAII_UNEMP_SID} from BLS …", file=sys.stderr)
+        try:
             unemp = fetch_unemployment_monthly(
                 api_key, start_year=args.start_year, end_year=args.end_year,
             )
@@ -361,6 +386,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 macro_sources[sid] = "BLS API"
                 print(f"[macro] {sid}: {len(rows)} monthly prints",
                       file=sys.stderr)
+        except Exception as exc:  # noqa: BLE001 — degrade, don't fail CI
+            print(f"::warning::BLS unemployment fetch failed ({exc}); "
+                  "macro_monthly.json written without unemployment block",
+                  file=sys.stderr)
 
         print("[macro] fetching monthly Honolulu ZHVI/ZORI …", file=sys.stderr)
         try:
@@ -401,6 +430,38 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             )
             print(f"[anchor] wrote bls_national_unemployment.json "
                   f"({len(anchor['values_by_year'])} years)", file=sys.stderr)
+
+    # ---- derived annual signals (Phase 3, screen-gated) ----
+    if args.derive_signals:
+        from datetime import date as _date
+
+        from ..markets.signals import (
+            build_signals_payload,
+            derive_annual_signals,
+        )
+        selected_path = args.out / "selected_signals.json"
+        if not selected_path.exists():
+            print("::warning::--derive-signals requested but "
+                  f"{selected_path} is absent; run "
+                  "run_market_screen first — skipping", file=sys.stderr)
+        else:
+            with open(selected_path) as f:
+                selected = json.load(f)
+            signals = derive_annual_signals(panel, selected)
+            if not signals:
+                print("::warning::no screen-gated channels active; "
+                      "market_signals.json not written", file=sys.stderr)
+            else:
+                out_path = (_PKG_DATA / "leading_indicators"
+                            / "market_signals.json")
+                payload = build_signals_payload(
+                    signals, selected,
+                    last_refresh=_date.today().strftime("%Y-%m"),
+                )
+                _atomic_write_json(out_path, payload)
+                spans = {n: f"{min(v)}–{max(v)}" for n, v in signals.items()}
+                print(f"[signals] wrote market_signals.json: {spans}",
+                      file=sys.stderr)
 
     print("[markets] done", file=sys.stderr)
     return 0

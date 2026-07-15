@@ -388,6 +388,28 @@ _REGISTRY_SPEC = [
     # is typically 1.0–3.0 pp; 2.0 is a conservative floor before κ calibration.
     ("saipe_poverty.json", 0,
      ("S1701_C03_001E",), 0.010, "county", "level", 2.0),
+    # ----- Market-signals module (July 2026, Phase 3) -----
+    # National unemployment (CPS LNS14000000) as a RATE anchor on S2301
+    # was tried and REJECTED — do not re-add without a variance-aware
+    # treatment. Full evidence in
+    # backtests/results/market_ml_ablation_2026-07-14.md:
+    #   * Full window (anchors 2014-2022): blended S2301 RMSE improves
+    #     -1.2% absolute — BUT coverage drops 91.7% → 88.2% (the anchor
+    #     makes intervals overconfident) and the gain concentrates in the
+    #     2020-2021 shock years.
+    #   * Recent window (anchors 2021-2022 only): RMSE REGRESSES +2.7%
+    #     absolute (gate: 2%) — on the anchors most like the future, the
+    #     member (standalone RMSE 0.47) dilutes the trend it joins (0.40).
+    #   * Structural: unemployment-rate YoY log-changes blow the
+    #     rate-anchor band invariant, |log(9.3/6.3)| = 0.47 in 2009 vs
+    #     0.30 (test_rates_in_reasonable_band). The rate machinery was
+    #     built for price/income indexes; recession swings in a *rate*
+    #     series are too violent for its SE assumptions — which is the
+    #     mechanism behind the coverage loss above.
+    # Possible future work: a damped/clamped variant or a level-difference
+    # anchor type. The data file (bls_national_unemployment.json) is still
+    # refreshed — the causal screen uses the monthly series — it just
+    # doesn't anchor.
 ]
 
 

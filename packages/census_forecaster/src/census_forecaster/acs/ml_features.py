@@ -77,12 +77,25 @@ _BPS_INDICATOR = "_BPS_PERMITS_ANNUAL"
 _SAIPE_INDICATOR = "_SAIPE_POVERTY_RATE"
 _LAUS_INDICATOR = "_LAUS_UNEMPLOYMENT_RATE"
 
+# Market signals are national (geoid-constant): stored once under a
+# reserved pseudo-geoid instead of being replicated across every county.
+# Signal names arrive from data/leading_indicators/market_signals.json
+# (see markets/signals.py, e.g. "mkt_energy_mom") and are stored under
+# sentinel "_" + name.upper().
+_MKT_GEOID = "__national__"
+# The fixed channel set the mkt_* columns read (must stay aligned with
+# the mkt_* block in _CORE_COLUMNS).
+_MKT_ENERGY = "_MKT_ENERGY_MOM"
+_MKT_SHIPPING = "_MKT_SHIPPING_MOM"
+_MKT_REIT = "_MKT_REIT_MOM"
+
 
 def build_panel_index(
     series_by_key: Mapping[tuple[str, str], Sequence[AcsObservation]],
     bps_data: Optional[Mapping[str, Mapping[int, float]]] = None,
     saipe_data: Optional[Mapping[str, Mapping[int, float]]] = None,
     laus_data: Optional[Mapping[str, Mapping[int, float]]] = None,
+    market_data: Optional[Mapping[str, Mapping[int, float]]] = None,
 ) -> PanelIndex:
     """Build a PanelIndex from the calibration panel.
 
@@ -98,6 +111,12 @@ def build_panel_index(
         BLS LAUS county unemployment rates (annual average, %).  Used to
         feed the S2301-friendly ``laus_lag0/1/2`` and ``laus_3yr_mean``
         columns.
+    market_data : optional {signal_name → {year → value}}
+        Annual June-cutoff market signals (see ``markets/signals.py``,
+        names like ``mkt_energy_mom``). National / geoid-constant:
+        stored once under the reserved ``__national__`` pseudo-geoid.
+        Momentum values are signed, so unlike the other auxiliaries
+        negatives are kept (only non-finite values are dropped).
 
     None of the auxiliary indicators are added to ``indicators`` so they
     never appear as cross-indicator features for other ACS targets —
@@ -141,6 +160,13 @@ def build_panel_index(
             for year, rate in year_vals.items():
                 if rate is not None and rate > 0:
                     est[(geoid, _LAUS_INDICATOR, int(year))] = float(rate)
+
+    if market_data is not None:
+        for name, year_vals in market_data.items():
+            sentinel = "_" + name.upper()
+            for year, val in year_vals.items():
+                if val is not None and math.isfinite(float(val)):
+                    est[(_MKT_GEOID, sentinel, int(year))] = float(val)
 
     return PanelIndex(
         estimate_by_key=est,
@@ -200,6 +226,16 @@ _CORE_COLUMNS: tuple[str, ...] = (
     "laus_lag1",       # unemployment rate (%) at anchor - 1
     "laus_lag2",       # unemployment rate (%) at anchor - 2
     "laus_3yr_mean",   # mean of valid lags
+    # Market leading-indicator signals (June-cutoff annual 12-mo momenta;
+    # see markets/signals.py). National / geoid-constant → they act as
+    # year-effects in the pooled panel, so the block is deliberately
+    # small (4 columns) and each channel is gated on the causal screen's
+    # 2020-robust survivors. NaN-filled when market_signals.json absent.
+    "mkt_energy_mom_lag0",    # XLE channel (energy → Honolulu CPI)
+    "mkt_shipping_mom_lag0",  # MATX channel (freight → Honolulu CPI)
+    "mkt_reit_mom_lag0",      # REIT channel (XLRE/VNQ → ZHVI/ZORI)
+    "mkt_reit_mom_lag1",      # REIT channel, prior year (VNQ Granger
+                              # survives at lag 12 — the lead is ~1yr)
 )
 
 _HORIZON_COLUMN = "horizon"
@@ -384,6 +420,19 @@ def _build_row(
     laus_3yr = sum(laus_valid) / len(laus_valid) if laus_valid else float("nan")
     row.extend([laus_lag0, laus_lag1, laus_lag2, laus_3yr])
 
+    # Market leading-indicator signals (geoid-constant, keyed under the
+    # reserved __national__ pseudo-geoid; signed momenta, so no >0 guard).
+    def _mkt(sentinel: str, year: int) -> float:
+        v = panel.get(_MKT_GEOID, sentinel, year)
+        return float(v) if (v is not None and math.isfinite(v)) else float("nan")
+
+    row.extend([
+        _mkt(_MKT_ENERGY, anchor_year),
+        _mkt(_MKT_SHIPPING, anchor_year),
+        _mkt(_MKT_REIT, anchor_year),
+        _mkt(_MKT_REIT, anchor_year - 1),
+    ])
+
     row.append(float(horizon))
     return row
 
@@ -531,6 +580,31 @@ def load_laus_data() -> Optional[dict[str, dict[int, float]]]:
     return _load_anchor_values_by_geoid_year("bls_laus.json")
 
 
+def load_market_signals_data() -> Optional[dict[str, dict[int, float]]]:
+    """Load annual market signals from the bundled leading-indicator JSON.
+
+    Returns ``{signal_name → {year → value}}`` (names like
+    ``mkt_energy_mom``; see ``markets/signals.py``), or None if the file
+    is absent — callers treat that as "no market features" and the
+    ``mkt_*`` columns NaN-fill.
+    """
+    path = (
+        Path(__file__).parent.parent / "data" / "leading_indicators"
+        / "market_signals.json"
+    )
+    if not path.exists():
+        return None
+    import json as _json
+    with open(path) as f:
+        payload = _json.load(f)
+    raw = payload.get("signals", {})
+    return {
+        name: {int(yr): float(v) for yr, v in yr_dict.items()
+               if v is not None}
+        for name, yr_dict in raw.items()
+    }
+
+
 __all__ = [
     "PanelIndex",
     "FeatureSpec",
@@ -539,6 +613,7 @@ __all__ = [
     "load_bps_data",
     "load_saipe_data",
     "load_laus_data",
+    "load_market_signals_data",
     "make_feature_spec",
     "make_training_rows",
     "make_inference_row",

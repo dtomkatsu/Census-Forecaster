@@ -36,3 +36,7 @@ Never copy a φ from one cadence to another. Never switch to analytical PIs with
 ## Test baseline
 
 185/185 tests must pass. Honolulu County MAPE ≤ 6.76% on backtest.
+
+## Market signals
+
+`src/census_forecaster/markets/` (tracker, causal screen, signal derivation) is **NOT part of the Housing-Affordability-Tracker cherry-pick** — only `acs/projection.py` and `kalman/` sync there. Market-signal methodology lives in `METHODOLOGY.md` §Market signals; signals are screen-gated (BH-FDR + 2020-robustness) and ablation-gated before touching any forecast path.

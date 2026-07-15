@@ -113,7 +113,7 @@ jobs:
           # (yfinance breaks periodically) so a flaky source never fails
           # the whole refresh.
           uv run python -m census_forecaster.scripts.refresh_market_panel \
-            --tolerate-failures
+            --tolerate-failures --derive-signals
 
       - name: Regenerate BLS v3 calibration
         run: |

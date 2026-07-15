@@ -18,8 +18,15 @@ unemployment block).
   (Hawaii statewide unemployment, LAUS SA), `ZHVI_HONOLULU_MONTHLY`,
   `ZORI_HONOLULU_MONTHLY`. Schema: `{version, fetch_date, series:
   {NAME: [{year, period, value}]}, sources, limitations}`.
-- **`selected_signals.json`** — (Phase 2) machine-readable output of the
-  market-signal causal screen; absent until the first screen run.
+- **`selected_signals.json`** — machine-readable output of the
+  market-signal causal screen (`scripts/run_market_screen.py`): BH
+  survivors with `robust_to_2020_exclusion` flags.
+
+Derived from the above (Phase 3): `../leading_indicators/market_signals.json`
+— annual June-cutoff channel momenta, written by
+`refresh_market_panel --derive-signals`, consumed by
+`acs/ml_features.py` as the `mkt_*` columns. Channels are gated on
+2020-robust screen survivors.
 
 ## Sources & caveats
 
