@@ -73,6 +73,53 @@ EXTENDED_POSTNATAL_MONTHS = 12
 # --takeup-rate 0.98 this recovers Flint's observed ~0.90 prenatal rate.
 PRENATAL_TAKEUP_RATIO = 0.92
 
+# ---------------------------------------------------------------------------
+# Scenario set
+# ---------------------------------------------------------------------------
+# The forecast prices a small panel of policy designs in ONE pass, all on the
+# same projected incomes and observed births and all at the run's take-up
+# (default 0.90 postnatal / 0.83 prenatal). Holding take-up constant means the
+# ONLY thing that moves across scenarios is the policy lever under test — the
+# eligibility gate and the postnatal duration — so the cost differences are
+# clean to attribute.
+#
+#   * statutory_*  — the bill's two-clause gate: Medicaid OR income ≤ 300% FPL
+#     (income_fpl_cap=3.00); the Medicaid OR-clause still fires.
+#   * universal_*  — no income/Medicaid test: income_fpl_cap=100.0 clears the
+#     income clause for every family (100× FPL ≈ $2.5M for a family of 3), so
+#     every birth qualifies regardless of income or Medicaid status.
+#   * *_6mo / *_12mo — postnatal window: Flint's 6-month lower bound vs the full
+#     12-month upper bound. Postnatal cost is linear in months; the prenatal arm
+#     is unchanged ($1,500 one-time either way).
+#
+# $/birth at the default $1,500 prenatal + $500/mo postnatal:
+#   6mo  → $1,500 + $3,000 = $4,500      12mo → $1,500 + $6,000 = $7,500
+UNIVERSAL_FPL_CAP = 100.0  # ≈ no income test (every birth family qualifies)
+SCENARIOS = [
+    {
+        "key": "statutory_6mo",
+        "label": "Statutory (Medicaid OR ≤300% FPL) · 6-mo postnatal",
+        "eligibility": "Medicaid OR ≤300% FPL",
+        "overrides": {"income_fpl_cap": 3.00, "postnatal_months": 6},
+    },
+    {
+        "key": "universal_6mo",
+        "label": "Universal · 6-mo postnatal",
+        "eligibility": "Universal (no income/Medicaid test)",
+        "overrides": {"income_fpl_cap": UNIVERSAL_FPL_CAP, "postnatal_months": 6},
+    },
+    {
+        "key": "universal_12mo",
+        "label": "Universal · 12-mo postnatal",
+        "eligibility": "Universal (no income/Medicaid test)",
+        "overrides": {"income_fpl_cap": UNIVERSAL_FPL_CAP, "postnatal_months": 12},
+    },
+]
+SCENARIO_BY_KEY = {s["key"]: s for s in SCENARIOS}
+# The statutory 6-month design is the headline that drives the existing detailed
+# Summary tab / PDF / cost_by_state.csv / cost_by_county.csv (unchanged outputs).
+DEFAULT_SCENARIO_KEY = "statutory_6mo"
+
 # Hawaiʻi resident births by year — CDC NVSR "Births: Final Data" series, by
 # mother's state of residence (the same basis as the 15,535 figure cited in
 # RXKIDS_METHODOLOGY.md §2 from NVSR 73-02). Used to project the birth cohort
@@ -164,8 +211,32 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                    help="Use the legacy num_dependents × child_under_age_share birth "
                         "proxy instead of observed (age-0 dependent) infant counts. "
                         "For backward-comparison only; the proxy overstates births.")
+    p.add_argument("--scenarios", type=str, default=",".join(s["key"] for s in SCENARIOS),
+                   help="Comma-separated scenario keys to price. Default: all "
+                        "(%s). The %r scenario always drives the detailed Summary "
+                        "tab / cost_by_state.csv / cost_by_county.csv."
+                        % (", ".join(s["key"] for s in SCENARIOS), DEFAULT_SCENARIO_KEY))
     p.add_argument("-v", "--verbose", action="store_true")
     return p.parse_args(argv)
+
+
+def _selected_scenarios(arg: str) -> list:
+    """Resolve the --scenarios CSV to ordered scenario specs (validated).
+
+    Always includes DEFAULT_SCENARIO_KEY (it backs the detailed legacy outputs),
+    prepended if the user omitted it. Preserves SCENARIOS order otherwise.
+    """
+    keys = [k.strip() for k in arg.split(",") if k.strip()]
+    bad = [k for k in keys if k not in SCENARIO_BY_KEY]
+    if bad:
+        raise SystemExit(
+            f"unknown --scenarios keys {bad}; choose from {list(SCENARIO_BY_KEY)}"
+        )
+    if DEFAULT_SCENARIO_KEY not in keys:
+        keys = [DEFAULT_SCENARIO_KEY] + keys
+    # De-dup while preserving the canonical SCENARIOS order.
+    chosen = {k for k in keys}
+    return [s for s in SCENARIOS if s["key"] in chosen]
 
 
 # ---------------------------------------------------------------------------
@@ -576,6 +647,7 @@ def _apply_rxkids(
 def _assumption_band(
     units, persons, *, tax_year: int, base_cost: float,
     central_takeup: float, fertility: float = 0.0, use_observed: bool = True,
+    scenario_overrides: Optional[dict] = None,
 ) -> dict:
     """Joint (factorial-corner) assumption band over the two soft parameters.
 
@@ -584,6 +656,11 @@ def _assumption_band(
     corners — not a one-at-a-time perturbation. The take-up sweep brackets
     ``central_takeup`` (mostly downside, since it is capped at 1.0);
     ``fertility`` scales both corners.
+
+    ``scenario_overrides`` (the active scenario's policy levers — e.g.
+    ``income_fpl_cap``/``postnatal_months``) are merged into every corner so the
+    band is computed at the SAME design as the scenario's point estimate, not the
+    library defaults.
 
     The ±25% birth multiplier (``child_under_age_share_mult``) brackets
     birth-count uncertainty. In observed mode the birth driver is the
@@ -605,6 +682,7 @@ def _assumption_band(
         overrides = {
             "takeup_rate": takeup,
             "prenatal_takeup_rate": round(takeup * PRENATAL_TAKEUP_RATIO, 4),
+            **(scenario_overrides or {}),
         }
         u = units
         if use_observed and "observed_births" in units.columns:
@@ -628,6 +706,152 @@ def _assumption_band(
     high = _corner(tk_high, max(cm))
     return {"min": low, "max": high, "base": base_cost,
             "takeup_range": [tk_low, tk_high], "mult_range": [min(cm), max(cm)]}
+
+
+# ---------------------------------------------------------------------------
+# Scenario runner
+# ---------------------------------------------------------------------------
+
+
+def _county_rows(frame: pd.DataFrame, *, pre_payment: float, post_payment: float) -> list[dict]:
+    """Per-county cost rows for an SPM-grain frame (one row per county).
+
+    Splits the scenario's program outlay (= dollars disbursed) and expected
+    recipients across counties. Returns ``[]`` when the frame carries no county.
+    """
+    rows: list[dict] = []
+    if "county" not in frame.columns:
+        return rows
+    # Fill NaN with a sentinel before grouping: groupby(dropna=False) on a key
+    # with NaN builds an internal categorical grouper with a null group index,
+    # which raises on some pandas versions. A sentinel avoids it everywhere.
+    county_key = frame["county"]
+    if isinstance(county_key.dtype, pd.CategoricalDtype):
+        county_key = county_key.astype(object)
+    county_key = county_key.fillna("Unknown")
+    for county, grp in frame.groupby(county_key):
+        c_total, c_se = _cost_with_sdr(grp, "rxkids_amount")
+        _, _, grp_rec = _expected_recipients(
+            grp, pre_payment=pre_payment, post_payment=post_payment,
+        )
+        rows.append({
+            "county": county,
+            "cost_total": round(c_total, 0),
+            "cost_prenatal": round(_weighted_cost(grp, "rxkids_prenatal_amount"), 0),
+            "cost_postnatal": round(_weighted_cost(grp, "rxkids_postnatal_amount"), 0),
+            "cost_se": round(c_se, 0),
+            "recipients": round(grp_rec, 0),
+        })
+    return rows
+
+
+def _run_scenario(
+    projected: pd.DataFrame, persons: pd.DataFrame, *, tax_year: int,
+    scenario: dict, base_takeup: float, pre_takeup: float, fert: float,
+    admin_load: float, operating_months: int, ramp_months: int,
+    with_band: bool = True,
+) -> dict:
+    """Price one policy scenario: steady-state cost + reach + county split.
+
+    All scenarios share the same projected incomes and observed births (passed
+    in via ``projected``); they differ only by the scenario's policy
+    ``overrides`` (``income_fpl_cap`` eligibility gate + ``postnatal_months``
+    duration), which are merged with the run's take-up. Every per-frame metric
+    reuses the existing helpers, so a scenario is just the standard pipeline run
+    under a different override dict.
+    """
+    from tax_modeler.poverty.spm_aggregation import aggregate_to_spm_units
+    from tax_modeler.programs import hawaii_rxkids_parameters
+
+    base = hawaii_rxkids_parameters()
+    ov = dict(scenario["overrides"])
+    calib = {"takeup_rate": base_takeup, "prenatal_takeup_rate": pre_takeup, **ov}
+
+    # Per-scenario payment amounts: prenatal is fixed ($1,500 one-time); the
+    # postnatal per-birth entitlement scales with the scenario's month window.
+    post_months = int(ov.get("postnatal_months", base.postnatal_months))
+    pre_payment = base.prenatal_monthly * base.prenatal_months
+    post_payment = base.postnatal_monthly_per_child * post_months
+
+    units = _apply_rxkids(projected, tax_year=tax_year, overrides=calib)
+    frame = _apply_fertility(aggregate_to_spm_units(units, persons), fert)
+
+    total_cost, total_se = _cost_with_sdr(frame, "rxkids_amount")
+    prenatal_cost, _ = _cost_with_sdr(frame, "rxkids_prenatal_amount")
+    postnatal_cost, _ = _cost_with_sdr(frame, "rxkids_postnatal_amount")
+    moe = 1.645 * total_se
+
+    eligible_families = _reached(frame, "rxkids_amount")
+    rec_pre, rec_inf, rec_total = _expected_recipients(
+        frame, pre_payment=pre_payment, post_payment=post_payment,
+    )
+    avg_benefit = (total_cost / rec_total) if rec_total > 0 else 0.0
+
+    admin_cost = total_cost * max(0.0, admin_load)
+    appropriation_total = total_cost + admin_cost
+
+    first_year = _first_year_disbursement(
+        prenatal_cost, postnatal_cost, operating_months=operating_months,
+        ramp_months=ramp_months, postnatal_window=post_months,
+    )
+
+    quintiles = _benefits_by_quintile(
+        frame, pre_payment=pre_payment, post_payment=post_payment,
+    )
+    county_rows = _county_rows(frame, pre_payment=pre_payment, post_payment=post_payment)
+
+    band = None
+    if with_band:
+        band = _assumption_band(
+            units, persons, tax_year=tax_year, base_cost=total_cost,
+            central_takeup=base_takeup, fertility=fert,
+            use_observed="observed_births" in projected.columns,
+            scenario_overrides=ov,
+        )
+
+    return {
+        "key": scenario["key"], "label": scenario["label"],
+        "eligibility": scenario["eligibility"], "postnatal_months": post_months,
+        "pre_payment": pre_payment, "post_payment": post_payment,
+        "per_birth": pre_payment + post_payment,
+        "cost_total": total_cost, "cost_prenatal": prenatal_cost,
+        "cost_postnatal": postnatal_cost, "cost_se": total_se, "moe": moe,
+        "admin_cost": admin_cost, "appropriation_total": appropriation_total,
+        "eligible_families": eligible_families, "rec_total": rec_total,
+        "rec_pregnancies": rec_pre, "rec_infants": rec_inf,
+        "avg_benefit": avg_benefit, "band": band, "first_year": first_year,
+        "quintiles": quintiles, "county_rows": county_rows,
+        "frame": frame, "units": units,
+    }
+
+
+def _scenario_summary_row(res: dict, *, tax_year: int) -> dict:
+    """Flatten one scenario result into a state-level comparison CSV row."""
+    band = res.get("band") or {}
+    return {
+        "scenario": res["key"],
+        "label": res["label"],
+        "tax_year": tax_year,
+        "eligibility": res["eligibility"],
+        "postnatal_months": res["postnatal_months"],
+        "per_birth_$": round(res["per_birth"], 0),
+        "cost_total_$": round(res["cost_total"], 0),
+        "cost_prenatal_$": round(res["cost_prenatal"], 0),
+        "cost_postnatal_$": round(res["cost_postnatal"], 0),
+        "cost_se_$": round(res["cost_se"], 0),
+        "cost_ci90_low_$": round(res["cost_total"] - res["moe"], 0),
+        "cost_ci90_high_$": round(res["cost_total"] + res["moe"], 0),
+        "assumption_band_low_$": round(band["min"], 0) if band else None,
+        "assumption_band_high_$": round(band["max"], 0) if band else None,
+        "admin_cost_$": round(res["admin_cost"], 0),
+        "appropriation_total_$": round(res["appropriation_total"], 0),
+        "eligible_families": round(res["eligible_families"], 0),
+        "expected_recipients": round(res["rec_total"], 0),
+        "expected_pregnancies": round(res["rec_pregnancies"], 0),
+        "expected_infants": round(res["rec_infants"], 0),
+        "avg_benefit_per_recipient_$": round(res["avg_benefit"], 0),
+        "first_year_total_$": round(res["first_year"]["total"], 0),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -777,6 +1001,66 @@ def _write_workbook(path: Path, *, ctx: dict) -> None:
     for j in range(1, len(headers) + 1):
         ws2.column_dimensions[get_column_letter(j)].width = 18
 
+    # ---- By scenario (state-level comparison) ----
+    if ctx.get("scenario_rows"):
+        wss = wb.create_sheet("By scenario")
+        wss["A1"] = ("Scenario comparison — take-up held constant (0.90 newborn / "
+                     "0.83 prenatal); only eligibility + postnatal months differ")
+        wss["A1"].font = Font(italic=True, color="555555")
+        sheaders = [
+            "Scenario", "Eligibility", "Postnatal mo", "$/birth",
+            "Cost total ($)", "Prenatal ($)", "Postnatal ($)",
+            "Admin ($)", "Appropriation ($)", "Band low ($)", "Band high ($)",
+            "Expected recipients", "Avg benefit ($)", "First-year ($)",
+        ]
+        for j, h in enumerate(sheaders, start=1):
+            c = wss.cell(row=2, column=j, value=h)
+            c.font = hdr_font
+            c.fill = hdr_fill
+            c.alignment = Alignment(horizontal="center")
+        wss.freeze_panes = "A3"
+        for i, row in enumerate(ctx["scenario_rows"], start=3):
+            vals = [
+                row["label"], row["eligibility"], row["postnatal_months"],
+                row["per_birth_$"], row["cost_total_$"], row["cost_prenatal_$"],
+                row["cost_postnatal_$"], row["admin_cost_$"],
+                row["appropriation_total_$"], row["assumption_band_low_$"],
+                row["assumption_band_high_$"], row["expected_recipients"],
+                row["avg_benefit_per_recipient_$"], row["first_year_total_$"],
+            ]
+            for j, v in enumerate(vals, start=1):
+                c = wss.cell(row=i, column=j, value=v)
+                c.border = border
+                if j >= 4 and isinstance(v, (int, float)):
+                    c.number_format = money_fmt
+        wss.column_dimensions["A"].width = 34
+        wss.column_dimensions["B"].width = 30
+        for j in range(3, len(sheaders) + 1):
+            wss.column_dimensions[get_column_letter(j)].width = 16
+
+    # ---- County × scenario (long format) ----
+    if ctx.get("county_scenario_rows"):
+        wsc = wb.create_sheet("County x scenario")
+        cheaders = [
+            "Scenario", "County", "Cost total ($)", "Cost prenatal ($)",
+            "Cost postnatal ($)", "Cost SE ($)", "Expected recipients",
+        ]
+        _style_header_row(wsc, cheaders)
+        for i, row in enumerate(ctx["county_scenario_rows"], start=2):
+            vals = [
+                row["label"], row["county"], row["cost_total"],
+                row["cost_prenatal"], row["cost_postnatal"], row["cost_se"],
+                row["recipients"],
+            ]
+            for j, v in enumerate(vals, start=1):
+                c = wsc.cell(row=i, column=j, value=v)
+                c.border = border
+                if j >= 3 and v is not None:
+                    c.number_format = money_fmt
+        wsc.column_dimensions["A"].width = 30
+        for j in range(2, len(cheaders) + 1):
+            wsc.column_dimensions[get_column_letter(j)].width = 18
+
     # ---- Assumptions ----
     ws3 = wb.create_sheet("Assumptions")
     _style_header_row(ws3, ["Parameter", "Value", "Notes"])
@@ -914,6 +1198,26 @@ def _write_pdf(path: Path, *, ctx: dict) -> None:
            f"{money(ctx['band']['min'])} - {money(ctx['band']['max'])}")
     pdf.ln(1)
 
+    if ctx.get("scenario_rows") and len(ctx["scenario_rows"]) > 1:
+        section("Scenario comparison")
+        pdf.set_font("Helvetica", "I", 8.5)
+        pdf.set_text_color(*_GREY)
+        pdf.multi_cell(0, 4, _ascii(
+            "Take-up held constant (0.90 newborn / 0.83 prenatal); only the "
+            "eligibility gate and postnatal window change. Cost = annual benefit "
+            "dollars; appropriation adds the admin load."))
+        pdf.set_text_color(0, 0, 0)
+        _pdf_table(
+            pdf,
+            headers=["Scenario", "$/birth", "Cost", "Appropriation", "Recipients"],
+            widths_frac=[0.40, 0.13, 0.18, 0.18, 0.11],
+            rows=[[
+                r["label"], money(r["per_birth_$"]), money(r["cost_total_$"]),
+                money(r["appropriation_total_$"]), f"{r['expected_recipients']:,.0f}",
+            ] for r in ctx["scenario_rows"]],
+        )
+        pdf.ln(2)
+
     section(f"Potential option - extend postnatal {ctx['base_postnatal_months']}"
             f"-{ctx['ext_postnatal_months']} months")
     pdf.set_font("Helvetica", "I", 8.5)
@@ -1039,7 +1343,6 @@ def main(argv: Optional[list] = None) -> int:
 
     fert = max(0.0, args.fertility_response)
     pre_takeup = round(args.takeup_rate * PRENATAL_TAKEUP_RATIO, 4)
-    calib = {"takeup_rate": args.takeup_rate, "prenatal_takeup_rate": pre_takeup}
     LOG.info("Take-up: postnatal %.2f / prenatal %.2f; fertility response %+.0f%%",
              args.takeup_rate, pre_takeup, 100 * fert)
     if use_observed:
@@ -1050,39 +1353,46 @@ def main(argv: Optional[list] = None) -> int:
     else:
         LOG.info("Birth driver: legacy proxy (num_dependents × rate)")
 
-    units = _apply_rxkids(projected, tax_year=ty, overrides=calib)
-    frame = _apply_fertility(aggregate_to_spm_units(units, persons), fert)
-    LOG.info("Aggregated %d tax units -> %d SPM units", len(units), len(frame))
+    # ---- Price every selected scenario on the same projected frame ----
+    # Each scenario differs only by its policy overrides (eligibility gate +
+    # postnatal duration); take-up and births are held constant across them, so
+    # the cost differences isolate the policy levers.
+    selected = _selected_scenarios(args.scenarios)
+    LOG.info("Pricing %d scenario(s): %s", len(selected),
+             ", ".join(s["key"] for s in selected))
+    results = {}
+    for sc in selected:
+        LOG.info("  -> scenario %s", sc["key"])
+        results[sc["key"]] = _run_scenario(
+            projected, persons, tax_year=ty, scenario=sc,
+            base_takeup=args.takeup_rate, pre_takeup=pre_takeup, fert=fert,
+            admin_load=args.admin_load,
+            operating_months=args.launch_operating_months,
+            ramp_months=args.ramp_months,
+            with_band=not args.no_assumption_band,
+        )
 
-    # ---- Cost (state) ----
-    total_cost, total_se = _cost_with_sdr(frame, "rxkids_amount")
-    prenatal_cost, _ = _cost_with_sdr(frame, "rxkids_prenatal_amount")
-    postnatal_cost, _ = _cost_with_sdr(frame, "rxkids_postnatal_amount")
-    moe = 1.645 * total_se
+    # ---- The statutory 6-month design is the headline: it drives the detailed
+    #      Summary tab, PDF, cost_by_state.csv and cost_by_county.csv (unchanged
+    #      outputs). Unpack it into the locals the rest of main() consumes. ----
+    base_res = results[DEFAULT_SCENARIO_KEY]
+    frame, units = base_res["frame"], base_res["units"]
+    pre_payment, post_payment = base_res["pre_payment"], base_res["post_payment"]
+    total_cost, total_se, moe = base_res["cost_total"], base_res["cost_se"], base_res["moe"]
+    prenatal_cost, postnatal_cost = base_res["cost_prenatal"], base_res["cost_postnatal"]
+    eligible_families = base_res["eligible_families"]
+    rec_pregnancies = base_res["rec_pregnancies"]
+    rec_infants, rec_total = base_res["rec_infants"], base_res["rec_total"]
+    avg_benefit = base_res["avg_benefit"]
+    quintiles, band = base_res["quintiles"], base_res["band"]
+    county_rows = base_res["county_rows"]
+    admin_cost = base_res["admin_cost"]
+    appropriation_total = base_res["appropriation_total"]
+    first_year = base_res["first_year"]
+    LOG.info("Aggregated -> %d SPM units (baseline %s)", len(frame), DEFAULT_SCENARIO_KEY)
 
-    # ---- Potential option: extend postnatal payments to the full 12 months.
-    #      The program may or may not opt in; we price the additional 6 months
-    #      as an optional add-on (postnatal is linear in months). ----
-    ext_units = _apply_rxkids(
-        projected, tax_year=ty,
-        overrides={**calib, "postnatal_months": EXTENDED_POSTNATAL_MONTHS},
-    )
-    ext_frame = _apply_fertility(aggregate_to_spm_units(ext_units, persons), fert)
-    ext_total = _weighted_cost(ext_frame, "rxkids_amount")
-    ext_postnatal = _weighted_cost(ext_frame, "rxkids_postnatal_amount")
-    additional_cost = ext_total - total_cost
-
-    # ---- First fiscal year (launch): partial operating window + enrollment
-    #      ramp + postnatal caseload fill. This is the appropriation-relevant
-    #      year-1 cash flow, well below the steady-state annual cost. ----
-    postnatal_window = int(p.postnatal_months)
-    first_year = _first_year_disbursement(
-        prenatal_cost, postnatal_cost,
-        operating_months=args.launch_operating_months,
-        ramp_months=args.ramp_months,
-        postnatal_window=postnatal_window,
-    )
-    # Ramp sensitivity (the dominant year-1 driver): fast / base / slow.
+    # ---- Ramp sensitivity for the baseline launch year (fast / base / slow) ----
+    postnatal_window = int(base_res["postnatal_months"])
     ramp_sensitivity = {
         rm: _first_year_disbursement(
             prenatal_cost, postnatal_cost,
@@ -1092,57 +1402,26 @@ def main(argv: Optional[list] = None) -> int:
         for rm in (6, 12, 18)
     }
 
-    # Eligible base (families clearing the test) vs the EXPECTED recipient
-    # count (those actually getting a payment in the year). The avg benefit is
-    # per recipient — i.e. the real per-family payment design, not cost spread
-    # over the much larger eligible base.
-    eligible_families = _reached(frame, "rxkids_amount")
-    rec_pregnancies, rec_infants, rec_total = _expected_recipients(
-        frame, pre_payment=pre_payment, post_payment=post_payment,
-    )
-    avg_benefit = (total_cost / rec_total) if rec_total > 0 else 0.0
+    # ---- Potential option: extend the STATUTORY design 6 -> 12 months, priced
+    #      as an optional add-on (postnatal is linear in months). This is the
+    #      statutory-eligibility extension; universal_12mo is the universal one. ----
+    ext_overrides = {
+        "takeup_rate": args.takeup_rate, "prenatal_takeup_rate": pre_takeup,
+        **SCENARIO_BY_KEY[DEFAULT_SCENARIO_KEY]["overrides"],
+        "postnatal_months": EXTENDED_POSTNATAL_MONTHS,
+    }
+    ext_units = _apply_rxkids(projected, tax_year=ty, overrides=ext_overrides)
+    ext_frame = _apply_fertility(aggregate_to_spm_units(ext_units, persons), fert)
+    ext_total = _weighted_cost(ext_frame, "rxkids_amount")
+    ext_postnatal = _weighted_cost(ext_frame, "rxkids_postnatal_amount")
+    additional_cost = ext_total - total_cost
 
-    # ---- Household impact: benefits received by income quintile ----
-    quintiles = _benefits_by_quintile(
-        frame, pre_payment=pre_payment, post_payment=post_payment,
-    )
-
-    # ---- By county (cost) ----
-    county_rows = []
-    if "county" in frame.columns:
-        # Fill NaN with a sentinel before grouping: groupby(dropna=False) on a
-        # key with NaN builds an internal categorical grouper with a null group
-        # index, which raises on some pandas versions (Python 3.10's). A
-        # sentinel key avoids it on every version (unmapped rows -> "Unknown").
-        county_key = frame["county"]
-        if isinstance(county_key.dtype, pd.CategoricalDtype):
-            county_key = county_key.astype(object)
-        county_key = county_key.fillna("Unknown")
-        for county, grp in frame.groupby(county_key):
-            c_total, c_se = _cost_with_sdr(grp, "rxkids_amount")
-            _, _, grp_rec = _expected_recipients(
-                grp, pre_payment=pre_payment, post_payment=post_payment,
-            )
-            county_rows.append({
-                "county": county,
-                "cost_total": round(c_total, 0),
-                "cost_prenatal": round(_weighted_cost(grp, "rxkids_prenatal_amount"), 0),
-                "cost_postnatal": round(_weighted_cost(grp, "rxkids_postnatal_amount"), 0),
-                "cost_se": round(c_se, 0),
-                "recipients": round(grp_rec, 0),
-            })
-
-    # ---- Administrative load (separate appropriation line) ----
-    admin_cost = total_cost * max(0.0, args.admin_load)
-    appropriation_total = total_cost + admin_cost
-
-    # ---- Assumption band ----
-    band = None
-    if not args.no_assumption_band:
-        LOG.info("Running assumption-band sweep")
-        band = _assumption_band(units, persons, tax_year=ty, base_cost=total_cost,
-                                central_takeup=args.takeup_rate, fertility=fert,
-                                use_observed=use_observed)
+    # ---- Scenario comparison rows (state) + county × scenario (long format) ----
+    scenario_rows = [_scenario_summary_row(results[s["key"]], tax_year=ty) for s in selected]
+    county_scenario_rows = [
+        {"scenario": s["key"], "label": s["label"], **cr}
+        for s in selected for cr in results[s["key"]]["county_rows"]
+    ]
 
     # ---- Assemble context ----
     assumptions = [
@@ -1251,6 +1530,8 @@ def main(argv: Optional[list] = None) -> int:
         "admin_load": args.admin_load, "admin_cost": admin_cost,
         "appropriation_total": appropriation_total,
         "birth_info": birth_info,
+        "scenario_rows": scenario_rows,
+        "county_scenario_rows": county_scenario_rows,
     }
 
     # ---- Write outputs ----
@@ -1289,6 +1570,10 @@ def main(argv: Optional[list] = None) -> int:
         "expected_infants": round(rec_infants, 0),
         "avg_benefit_per_recipient_$": round(avg_benefit, 0),
     }]).to_csv(args.out / "cost_by_state.csv", index=False)
+    # Scenario comparison (state) + county × scenario (tidy long format).
+    pd.DataFrame(scenario_rows).to_csv(args.out / "cost_by_scenario.csv", index=False)
+    pd.DataFrame(county_scenario_rows).to_csv(
+        args.out / "cost_by_county_scenarios.csv", index=False)
     frame.to_parquet(args.out / "spm_units.parquet")
 
     # ---- Console summary ----
@@ -1326,6 +1611,15 @@ def main(argv: Optional[list] = None) -> int:
         print(f"    {row['quintile']}  avg inc ${row['avg_income']:>10,.0f}  "
               f"benefit ${row['total_benefit_$']:>14,.0f}  "
               f"({row['share_of_benefit_pct']:>5.1f}% of total)")
+    print("\n  Scenario comparison (benefit cost, take-up held constant):")
+    print(f"    {'scenario':<16}{'$/birth':>9}{'cost':>15}{'appropriation':>16}"
+          f"{'recipients':>13}")
+    for sr in scenario_rows:
+        band_s = (f"  band ${sr['assumption_band_low_$']:,.0f}–${sr['assumption_band_high_$']:,.0f}"
+                  if sr.get("assumption_band_low_$") is not None else "")
+        print(f"    {sr['scenario']:<16}${sr['per_birth_$']:>8,.0f}"
+              f"${sr['cost_total_$']:>14,.0f}${sr['appropriation_total_$']:>15,.0f}"
+              f"{sr['expected_recipients']:>13,.0f}{band_s}")
     print(f"\n  Workbook: {workbook_path}")
     if pdf_path is not None:
         print(f"  PDF     : {pdf_path}")
