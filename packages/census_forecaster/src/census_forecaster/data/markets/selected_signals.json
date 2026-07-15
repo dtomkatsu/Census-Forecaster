@@ -1,0 +1,117 @@
+{
+  "candidates_tested": 16,
+  "generated": "2026-07-14",
+  "limitations": "Granger != causation; selection is FDR-controlled predictive precedence on monthly data. Only signals passing the Phase-3 forecaster ablation may influence forecasts.",
+  "q_fdr": 0.1,
+  "screen_version": 1,
+  "signals": [
+    {
+      "best_xcorr_lead_months": 5,
+      "best_xcorr_r": 0.19607463733476954,
+      "granger_lags": 3,
+      "granger_p": 0.013343867348368317,
+      "n_obs": 124,
+      "name": "xlre_log_return_honolulu_zhvi_lag3",
+      "robust_to_2020_exclusion": true,
+      "target": "HONOLULU_ZHVI",
+      "ticker": "XLRE",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 5,
+      "best_xcorr_r": 0.19607463733476954,
+      "granger_lags": 6,
+      "granger_p": 0.003614373816774403,
+      "n_obs": 121,
+      "name": "xlre_log_return_honolulu_zhvi_lag6",
+      "robust_to_2020_exclusion": false,
+      "target": "HONOLULU_ZHVI",
+      "ticker": "XLRE",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 2,
+      "best_xcorr_r": 0.2663496824236524,
+      "granger_lags": 3,
+      "granger_p": 0.006684698789652962,
+      "n_obs": 124,
+      "name": "xlre_log_return_honolulu_zori_lag3",
+      "robust_to_2020_exclusion": true,
+      "target": "HONOLULU_ZORI",
+      "ticker": "XLRE",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 9,
+      "best_xcorr_r": 0.23069720312290612,
+      "granger_lags": 12,
+      "granger_p": 0.007980137734659332,
+      "n_obs": 244,
+      "name": "vnq_log_return_honolulu_zhvi_lag12",
+      "robust_to_2020_exclusion": true,
+      "target": "HONOLULU_ZHVI",
+      "ticker": "VNQ",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 2,
+      "best_xcorr_r": 0.2821842647398575,
+      "granger_lags": 3,
+      "granger_p": 0.003824749440598672,
+      "n_obs": 133,
+      "name": "vnq_log_return_honolulu_zori_lag3",
+      "robust_to_2020_exclusion": true,
+      "target": "HONOLULU_ZORI",
+      "ticker": "VNQ",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 1,
+      "best_xcorr_r": 0.20885098537150776,
+      "granger_lags": 3,
+      "granger_p": 2.6972874092391206e-05,
+      "n_obs": 189,
+      "name": "xle_log_return_honolulu_cpi_lag3",
+      "robust_to_2020_exclusion": true,
+      "target": "HONOLULU_CPI",
+      "ticker": "XLE",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 1,
+      "best_xcorr_r": 0.20885098537150776,
+      "granger_lags": 6,
+      "granger_p": 0.0010422988991703982,
+      "n_obs": 183,
+      "name": "xle_log_return_honolulu_cpi_lag6",
+      "robust_to_2020_exclusion": true,
+      "target": "HONOLULU_CPI",
+      "ticker": "XLE",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 3,
+      "best_xcorr_r": 0.2651229805479833,
+      "granger_lags": 3,
+      "granger_p": 0.0034074843333507026,
+      "n_obs": 189,
+      "name": "matx_log_return_honolulu_cpi_lag3",
+      "robust_to_2020_exclusion": true,
+      "target": "HONOLULU_CPI",
+      "ticker": "MATX",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 3,
+      "best_xcorr_r": 0.2651229805479833,
+      "granger_lags": 6,
+      "granger_p": 0.026563983065703314,
+      "n_obs": 183,
+      "name": "matx_log_return_honolulu_cpi_lag6",
+      "robust_to_2020_exclusion": true,
+      "target": "HONOLULU_CPI",
+      "ticker": "MATX",
+      "transform": "log_return"
+    }
+  ]
+}

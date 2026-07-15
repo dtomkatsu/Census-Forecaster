@@ -966,3 +966,100 @@ fired (`"column" | "computed" | "fallback_rate" | "zero"`).
 * Eissa, N., & Liebman, J. (1996). *Labor Supply Response to the EITC.*
   Quarterly Journal of Economics 111(2). (Source of the LFP
   elasticity caveat above.)
+
+---
+
+## Market signals (July 2026)
+
+The `census_forecaster.markets` subpackage tracks a pre-registered
+universe of 12 exchange-traded securities and screens them as *leading
+indicators* for the Hawaii series the forecaster consumes. It is NOT
+part of the Housing-Affordability-Tracker cherry-pick.
+
+### Data
+
+Monthly adjusted closes, fetched keylessly (`markets/client.py`):
+yfinance when installed → Yahoo v8 chart API via stdlib → Stooq CSV
+(Stooq now serves a JS proof-of-work challenge to headless clients, so
+the stdlib Yahoo path is the effective fallback). The incomplete
+current calendar month is dropped at fetch time. Bundled panels live in
+`data/markets/` (schema mirrors `data/bls_panel/`); the refresh script
+(`scripts/refresh_market_panel.py`) runs in the monthly `refresh-data`
+workflow with keep-last-committed per-ticker failure tolerance.
+
+The universe (`markets/universe.py`) is three tiers — broad (SPY, QQQ,
+VTI), sector (JETS, XLRE, VNQ, XLF, XLE), Hawaii-listed (BOH, FHB, HE,
+MATX) — each ticker carrying an explicit *hypothesis* naming the
+economic mechanism and the ACS cells it plausibly leads. ALEX
+(Alexander & Baldwin, the natural B25077 candidate) was taken private
+2026-03-12 and free sources purge delisted histories.
+
+### Ticker trend forecasts (`markets/trend.py`)
+
+Tracker-grade context only. Point = damped drift via
+`bls.projection.project_forward_full` at the repo's monthly φ=0.92
+(§2.3.1 cadence rule — never a new φ). The honest content is the band:
+`point × exp(±z·σ_m·√h)` with σ_m the trailing-36-month return SD and
+`z` the **empirical** 90% quantile of walk-forward standardised
+absolute errors (`calibrate_band_multiplier`) — the direct empirical
+analogue of a z-score, per the repo's calibrated-not-analytical PI
+discipline. Calibrated multipliers on the real universe land at
+1.8–2.6 (vs the Gaussian 1.645): equity returns are fat-tailed and the
+calibration prices that in. Equities are near-random-walks; these
+forecasts are context for the tracker report, never trading advice and
+never census-forecaster inputs.
+
+### Causal screen (`markets/screen.py`)
+
+**Granger causality is not causation** — a pass means the ticker's
+past adds predictive content for the target beyond the target's own
+past. Confounders survive this screen by design; the Phase-3
+forecaster ablation (walk-forward RMSE + CI90 coverage ∈ [85%, 95%])
+is the final arbiter of whether a signal touches any forecast.
+
+Design, in the order the guards bind:
+
+1. **Pre-registration.** Only the ticker→target pairs in
+   `HYPOTHESIS_PAIRS` (16 pairs derived from the universe's hypothesis
+   map) are tested. This caps the multiple-testing burden before any
+   data is seen.
+2. **Monthly cadence for inference.** Targets: HI/US unemployment
+   (levels, first-differenced), Honolulu ZHVI/ZORI (log-differenced),
+   Honolulu CPI (bimonthly; differences computed against the nearest
+   previous print within 3 months and scaled to per-month rates).
+   Annual pairs (ACS anchors, n≈10–15) are reported as descriptive
+   lead-lag correlations only, labelled "no test".
+3. **Test.** OLS restricted-vs-unrestricted Granger F
+   (numpy lstsq + `scipy.stats.f`; statsmodels is not a dependency) on
+   monthly log-returns at lags 3/6/12, refused entirely below
+   8 observations per parameter. 12-month momentum is screened by
+   cross-correlation only — its overlapping windows induce serial
+   correlation that invalidates the F-test's residual assumptions.
+4. **FDR control.** Benjamini–Hochberg at q=0.10 across ALL Granger
+   tests actually run in a screen invocation.
+5. **Regime sensitivity.** The screen re-runs with 2020 excluded;
+   `selected_signals.json` records `robust_to_2020_exclusion` and the
+   review doc shows both tables. A signal that exists only because of
+   the COVID crash is a one-event artifact.
+
+Outputs: `backtests/results/market_signal_screen_<date>.md` (human
+review is a gate before Phase-3 integration) and
+`data/markets/selected_signals.json` (machine-readable survivors).
+
+First run (2026-07-14, unemployment targets pending the CI BLS key):
+16 tests, 9 BH passes, 8 robust to 2020 exclusion. The survivors are
+the economically prior-backed mechanisms — XLE→Honolulu CPI (imported
+energy), MATX→CPI (shipping), XLRE/VNQ→ZHVI/ZORI (forward rent/value
+pricing) — which is what a screen behaving honestly should find.
+
+### Known limitations
+
+- Granger ≠ causation (worth stating twice).
+- Ticker inceptions truncate samples: JETS/XLRE 2015, FHB 2016,
+  ZORI 2015.
+- Annual-cadence relationships are structurally untestable at n≈10–15;
+  anything cited from the annual table is descriptive.
+- National/sector tickers are geoid-constant: in the pooled ML panel
+  they act as year-effects and are near-collinear with
+  `anchor_year_norm`. The Phase-3 ablation must check permutation
+  importance before trusting them.

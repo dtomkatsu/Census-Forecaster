@@ -10,7 +10,10 @@ last close, 3/6/12-month momentum, trailing-36-month annualised vol,
 data span, and fetch provenance. ``--csv-dir`` also writes
 ``tracker_status.csv`` there.
 
-Phase 2 extends this CLI with ``--forecast`` and ``--screen-summary``.
+``--forecast`` adds damped-drift 3/6/12-month forecasts with
+walk-forward-calibrated 90% bands (see ``markets/trend.py`` — tracker
+context, not trading advice). ``--screen-summary`` prints the current
+``selected_signals.json`` if a causal screen has been run.
 """
 from __future__ import annotations
 
@@ -94,6 +97,88 @@ def write_status_csv(rows: Sequence[dict], csv_path: Path) -> None:
             writer.writerow(out)
 
 
+def build_forecast_rows(
+    panel: PricesPanel, horizons: Sequence[int] = (3, 6, 12),
+) -> list[dict]:
+    """Per-ticker damped-drift forecasts with calibrated 90% bands."""
+    from datetime import date
+
+    from .trend import calibrate_band_multiplier, forecast_ticker
+
+    rows: list[dict] = []
+    for spec in TICKERS:
+        if spec.symbol not in panel.series:
+            continue
+        bars = panel.bars(spec.symbol)
+        if len(bars) < 24:
+            continue
+        z = calibrate_band_multiplier(bars)
+        last = bars[-1]
+        for h in horizons:
+            total = last.year * 12 + (last.month - 1) + h
+            target = date(total // 12, total % 12 + 1, 28)
+            fc = forecast_ticker(bars, target, band_multiplier=z)
+            rows.append({
+                "symbol": spec.symbol,
+                "horizon_months": h,
+                "target_month": f"{target.year}-{target.month:02d}",
+                "point": round(fc.value, 2),
+                "lo90": round(fc.lo90, 2),
+                "hi90": round(fc.hi90, 2),
+                "monthly_vol": round(fc.monthly_vol, 4),
+                "band_multiplier": round(fc.band_multiplier, 3),
+                "band_calibrated": z is not None,
+                "cap_hit": fc.cap_hit,
+            })
+    return rows
+
+
+def write_forecast_csv(rows: Sequence[dict], csv_path: Path) -> None:
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    fields = ["symbol", "horizon_months", "target_month", "point",
+              "lo90", "hi90", "monthly_vol", "band_multiplier",
+              "band_calibrated", "cap_hit"]
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def print_forecast_table(rows: Sequence[dict], out=sys.stdout) -> None:
+    print("\nDamped-drift forecasts (φ=0.92/mo), calibrated 90% bands — "
+          "tracker context, not trading advice:", file=out)
+    print(f"{'symbol':<7}{'h':>4}{'target':>9}{'point':>10}"
+          f"{'lo90':>10}{'hi90':>10}{'z':>7}", file=out)
+    for r in rows:
+        print(f"{r['symbol']:<7}{r['horizon_months']:>4}"
+              f"{r['target_month']:>9}{r['point']:>10.2f}"
+              f"{r['lo90']:>10.2f}{r['hi90']:>10.2f}"
+              f"{r['band_multiplier']:>7.2f}", file=out)
+
+
+def print_screen_summary(out=sys.stdout) -> int:
+    import json
+
+    from .panel import _DATA_DIR
+    path = _DATA_DIR / "selected_signals.json"
+    if not path.exists():
+        print("[tracker] no selected_signals.json yet — run "
+              "`python -m census_forecaster.scripts.run_market_screen`",
+              file=sys.stderr)
+        return 2
+    with open(path) as f:
+        sel = json.load(f)
+    print(f"Screen of {sel['generated']}: {len(sel['signals'])} BH "
+          f"survivor(s) of {sel['candidates_tested']} tests "
+          f"(q={sel['q_fdr']}):", file=out)
+    for s in sel["signals"]:
+        robust = "robust" if s["robust_to_2020_exclusion"] else "NOT robust"
+        print(f"  {s['name']}: p={s['granger_p']:.4f} "
+              f"xcorr={s['best_xcorr_r']:+.3f}@{s['best_xcorr_lead_months']}m "
+              f"({robust} to 2020 exclusion)", file=out)
+    return 0
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Market-signals tracker: per-ticker status from the "
@@ -105,9 +190,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     parser.add_argument(
         "--csv-dir", type=Path, default=None,
-        help="Also write tracker_status.csv into this directory.",
+        help="Also write tracker_status.csv (and forecasts.csv with "
+             "--forecast) into this directory.",
+    )
+    parser.add_argument(
+        "--forecast", action="store_true",
+        help="Add damped-drift 3/6/12-month forecasts with calibrated "
+             "90% bands.",
+    )
+    parser.add_argument(
+        "--screen-summary", action="store_true",
+        help="Print the current selected_signals.json summary and exit.",
     )
     args = parser.parse_args(argv)
+
+    if args.screen_summary:
+        return print_screen_summary()
 
     try:
         panel = load_prices_panel(args.panel)
@@ -128,6 +226,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         csv_path = args.csv_dir / "tracker_status.csv"
         write_status_csv(rows, csv_path)
         print(f"\n[tracker] wrote {csv_path}", file=sys.stderr)
+
+    if args.forecast:
+        fc_rows = build_forecast_rows(panel)
+        print_forecast_table(fc_rows)
+        if args.csv_dir is not None:
+            fc_path = args.csv_dir / "forecasts.csv"
+            write_forecast_csv(fc_rows, fc_path)
+            print(f"[tracker] wrote {fc_path}", file=sys.stderr)
     return 0
 
 
