@@ -62,6 +62,7 @@ from .ml_features import (
     load_bps_data,
     load_laus_data,
     load_market_signals_data,
+    load_national_macro_data,
     load_national_unemployment_data,
     load_saipe_data,
     make_feature_spec,
@@ -146,6 +147,7 @@ def train_ml_model(
     bps_data: Optional[Mapping[str, Mapping[int, float]]] = None,
     market_data: Optional[Mapping[str, Mapping[int, float]]] = None,
     natl_unemp_data: Optional[Mapping[int, float]] = None,
+    national_data: Optional[Mapping[str, Mapping[int, float]]] = None,
 ) -> Optional[TrainedMlModel]:
     """Fit one HGB model for one (indicator, cutoff_year).
 
@@ -163,6 +165,7 @@ def train_ml_model(
         _bps = bps_data if bps_data is not None else load_bps_data()
         _mkt = market_data if market_data is not None else load_market_signals_data()
         _natl = natl_unemp_data if natl_unemp_data is not None else load_national_unemployment_data()
+        _nm = national_data if national_data is not None else load_national_macro_data()
         panel = build_panel_index(
             series_by_key,
             bps_data=_bps,
@@ -170,6 +173,7 @@ def train_ml_model(
             laus_data=load_laus_data(),
             market_data=_mkt,
             natl_unemp_data=_natl,
+            national_data=_nm,
         )
 
     matrix: TrainingMatrix = make_training_rows(
@@ -395,6 +399,7 @@ def project_ml_trend_one_shot(
     bps_data: Optional[Mapping[str, Mapping[int, float]]] = None,
     market_data: Optional[Mapping[str, Mapping[int, float]]] = None,
     natl_unemp_data: Optional[Mapping[int, float]] = None,
+    national_data: Optional[Mapping[str, Mapping[int, float]]] = None,
 ) -> Optional[ForecastPoint]:
     """One-shot: train (or fetch cached) model and produce a forecast.
 
@@ -413,6 +418,7 @@ def project_ml_trend_one_shot(
         _bps = bps_data if bps_data is not None else load_bps_data()
         _mkt = market_data if market_data is not None else load_market_signals_data()
         _natl = natl_unemp_data if natl_unemp_data is not None else load_national_unemployment_data()
+        _nm = national_data if national_data is not None else load_national_macro_data()
         panel = build_panel_index(
             series_by_key,
             bps_data=_bps,
@@ -420,6 +426,7 @@ def project_ml_trend_one_shot(
             laus_data=load_laus_data(),
             market_data=_mkt,
             natl_unemp_data=_natl,
+            national_data=_nm,
         )
 
     if cutoff_year is None:
