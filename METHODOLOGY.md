@@ -1153,3 +1153,69 @@ table in `market_ml_ablation_2026-07-14.md` is unreliable.
 (`_BASE_COLUMNS + cross + _AUX_COLUMNS + horizon`), and
 `test_column_names_match_actual_row_order` pins a multi-indicator
 panel against distinctive aux values so this can't silently return.
+
+### National-macro predictor variables (2026-07-15)
+
+The `natl_unemp` feature generalizes into a **registry-driven national
+channel** (`acs/ml_features.NATIONAL_SERIES`) carrying 13 national
+Census/BLS/FRED series as opt-in ML leading indicators, feeding both the
+census forecaster and the stock causal screen. The registry is the single
+source of truth shared by the fetcher (`scripts/refresh_national_macro.py`)
+and the feature columns, so the two never drift.
+
+**The 13 series → target mapping.** National CPI subindexes (all-items,
+food, housing, rent, gasoline — already fetched for BLS κ-calibration,
+here promoted to forecaster inputs at zero fetch cost) → rents / home
+value / poverty / commute; average hourly earnings → income; labour-force
+participation, employment-population ratio, JOLTS job openings →
+unemployment; Census Housing Vacancy Survey national rental-vacancy and
+homeownership rates (via the FRED mirror) → the vacancy_rate and
+homeownership_rate targets *directly*; 30-yr mortgage rate and 10-yr
+Treasury (FRED) → home value / rents (the dominant housing driver). All
+fetch paths are keyless (BLS public API, FRED `fredgraph.csv`).
+
+**Column policy (19 columns, deliberately compact).** Geoid-constant
+national signals are near-collinear with `anchor_year_norm`, so a naive
+3-columns-per-series would add ~40 year-effect columns and invite
+overfitting. Instead each series declares a `col_policy`:
+- `logchange1` (1 col, `natl_<name>_chg1 = log(v[Y]/v[Y-1])`) for
+  index/price series (5 CPIs, AHE) whose *level* is a monotone year proxy;
+- `diff1` (1 col, pp change) for the mortgage-rate index;
+- `level_diff1` (2 cols, level + change) for mean-reverting rate/ratio
+  series (participation, emp-pop, JOLTS, vacancy, homeownership, 10-yr)
+  whose level is meaningful.
+
+Total = 6·1 + 1·1 + 6·2 = **19 columns**. The `_build_row` reader is a
+single generic loop over the same fixed-order registry tuple as the column
+generator, so name↔slot alignment holds by construction (the ordering
+invariant and its regression test still apply).
+
+**Aggregation & no-peeking.** Each series is stored as the **calendar-year
+mean level** (any cadence — monthly/weekly/daily/quarterly — reduces to the
+year mean); the transform is applied at row-build time from years Y and
+Y-1. The year-Y mean is complete by year-end, well before the ACS target
+at Y+h (h≥1), so no-peeking holds structurally for every cadence. The
+current partial year is a mean of available prints (flagged).
+
+**Stock screen (dual use).** The monthly national series
+(AHE/LFPR/emp-pop/JOLTS + FRED mortgage/10yr resampled to monthly) are
+also merged into the causal screen as pre-registered predictors
+(`markets/screen.NATIONAL_PREDICTORS`). Caveat: `log_return` on a rate
+level is a rough pp-change proxy — fine for predictive precedence, never a
+forecast input. The screen's robust national findings are the theory-backed
+housing-rate leads (mortgage/10yr → Honolulu ZHVI) and JOLTS → unemployment
+(Beveridge curve); labour-participation "leads" that fail 2020-robustness
+are COVID-coincident (xcorr peaks at lag 0), not genuine leads.
+
+**Ship gate.** `scripts/compare_national_macro_ablation.py`
+(`national_macro_ablation_2026-07-15.md`): baseline ML vs +national-macro.
+**GATE PASSED** — ensemble wash-to-slight-improvement (all |ΔRMSE| ≤
+0.0022, largest gains S2301 unemployment and B25071 rent-burden; coverage
+in band). Permutation importance is modest but theory-consistent and
+spread across families: poverty (S1701) benefits most from national CPI +
+rates (cost-of-living → poverty), home value from the mortgage-rate change
+channel, income/unemployment from the labour-market series (LFPR, JOLTS,
+emp-pop, 10-yr). Ships opt-in (`use_ml=False` default). The `natl_unemp`
+feature is NOT folded into the registry (its `level_diff1` form would drop
+`chg2` and invalidate its shipped ablation) — deferred as a separate
+follow-up.
