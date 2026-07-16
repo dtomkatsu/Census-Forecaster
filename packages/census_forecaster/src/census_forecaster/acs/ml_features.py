@@ -41,7 +41,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Mapping, Optional, Sequence
+from typing import Iterable, Mapping, NamedTuple, Optional, Sequence
 
 from common.models import AcsObservation
 from .projection import effective_year
@@ -93,6 +93,82 @@ _MKT_REIT = "_MKT_REIT_MOM"
 # also geoid-constant → stored under _MKT_GEOID. Sentinel excluded from
 # PanelIndex.indicators (never a cross-indicator feature).
 _NATL_UNEMP = "_NATL_UNEMP_RATE"
+
+
+# ---------------------------------------------------------------------------
+# National-macro feature registry
+# ---------------------------------------------------------------------------
+# A generic, registry-driven channel for national Census/BLS/BEA/FRED
+# series (analogous to the market_data channel, but broader). One
+# `national_data` param on build_panel_index carries {name: {year: level}};
+# each series is stored under the reserved __national__ pseudo-geoid with
+# sentinel "_NM_" + name.upper(), and read into feature columns generated
+# from this registry. See METHODOLOGY.md §Market signals (national macro).
+#
+# The registry is the SINGLE source of truth for both the fetch script
+# (scripts/refresh_national_macro.py) and the feature columns here, so the
+# two never drift. Fixed-order tuple → national_macro_columns() and the
+# _build_row reader iterate the same order, preserving the column-order
+# invariant by construction.
+#
+# Column policy (compact, to control geoid-constant year-effect overfitting
+# — these are near-collinear with anchor_year_norm):
+#   "logchange1"  → 1 col  natl_<name>_chg1 = log(v[Y]/v[Y-1])   (price/index
+#                          series whose level is a monotone year proxy)
+#   "diff1"       → 1 col  natl_<name>_chg1 = v[Y] - v[Y-1]       (pp change)
+#   "level_diff1" → 2 cols natl_<name>_lvl, natl_<name>_chg1      (rate/ratio
+#                          series that mean-revert; level is meaningful)
+
+_NM_GEOID = _MKT_GEOID  # national-macro series share the __national__ geoid
+
+
+class NationalSeriesSpec(NamedTuple):
+    """One national-macro series: fetch hint + feature column policy."""
+    name: str        # feature stem, e.g. "cpi_rent", "lfpr", "mortgage30"
+    source: str      # "CPI_PANEL" | "BLS_FETCH" | "FRED"
+    series_id: str   # "CUUR0000SEHA", "CES0500000003", "MORTGAGE30US", ...
+    cadence: str     # "monthly" | "weekly" | "daily" | "quarterly"
+    agg: str         # monthly→annual aggregation (calendar-year "mean")
+    col_policy: str  # "logchange1" | "diff1" | "level_diff1"
+
+
+NATIONAL_SERIES: tuple[NationalSeriesSpec, ...] = (
+    # --- Tier 0: already committed in data/bls_panel/cpi_panel.json (no fetch);
+    #     price indexes → change-only (the level is a monotone year proxy). ---
+    NationalSeriesSpec("cpi_allitems", "CPI_PANEL", "CUUR0000SA0",   "monthly", "mean", "logchange1"),
+    NationalSeriesSpec("cpi_food",     "CPI_PANEL", "CUUR0000SAF11", "monthly", "mean", "logchange1"),
+    NationalSeriesSpec("cpi_housing",  "CPI_PANEL", "CUUR0000SAH1",  "monthly", "mean", "logchange1"),
+    NationalSeriesSpec("cpi_rent",     "CPI_PANEL", "CUUR0000SEHA",  "monthly", "mean", "logchange1"),
+    NationalSeriesSpec("cpi_gas",      "CPI_PANEL", "CUUR0000SETB01","monthly", "mean", "logchange1"),
+    # --- Tier 1: new keyless BLS fetches ---
+    NationalSeriesSpec("ahe",          "BLS_FETCH", "CES0500000003", "monthly", "mean", "logchange1"),
+    NationalSeriesSpec("lfpr",         "BLS_FETCH", "LNS11300000",   "monthly", "mean", "level_diff1"),
+    NationalSeriesSpec("emp_pop",      "BLS_FETCH", "LNS12300000",   "monthly", "mean", "level_diff1"),
+    NationalSeriesSpec("jolts_openings","BLS_FETCH","JTS000000000000000JOR","monthly","mean","level_diff1"),
+    # --- Tier 1: FRED keyless CSV (Census HVS national vacancy/homeownership
+    #     ride the FRED mirror) ---
+    NationalSeriesSpec("rental_vacancy","FRED",     "RRVRUSQ156N",   "quarterly","mean","level_diff1"),
+    NationalSeriesSpec("homeownership","FRED",      "RHORUSQ156N",   "quarterly","mean","level_diff1"),
+    NationalSeriesSpec("mortgage30",   "FRED",      "MORTGAGE30US",  "weekly",  "mean", "diff1"),
+    NationalSeriesSpec("dgs10",        "FRED",      "DGS10",         "daily",   "mean", "level_diff1"),
+)
+
+
+def national_series_columns(spec: NationalSeriesSpec) -> tuple[str, ...]:
+    """Feature column names contributed by one national series."""
+    if spec.col_policy in ("logchange1", "diff1"):
+        return (f"natl_{spec.name}_chg1",)
+    if spec.col_policy == "level_diff1":
+        return (f"natl_{spec.name}_lvl", f"natl_{spec.name}_chg1")
+    raise ValueError(f"unknown col_policy: {spec.col_policy!r}")
+
+
+def national_macro_columns() -> tuple[str, ...]:
+    """All national-macro feature column names, in registry order."""
+    cols: list[str] = []
+    for spec in NATIONAL_SERIES:
+        cols.extend(national_series_columns(spec))
+    return tuple(cols)
 
 
 def build_panel_index(

@@ -115,6 +115,16 @@ jobs:
           uv run python -m census_forecaster.scripts.refresh_market_panel \
             --tolerate-failures --derive-signals
 
+      - name: Refresh national-macro predictor series
+        env:
+          BLS_API_KEY: ${{ secrets.BLS_API_KEY }}
+        run: |
+          # National CPI (from the panel) + BLS AHE/LFPR/emp-pop/JOLTS
+          # (keyless) + FRED mortgage/10yr/HVS (keyless CSV). Each block
+          # degrades with a ::warning and keeps previously committed data;
+          # aborts only if nothing fetched.
+          uv run python -m census_forecaster.scripts.refresh_national_macro
+
       - name: Regenerate BLS v3 calibration
         run: |
           # Only regenerate if the BLS panel exists. If neither key is
