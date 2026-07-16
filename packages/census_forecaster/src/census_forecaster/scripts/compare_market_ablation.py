@@ -108,18 +108,14 @@ def _mkt_permutation_importance(series, populations) -> list[str]:
 
     from ..acs.ml_features import (
         build_panel_index,
-        load_bps_data,
-        load_laus_data,
-        load_saipe_data,
+        load_county_data,
         make_training_rows,
     )
     from ..acs.ml_trend import train_ml_model
 
     panel = build_panel_index(
         series,
-        bps_data=load_bps_data(),
-        saipe_data=load_saipe_data(),
-        laus_data=load_laus_data(),
+        county_data=load_county_data(),
         market_data=load_market_signals_data(),
     )
     lines = []

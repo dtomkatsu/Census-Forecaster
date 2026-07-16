@@ -9,7 +9,7 @@ import pytest
 from census_forecaster.acs.ml_features import (
     PanelIndex,
     build_panel_index,
-    load_bps_data,
+    load_county_data,
     make_feature_spec,
     make_training_rows,
     _BPS_INDICATOR,
@@ -42,17 +42,17 @@ def _make_series(geoid: str, indicator: str, years: range,
 
 class TestBpsDataFile:
     def test_load_bps_data_returns_dict_or_none(self):
-        result = load_bps_data()
+        result = load_county_data().get("bps")
         assert result is None or isinstance(result, dict)
 
     def test_bps_file_covers_90_counties(self):
-        bps = load_bps_data()
+        bps = load_county_data().get("bps")
         if bps is None:
             pytest.skip("bps_permits.json not present")
         assert len(bps) == 90
 
     def test_bps_values_are_positive_integers(self):
-        bps = load_bps_data()
+        bps = load_county_data().get("bps")
         if bps is None:
             pytest.skip("bps_permits.json not present")
         for geoid, yr_dict in list(bps.items())[:5]:
@@ -61,7 +61,7 @@ class TestBpsDataFile:
                 assert val >= 0, f"{geoid}/{yr}: {val}"
 
     def test_bps_covers_calibration_years(self):
-        bps = load_bps_data()
+        bps = load_county_data().get("bps")
         if bps is None:
             pytest.skip("bps_permits.json not present")
         for geoid in list(bps.keys())[:3]:
@@ -72,7 +72,7 @@ class TestBpsDataFile:
 
 
 # ---------------------------------------------------------------------------
-# build_panel_index with bps_data
+# build_panel_index with county_data
 # ---------------------------------------------------------------------------
 
 class TestBuildPanelIndexWithBps:
@@ -89,32 +89,39 @@ class TestBuildPanelIndexWithBps:
     def test_bps_stored_in_estimate_by_key(self):
         series = self._base_series()
         bps = {"15003": {2018: 1500, 2019: 1600, 2020: 800, 2021: 1400, 2022: 1550}}
-        panel = build_panel_index(series, bps_data=bps)
+        panel = build_panel_index(series, county_data={"bps": bps})
         assert panel.get("15003", _BPS_INDICATOR, 2019) == 1600.0
         assert panel.get("15003", _BPS_INDICATOR, 2018) == 1500.0
 
     def test_bps_not_in_indicators(self):
         series = self._base_series()
         bps = {"15003": {2019: 1200}}
-        panel = build_panel_index(series, bps_data=bps)
+        panel = build_panel_index(series, county_data={"bps": bps})
         assert _BPS_INDICATOR not in panel.indicators
 
     def test_no_bps_data_panel_still_works(self):
         series = self._base_series()
-        panel = build_panel_index(series, bps_data=None)
+        panel = build_panel_index(series, county_data=None)
         assert panel.get("15003", _BPS_INDICATOR, 2019) is None
 
     def test_zero_permits_not_stored(self):
         series = self._base_series()
         bps = {"15003": {2019: 0, 2020: 500}}
-        panel = build_panel_index(series, bps_data=bps)
+        panel = build_panel_index(series, county_data={"bps": bps})
         # Zero treated as missing (log-undefined); positive stored.
         assert panel.get("15003", _BPS_INDICATOR, 2020) == 500.0
+        # The zero really is absent — this assertion is what the test name
+        # always claimed but never checked. Pre-registry the injection guard
+        # was `>= 0`, so the 0 WAS stored (harmlessly: the reader NaNs it
+        # anyway). The county registry unified the guard to `> 0`, matching
+        # the documented intent; features are bit-identical either way
+        # (proved by the golden-row check in the migration).
+        assert panel.get("15003", _BPS_INDICATOR, 2019) is None
 
     def test_missing_geoid_in_bps_still_returns_none(self):
         series = self._base_series()
         bps = {"15003": {2019: 1200}}
-        panel = build_panel_index(series, bps_data=bps)
+        panel = build_panel_index(series, county_data={"bps": bps})
         assert panel.get("15001", _BPS_INDICATOR, 2019) is None
 
 
@@ -131,7 +138,7 @@ class TestBpsFeatureColumns:
         }
         bps = {geoid: {y: 1000 + y * 10 for y in range(2008, 2024)}}
         populations = {geoid: 980_000}
-        panel = build_panel_index(series, bps_data=bps)
+        panel = build_panel_index(series, county_data={"bps": bps})
         return panel, populations
 
     def test_feature_spec_includes_bps_columns(self):
@@ -159,7 +166,7 @@ class TestBpsFeatureColumns:
         geoid = "15003"
         series = {(geoid, ind): [_obs(geoid, ind, y, 500_000) for y in range(2010, 2024)]}
         populations = {geoid: 980_000}
-        panel = build_panel_index(series, bps_data=None)
+        panel = build_panel_index(series, county_data=None)
         spec = make_feature_spec(ind, panel)
         row = _build_row(panel, populations, geoid, ind, 2020, 2, spec)
         assert row is not None
@@ -187,8 +194,8 @@ class TestBpsFeatureColumns:
         geoid = "15003"
         series = {(geoid, ind): [_obs(geoid, ind, y, 500_000 + y * 100) for y in range(2010, 2024)]}
         populations = {geoid: 980_000}
-        panel_no_bps = build_panel_index(series, bps_data=None)
-        panel_with_bps = build_panel_index(series, bps_data={geoid: {y: 1000 for y in range(2008, 2024)}})
+        panel_no_bps = build_panel_index(series, county_data=None)
+        panel_with_bps = build_panel_index(series, county_data={"bps": {geoid: {y: 1000 for y in range(2008, 2024)}}})
         mat_no = make_training_rows(panel_no_bps, populations, ind, cutoff_year=2020)
         mat_bps = make_training_rows(panel_with_bps, populations, ind, cutoff_year=2020)
         # Same number of rows — BPS features are NaN-filled, not row-dropping.

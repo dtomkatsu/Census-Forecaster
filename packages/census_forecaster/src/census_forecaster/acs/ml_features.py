@@ -77,6 +77,67 @@ _BPS_INDICATOR = "_BPS_PERMITS_ANNUAL"
 _SAIPE_INDICATOR = "_SAIPE_POVERTY_RATE"
 _LAUS_INDICATOR = "_LAUS_UNEMPLOYMENT_RATE"
 
+
+# ---------------------------------------------------------------------------
+# County-level feature registry
+# ---------------------------------------------------------------------------
+# The three county channels (BPS permits, SAIPE poverty, LAUS unemployment)
+# are structurally identical: per-geoid annual values → lag0/1/2 + mean-of-
+# valid-lags columns. This registry replaces what used to be three bespoke
+# params + three injection blocks + three reader blocks + three loaders
+# (~120 scattered references). Migrated 2026-07-16 with golden-row
+# equivalence (see REGISTRY_MIGRATION_SCOPE.md; same discipline as the
+# national-macro `unemp` migration).
+#
+# Column policy — both emit 4 columns (3 lags + mean of the valid lags);
+# they differ only in transform and column naming, which are preserved
+# EXACTLY as the pre-migration names:
+#   "log_lags3_mean"   → <name>_log_lag0/1/2, <name>_3yr_mean   (BPS: counts
+#                        are log-scaled; non-positive is log-undefined)
+#   "level_lags3_mean" → <name>_lag0/1/2, <name>_3yr_mean       (SAIPE/LAUS:
+#                        raw percentage rates)
+# Injection guard is >0 for both: the readers already NaN anything ≤0, so
+# storing a zero was a no-op that contradicted the documented intent
+# ("zero treated as missing"). Features are bit-identical either way.
+
+
+class CountySeriesSpec(NamedTuple):
+    """One county-level auxiliary series: storage + loader + column policy."""
+    name: str        # column stem, e.g. "bps", "saipe", "laus"
+    sentinel: str    # PanelIndex sentinel (unchanged across the migration)
+    subdir: str      # data/<subdir>/
+    filename: str    # bundled JSON with a values_by_geoid_year block
+    col_policy: str  # "log_lags3_mean" | "level_lags3_mean"
+
+
+COUNTY_SERIES: tuple[CountySeriesSpec, ...] = (
+    CountySeriesSpec("bps", _BPS_INDICATOR, "leading_indicators",
+                     "bps_permits.json", "log_lags3_mean"),
+    CountySeriesSpec("saipe", _SAIPE_INDICATOR, "anchors",
+                     "saipe_poverty.json", "level_lags3_mean"),
+    CountySeriesSpec("laus", _LAUS_INDICATOR, "anchors",
+                     "bls_laus.json", "level_lags3_mean"),
+)
+
+
+def county_series_columns(spec: CountySeriesSpec) -> tuple[str, ...]:
+    """Feature column names contributed by one county series."""
+    if spec.col_policy == "log_lags3_mean":
+        return (f"{spec.name}_log_lag0", f"{spec.name}_log_lag1",
+                f"{spec.name}_log_lag2", f"{spec.name}_3yr_mean")
+    if spec.col_policy == "level_lags3_mean":
+        return (f"{spec.name}_lag0", f"{spec.name}_lag1",
+                f"{spec.name}_lag2", f"{spec.name}_3yr_mean")
+    raise ValueError(f"unknown col_policy: {spec.col_policy!r}")
+
+
+def county_columns() -> tuple[str, ...]:
+    """All county-level feature column names, in registry order."""
+    cols: list[str] = []
+    for spec in COUNTY_SERIES:
+        cols.extend(county_series_columns(spec))
+    return tuple(cols)
+
 # Market signals are national (geoid-constant): stored once under a
 # reserved pseudo-geoid instead of being replicated across every county.
 # Signal names arrive from data/leading_indicators/market_signals.json
@@ -180,9 +241,7 @@ def national_macro_columns() -> tuple[str, ...]:
 
 def build_panel_index(
     series_by_key: Mapping[tuple[str, str], Sequence[AcsObservation]],
-    bps_data: Optional[Mapping[str, Mapping[int, float]]] = None,
-    saipe_data: Optional[Mapping[str, Mapping[int, float]]] = None,
-    laus_data: Optional[Mapping[str, Mapping[int, float]]] = None,
+    county_data: Optional[Mapping[str, Mapping[str, Mapping[int, float]]]] = None,
     market_data: Optional[Mapping[str, Mapping[int, float]]] = None,
     national_data: Optional[Mapping[str, Mapping[int, float]]] = None,
 ) -> PanelIndex:
@@ -190,16 +249,12 @@ def build_panel_index(
 
     Parameters
     ----------
-    bps_data : optional {geoid → {year → total_units_permitted}}
-        BPS permit counts injected under sentinel ``_BPS_PERMITS_ANNUAL``.
-        Accessed by ``_build_row`` for the BPS lag columns.
-    saipe_data : optional {geoid → {year → poverty_rate_pct}}
-        Census SAIPE county poverty rates (annual, %).  Used to feed the
-        S1701-friendly ``saipe_lag0/1/2`` and ``saipe_3yr_mean`` columns.
-    laus_data : optional {geoid → {year → unemployment_rate_pct}}
-        BLS LAUS county unemployment rates (annual average, %).  Used to
-        feed the S2301-friendly ``laus_lag0/1/2`` and ``laus_3yr_mean``
-        columns.
+    county_data : optional {series_name → {geoid → {year → value}}}
+        County-level registry channel (``COUNTY_SERIES``): ``bps`` permit
+        counts, ``saipe`` poverty rates, ``laus`` unemployment rates. Each
+        is stored under its own sentinel and feeds the ``<name>_lag*`` /
+        ``<name>_3yr_mean`` columns per its ``col_policy``. Values ≤ 0 are
+        not stored (the readers treat them as missing).
     market_data : optional {signal_name → {year → value}}
         Annual June-cutoff market signals (see ``markets/signals.py``,
         names like ``mkt_energy_mom``). National / geoid-constant:
@@ -242,23 +297,17 @@ def build_panel_index(
             year = int(round(effective_year(o)))
             est[(geoid, indicator, year)] = float(o.estimate)
 
-    if bps_data is not None:
-        for geoid, year_vals in bps_data.items():
-            for year, count in year_vals.items():
-                if count is not None and count >= 0:
-                    est[(geoid, _BPS_INDICATOR, int(year))] = float(count)
-
-    if saipe_data is not None:
-        for geoid, year_vals in saipe_data.items():
-            for year, rate in year_vals.items():
-                if rate is not None and rate > 0:
-                    est[(geoid, _SAIPE_INDICATOR, int(year))] = float(rate)
-
-    if laus_data is not None:
-        for geoid, year_vals in laus_data.items():
-            for year, rate in year_vals.items():
-                if rate is not None and rate > 0:
-                    est[(geoid, _LAUS_INDICATOR, int(year))] = float(rate)
+    # County registry channel: one generic injection over COUNTY_SERIES.
+    if county_data is not None:
+        _sentinel_by_name = {s.name: s.sentinel for s in COUNTY_SERIES}
+        for name, by_geoid in county_data.items():
+            sentinel = _sentinel_by_name.get(name)
+            if sentinel is None:      # unknown series → ignore, don't guess
+                continue
+            for geoid, year_vals in by_geoid.items():
+                for year, val in year_vals.items():
+                    if val is not None and math.isfinite(float(val)) and val > 0:
+                        est[(geoid, sentinel, int(year))] = float(val)
 
     if market_data is not None:
         for name, year_vals in market_data.items():
@@ -324,31 +373,17 @@ _BASE_COLUMNS: tuple[str, ...] = (
 # Auxiliary leading-indicator blocks — appended AFTER the cross-indicator
 # columns in the real row (see `_build_row`).
 _AUX_COLUMNS: tuple[str, ...] = (
-    # BPS leading-indicator columns (18-24 month lead for vacancy/migration).
-    # Log-scaled permit counts; NaN-filled when BPS data absent for that
-    # county/year. HistGradientBoosting handles NaN via native missing-value
-    # split branches.
-    "bps_log_lag0",    # log(permits[anchor])
-    "bps_log_lag1",    # log(permits[anchor - 1])
-    "bps_log_lag2",    # log(permits[anchor - 2])
-    "bps_3yr_mean",    # mean(bps_log_lag0, bps_log_lag1, bps_log_lag2)
-    # SAIPE poverty-rate columns (Census Small Area Income & Poverty
-    # Estimates).  Direct level signal for S1701; informative through
-    # cross-indicator correlations for other targets.  Raw rate (% as
-    # decimal) — HGB treats monotonic transforms equivalently and the
-    # raw rate keeps mean-of-lags interpretable.
-    "saipe_lag0",      # poverty rate (%) at anchor year
-    "saipe_lag1",      # poverty rate (%) at anchor - 1
-    "saipe_lag2",      # poverty rate (%) at anchor - 2
-    "saipe_3yr_mean",  # mean of valid lags
-    # LAUS unemployment-rate columns (BLS Local Area Unemployment Statistics).
-    # Direct level signal for S2301; the labour-market state also covaries
-    # with poverty, in-migration, and rent-burden, so HGB can use it
-    # broadly.  Same raw-rate convention as SAIPE.
-    "laus_lag0",       # unemployment rate (%) at anchor year
-    "laus_lag1",       # unemployment rate (%) at anchor - 1
-    "laus_lag2",       # unemployment rate (%) at anchor - 2
-    "laus_3yr_mean",   # mean of valid lags
+    # County registry columns (3 series → 12 cols, generated from
+    # COUNTY_SERIES so loaders + features never drift):
+    #   bps   — BPS permits, log-scaled (18-24mo lead for vacancy/migration)
+    #   saipe — Census SAIPE poverty rate (direct signal for S1701)
+    #   laus  — BLS LAUS unemployment rate (direct signal for S2301; the
+    #           labour-market state also covaries with poverty, in-migration
+    #           and rent-burden, so HGB can use it broadly)
+    # Raw rates keep mean-of-lags interpretable; HGB treats monotonic
+    # transforms equivalently. All NaN-filled when the source is absent
+    # (native missing-value split branches).
+    *county_columns(),
     # Market leading-indicator signals (June-cutoff annual 12-mo momenta;
     # see markets/signals.py). National / geoid-constant → they act as
     # year-effects in the pooled panel, so the block is deliberately
@@ -527,39 +562,24 @@ def _build_row(
         v = panel.get(geoid, other, anchor_year)
         row.append(math.log(v) if (v is not None and v > 0) else float("nan"))
 
-    # BPS leading-indicator features (log-scaled permit counts).
-    bps0 = panel.get(geoid, _BPS_INDICATOR, anchor_year)
-    bps1 = panel.get(geoid, _BPS_INDICATOR, anchor_year - 1)
-    bps2 = panel.get(geoid, _BPS_INDICATOR, anchor_year - 2)
-    # BPS can be zero for low-activity counties; treat 0 as missing (log undefined).
-    log_bps0 = math.log(bps0) if (bps0 is not None and bps0 > 0) else float("nan")
-    log_bps1 = math.log(bps1) if (bps1 is not None and bps1 > 0) else float("nan")
-    log_bps2 = math.log(bps2) if (bps2 is not None and bps2 > 0) else float("nan")
-    bps_valid = [v for v in (log_bps0, log_bps1, log_bps2) if math.isfinite(v)]
-    bps_3yr = sum(bps_valid) / len(bps_valid) if bps_valid else float("nan")
-    row.extend([log_bps0, log_bps1, log_bps2, bps_3yr])
-
-    # SAIPE poverty-rate features (raw percentage, e.g. 8.5 for 8.5%).
-    saipe0 = panel.get(geoid, _SAIPE_INDICATOR, anchor_year)
-    saipe1 = panel.get(geoid, _SAIPE_INDICATOR, anchor_year - 1)
-    saipe2 = panel.get(geoid, _SAIPE_INDICATOR, anchor_year - 2)
-    saipe_lag0 = float(saipe0) if (saipe0 is not None and saipe0 > 0) else float("nan")
-    saipe_lag1 = float(saipe1) if (saipe1 is not None and saipe1 > 0) else float("nan")
-    saipe_lag2 = float(saipe2) if (saipe2 is not None and saipe2 > 0) else float("nan")
-    saipe_valid = [v for v in (saipe_lag0, saipe_lag1, saipe_lag2) if math.isfinite(v)]
-    saipe_3yr = sum(saipe_valid) / len(saipe_valid) if saipe_valid else float("nan")
-    row.extend([saipe_lag0, saipe_lag1, saipe_lag2, saipe_3yr])
-
-    # LAUS unemployment-rate features (raw percentage).
-    laus0 = panel.get(geoid, _LAUS_INDICATOR, anchor_year)
-    laus1 = panel.get(geoid, _LAUS_INDICATOR, anchor_year - 1)
-    laus2 = panel.get(geoid, _LAUS_INDICATOR, anchor_year - 2)
-    laus_lag0 = float(laus0) if (laus0 is not None and laus0 > 0) else float("nan")
-    laus_lag1 = float(laus1) if (laus1 is not None and laus1 > 0) else float("nan")
-    laus_lag2 = float(laus2) if (laus2 is not None and laus2 > 0) else float("nan")
-    laus_valid = [v for v in (laus_lag0, laus_lag1, laus_lag2) if math.isfinite(v)]
-    laus_3yr = sum(laus_valid) / len(laus_valid) if laus_valid else float("nan")
-    row.extend([laus_lag0, laus_lag1, laus_lag2, laus_3yr])
+    # County registry features (per-geoid). ONE generic loop over
+    # COUNTY_SERIES — same iteration order as county_columns(), so column
+    # names and row slots stay aligned by construction. Each policy emits
+    # 3 lags + the mean of the valid lags; values ≤0 are missing (for BPS,
+    # log-undefined — low-activity counties legitimately print 0 permits).
+    for cspec in COUNTY_SERIES:
+        lags: list[float] = []
+        for back in (0, 1, 2):
+            v = panel.get(geoid, cspec.sentinel, anchor_year - back)
+            if v is None or not (v > 0):
+                lags.append(float("nan"))
+            elif cspec.col_policy == "log_lags3_mean":
+                lags.append(math.log(v))
+            else:                      # level_lags3_mean
+                lags.append(float(v))
+        valid = [v for v in lags if math.isfinite(v)]
+        mean3 = sum(valid) / len(valid) if valid else float("nan")
+        row.extend([*lags, mean3])
 
     # Market leading-indicator signals (geoid-constant, keyed under the
     # reserved __national__ pseudo-geoid; signed momenta, so no >0 guard).
@@ -701,9 +721,11 @@ def make_inference_row(
     )
 
 
-def _load_anchor_values_by_geoid_year(filename: str) -> Optional[dict[str, dict[int, float]]]:
-    """Load values_by_geoid_year from a bundled anchor JSON file."""
-    path = Path(__file__).parent.parent / "data" / "anchors" / filename
+def _load_values_by_geoid_year(
+    subdir: str, filename: str,
+) -> Optional[dict[str, dict[int, float]]]:
+    """Load a ``values_by_geoid_year`` block from a bundled JSON file."""
+    path = Path(__file__).parent.parent / "data" / subdir / filename
     if not path.exists():
         return None
     import json as _json
@@ -717,40 +739,19 @@ def _load_anchor_values_by_geoid_year(filename: str) -> Optional[dict[str, dict[
     }
 
 
-def load_bps_data() -> Optional[dict[str, dict[int, float]]]:
-    """Load BPS permit data from the bundled JSON file, or None if absent."""
-    bps_path = (
-        Path(__file__).parent.parent / "data" / "leading_indicators" / "bps_permits.json"
-    )
-    if not bps_path.exists():
-        return None
-    import json as _json
-    with open(bps_path) as f:
-        payload = _json.load(f)
-    raw = payload.get("values_by_geoid_year", {})
-    # Convert {geoid: {str_year: count}} → {geoid: {int_year: float}}
-    return {
-        geoid: {int(yr): float(cnt) for yr, cnt in yr_dict.items()}
-        for geoid, yr_dict in raw.items()
-    }
+def load_county_data() -> dict[str, dict[str, dict[int, float]]]:
+    """Load every COUNTY_SERIES source as ``{name → {geoid → {year → val}}}``.
 
-
-def load_saipe_data() -> Optional[dict[str, dict[int, float]]]:
-    """Load SAIPE county poverty-rate data from the bundled anchor JSON.
-
-    Returns None if the file is absent — callers should treat this as
-    "no SAIPE features available" and fill the corresponding row columns
-    with NaN.
+    Series whose bundled file is absent are simply omitted — callers treat
+    a missing series as "no features from it" and the corresponding
+    ``<name>_lag*`` columns NaN-fill.
     """
-    return _load_anchor_values_by_geoid_year("saipe_poverty.json")
-
-
-def load_laus_data() -> Optional[dict[str, dict[int, float]]]:
-    """Load BLS LAUS county unemployment-rate data from the bundled anchor JSON.
-
-    Returns None if the file is absent.
-    """
-    return _load_anchor_values_by_geoid_year("bls_laus.json")
+    out: dict[str, dict[str, dict[int, float]]] = {}
+    for spec in COUNTY_SERIES:
+        data = _load_values_by_geoid_year(spec.subdir, spec.filename)
+        if data:
+            out[spec.name] = data
+    return out
 
 
 def load_market_signals_data() -> Optional[dict[str, dict[int, float]]]:
@@ -809,13 +810,14 @@ __all__ = [
     "PanelIndex",
     "FeatureSpec",
     "TrainingMatrix",
+    "CountySeriesSpec",
+    "COUNTY_SERIES",
+    "county_columns",
     "NationalSeriesSpec",
     "NATIONAL_SERIES",
     "national_macro_columns",
     "build_panel_index",
-    "load_bps_data",
-    "load_saipe_data",
-    "load_laus_data",
+    "load_county_data",
     "load_market_signals_data",
     "load_national_macro_data",
     "make_feature_spec",

@@ -1018,9 +1018,7 @@ def run_stratified_calibration(
     bias_clamp_log: float = DEFAULT_BIAS_CLAMP_LOG,
     as_of_mode: str = "instant",
     include_ml: bool = False,
-    bps_data: Optional[dict] = None,
-    saipe_data: Optional[dict] = None,
-    laus_data: Optional[dict] = None,
+    county_data: Optional[dict] = None,
     market_data: Optional[dict] = None,
     national_data: Optional[dict] = None,
     include_kalman: bool = False,
@@ -1277,9 +1275,7 @@ def run_stratified_calibration(
     if include_ml:
         from .ml_features import (
             build_panel_index as _build_panel_index,
-            load_bps_data as _load_bps,
-            load_saipe_data as _load_saipe,
-            load_laus_data as _load_laus,
+            load_county_data as _load_cty,
             load_market_signals_data as _load_mkt,
             load_national_macro_data as _load_nm,
         )
@@ -1289,16 +1285,12 @@ def run_stratified_calibration(
             METHOD_NAME as _ML_METHOD,
         )
 
-        _bps = bps_data if bps_data is not None else _load_bps()
-        _saipe = saipe_data if saipe_data is not None else _load_saipe()
-        _laus = laus_data if laus_data is not None else _load_laus()
+        _cty = county_data if county_data is not None else _load_cty()
         _mkt = market_data if market_data is not None else _load_mkt()
         _nm = national_data if national_data is not None else _load_nm()
         ml_panel = _build_panel_index(
             series_by_key,
-            bps_data=_bps,
-            saipe_data=_saipe,
-            laus_data=_laus,
+            county_data=_cty,
             market_data=_mkt,
             national_data=_nm,
         )

@@ -74,7 +74,7 @@ def test_column_names_match_actual_row_order():
     to its true row slot."""
     laus = {"15003": {y: 3.5 for y in range(2012, 2025)},
             "15001": {y: 4.5 for y in range(2012, 2025)}}
-    panel = build_panel_index(_multi_series(), laus_data=laus,
+    panel = build_panel_index(_multi_series(), county_data={"laus": laus},
                               market_data=MARKET)
     matrix = make_training_rows(
         panel, {"15003": 1_000_000, "15001": 200_000},

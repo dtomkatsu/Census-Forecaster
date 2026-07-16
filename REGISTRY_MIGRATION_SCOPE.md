@@ -1,10 +1,11 @@
-# Registry-pattern migration — scope for remaining bespoke channels
+# Registry-pattern migration — scope + status
 
-**Status: scoping only (2026-07-15).** Written after the `natl_unemp` →
-`NATIONAL_SERIES` registry migration proved the pattern: one registry tuple
-drives fetch, injection, column names, and the row-builder loop, so adding
-or moving a series is a one-line spec instead of a 3-file edit. This doc
-scopes where else the same cleanup applies.
+**Status (2026-07-16): candidate 1 DONE, candidate 2 declined.** Written
+after the `natl_unemp` → `NATIONAL_SERIES` migration proved the pattern: one
+registry tuple drives fetch, injection, column names, and the row-builder
+loop, so adding or moving a series is a one-line spec instead of a 3-file
+edit. The county migration below has since been executed with golden-row
+equivalence (all 13,174 × 67 feature values bit-identical).
 
 ## The pattern being replicated
 
@@ -20,43 +21,44 @@ references per channel across `ml_features.py`, `ml_trend.py`, and
 
 Measured references across the three files (2026-07-15):
 
-| channel | shape | refs | status |
-|---|---|---|---|
-| `bps_data` (building permits) | `{geoid: {year: val}}` | ~39 | **bespoke** — candidate |
-| `saipe_data` (county poverty) | `{geoid: {year: val}}` | ~40 | **bespoke** — candidate |
-| `laus_data` (county unemployment) | `{geoid: {year: val}}` | ~40 | **bespoke** — candidate |
-| `market_data` (screen-gated momenta) | `{name: {year: val}}` | ~30 | **half-generic** — injection is generic, reader hardcoded |
-| `national_data` (national macro) | `{name: {year: val}}` | — | ✅ registry (14 series) |
+| channel | shape | status |
+|---|---|---|
+| `county_data` (bps / saipe / laus) | `{name: {geoid: {year: val}}}` | ✅ **registry (3 series, 12 cols)** — migrated 2026-07-16 |
+| `national_data` (national macro) | `{name: {year: val}}` | ✅ registry (14 series, 22 cols) |
+| `market_data` (screen-gated momenta) | `{name: {year: val}}` | **half-generic** — injection generic, reader hardcoded; declined below |
 
 Already registry/spec-driven elsewhere (no work needed): the anchor registry
 (`_REGISTRY_SPEC`), `BEA_ANCHOR_SPECS`, the BLS panel area×kind grid,
 `markets/universe.TICKERS`, and the screen's `MONTHLY_TARGETS` /
 `NATIONAL_PREDICTORS` / `HYPOTHESIS_PAIRS`.
 
-## Candidate 1 — county-level registry (`bps`/`saipe`/`laus`) — RECOMMENDED
+## Candidate 1 — county-level registry (`bps`/`saipe`/`laus`) — ✅ DONE (2026-07-16)
 
-The three county channels are structurally identical: per-geoid annual
-values feeding a lag0/lag1/lag2 + 3yr-mean column block (BPS log-scales
-first). A `COUNTY_SERIES` registry needs exactly **two column policies**:
+Executed exactly as scoped. `COUNTY_SERIES` with two column policies:
 
 - `log_lags3_mean` (BPS): log-transformed lag0/1/2 + mean of valid lags
 - `level_lags3_mean` (SAIPE, LAUS): raw lag0/1/2 + mean of valid lags
 
-Migration would collapse three params → one `county_data:
-{name: {geoid: {year: val}}}` param, three loaders → one registry-driven
-loader, three reader blocks → one loop. **The same equivalence discipline as
-the natl_unemp migration applies**: policies must reproduce the existing
-column names and values exactly (they can — the blocks are already uniform),
-so the shipped BPS ablation (`phase_c_bps_ablation.md`) stays valid, verified
-by an equivalence test + a re-run ablation.
+Collapsed: three params → one `county_data: {name: {geoid: {year: val}}}`;
+three loaders → one `load_county_data()`; three reader blocks → one loop;
+three injection blocks → one. Column names are unchanged
+(`bps_log_lag0…`, `saipe_lag0…`, `laus_lag0…`) — the policies were designed
+around the existing names, so nothing downstream renames.
 
-Effort: comparable to the natl_unemp migration (~1 session). Risk: low with
-the exact-equivalence approach; the column-order regression test already
-guards the layout. Payoff: ~120 scattered references become ~30, and any
-future county-level indicator (e.g. county building costs, migration flows)
-becomes a one-line registry entry.
+**Verification — golden-row equivalence.** Feature rows for 4 indicators
+(13,174 rows × 67 columns) were captured from the pre-migration code and
+compared byte-for-byte after: **bit-identical**, including NaN placement and
+row metadata. Plus the BPS ablation re-run (its `county_data` with/without
+`"bps"` arm exercises the new toggle end-to-end).
 
-## Candidate 2 — market channel reader — OPTIONAL, LOWER PRIORITY
+**One latent bug fixed en route.** `test_zero_permits_not_stored` was named
+and commented as "zero treated as missing" but the injection guard was
+`>= 0`, so zeros WERE stored — the test never asserted the zero case, so it
+passed regardless. The registry unified the guard to `> 0` (matching the
+documented intent; the readers NaN'd zeros anyway, so features are identical
+— proved by the golden), and the test now actually asserts it.
+
+## Candidate 2 — market channel reader — DECLINED (revisit if channels grow)
 
 `market_data` injection is already generic, but the reader hardcodes the
 three channel sentinels into four `mkt_*` columns. Folding the channels into
@@ -74,9 +76,19 @@ stable.
 - Kalman / projection internals — cherry-picked by
   Housing-Affordability-Tracker; do not touch for cosmetic reasons.
 
-## Suggested order
+## Outcome
 
-1. County registry (candidate 1) as its own PR with equivalence tests +
-   BPS ablation re-run.
-2. Revisit the market reader (candidate 2) only if a future screen run
-   promotes new channels.
+Both registry-eligible channels are now registry-driven (`county_data`,
+`national_data`). The aux feature block is fully generated from two
+registries plus the small hardcoded `mkt_*` block. Adding a future
+county-level indicator (building costs, migration flows) or national series
+is a one-line spec entry.
+
+The reusable recipe, if a third channel family ever appears:
+1. Capture golden feature rows from the current code FIRST.
+2. Design column policies around the **existing** column names so nothing
+   renames.
+3. Collapse param → registry-driven `*_data` dict; injection/reader/loader
+   → one generic loop each.
+4. Prove bit-identical rows against the golden; re-run the affected
+   ablation as behavioral proof.

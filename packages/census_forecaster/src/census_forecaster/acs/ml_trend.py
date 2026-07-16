@@ -59,11 +59,9 @@ from .ml_features import (
     PanelIndex,
     TrainingMatrix,
     build_panel_index,
-    load_bps_data,
-    load_laus_data,
+    load_county_data,
     load_market_signals_data,
     load_national_macro_data,
-    load_saipe_data,
     make_feature_spec,
     make_inference_row,
     make_training_rows,
@@ -143,7 +141,7 @@ def train_ml_model(
     cutoff_year: int,
     horizons: Sequence[int] = (1, 2, 3, 4, 5),
     panel: Optional[PanelIndex] = None,
-    bps_data: Optional[Mapping[str, Mapping[int, float]]] = None,
+    county_data: Optional[Mapping[str, Mapping[str, Mapping[int, float]]]] = None,
     market_data: Optional[Mapping[str, Mapping[int, float]]] = None,
     national_data: Optional[Mapping[str, Mapping[int, float]]] = None,
 ) -> Optional[TrainedMlModel]:
@@ -160,14 +158,12 @@ def train_ml_model(
     HGB, np = deps  # noqa: N806
 
     if panel is None:
-        _bps = bps_data if bps_data is not None else load_bps_data()
+        _cty = county_data if county_data is not None else load_county_data()
         _mkt = market_data if market_data is not None else load_market_signals_data()
         _nm = national_data if national_data is not None else load_national_macro_data()
         panel = build_panel_index(
             series_by_key,
-            bps_data=_bps,
-            saipe_data=load_saipe_data(),
-            laus_data=load_laus_data(),
+            county_data=_cty,
             market_data=_mkt,
             national_data=_nm,
         )
@@ -392,7 +388,7 @@ def project_ml_trend_one_shot(
     cutoff_year: Optional[int] = None,
     model_cache: Optional[dict[tuple[str, int], TrainedMlModel]] = None,
     panel: Optional[PanelIndex] = None,
-    bps_data: Optional[Mapping[str, Mapping[int, float]]] = None,
+    county_data: Optional[Mapping[str, Mapping[str, Mapping[int, float]]]] = None,
     market_data: Optional[Mapping[str, Mapping[int, float]]] = None,
     national_data: Optional[Mapping[str, Mapping[int, float]]] = None,
 ) -> Optional[ForecastPoint]:
@@ -410,14 +406,12 @@ def project_ml_trend_one_shot(
     indicator = series_observations[-1].indicator
 
     if panel is None:
-        _bps = bps_data if bps_data is not None else load_bps_data()
+        _cty = county_data if county_data is not None else load_county_data()
         _mkt = market_data if market_data is not None else load_market_signals_data()
         _nm = national_data if national_data is not None else load_national_macro_data()
         panel = build_panel_index(
             series_by_key,
-            bps_data=_bps,
-            saipe_data=load_saipe_data(),
-            laus_data=load_laus_data(),
+            county_data=_cty,
             market_data=_mkt,
             national_data=_nm,
         )

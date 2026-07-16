@@ -1245,3 +1245,37 @@ written by `refresh_market_panel` (reference value; it does not anchor and
 no code consumes it). Scope for applying the registry pattern to the
 remaining bespoke channels (bps/saipe/laus, market reader):
 `REGISTRY_MIGRATION_SCOPE.md`.
+
+### County-channel registry migration (2026-07-16)
+
+The last bespoke aux channels — BPS permits, SAIPE poverty, LAUS
+unemployment — were folded into a `COUNTY_SERIES` registry mirroring the
+national one. They were structurally identical (per-geoid annual values →
+lag0/1/2 + mean-of-valid-lags), differing only in transform and naming, so
+two column policies cover them: `log_lags3_mean` (BPS — permit counts are
+log-scaled; low-activity counties legitimately print 0, which is
+log-undefined) and `level_lags3_mean` (SAIPE/LAUS — raw percentage rates).
+
+Collapsed: three params → one `county_data: {name: {geoid: {year: val}}}`;
+three loaders → `load_county_data()`; three injection blocks and three
+reader blocks → one generic loop each. **Column names are unchanged** — the
+policies were designed around the existing names (`bps_log_lag0…`,
+`saipe_lag0…`, `laus_lag0…`), so nothing downstream renames.
+
+**Verification: golden-row equivalence.** 13,174 feature rows × 67 columns
+across 4 indicators were captured from the pre-migration code and compared
+byte-for-byte afterwards — bit-identical, including NaN placement and row
+metadata. This is the strongest form of the discipline used for the
+`natl_unemp` migration: the refactor provably changed plumbing only.
+
+**Latent bug fixed en route.** BPS's injection guard was `>= 0` while its
+test was named/commented "zero not stored" — and never asserted the zero
+case, so it passed either way. The registry unified the guard to `> 0`,
+matching the documented intent; the readers NaN'd zeros regardless, so
+features are identical (proved by the golden), and the test now asserts it.
+
+The aux block is now fully generated from two registries (county, national)
+plus the small hardcoded `mkt_*` block, which stays bespoke by choice: the
+market channels are screen-gated (they appear/disappear with
+`selected_signals.json`), so their spec is dynamic where a registry is
+static. See `REGISTRY_MIGRATION_SCOPE.md` for the reusable recipe.

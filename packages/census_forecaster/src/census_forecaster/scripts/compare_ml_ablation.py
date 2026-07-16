@@ -36,7 +36,7 @@ from ..acs.calibration import (
     FoldResidual,
     run_stratified_calibration,
 )
-from ..acs.ml_features import build_panel_index, load_bps_data
+from ..acs.ml_features import build_panel_index, load_county_data
 from ..acs.ml_trend import (
     METHOD_NAME as ML_METHOD,
     project_ml_trend,
@@ -430,7 +430,8 @@ def main(argv: Iterable[str] | None = None) -> int:
         file=sys.stderr,
     )
 
-    bps = load_bps_data()
+    county = load_county_data()
+    county_no_bps = {k: v for k, v in county.items() if k != "bps"}
     n_ind = len(set(ind for (_, ind) in series))
     n_models = n_ind * len(anchor_years)
 
@@ -454,7 +455,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         horizons=horizons,
         populations=populations,
         include_ml=True,
-        bps_data={},   # explicitly empty → no BPS features
+        county_data=county_no_bps,   # registry minus bps → no BPS features
     )
 
     print(
@@ -468,7 +469,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         horizons=horizons,
         populations=populations,
         include_ml=True,
-        bps_data=bps,
+        county_data=county,
     )
 
     # Apply v3 bias + κ corrections to each method's residuals.
