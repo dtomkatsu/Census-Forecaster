@@ -1022,7 +1022,6 @@ def run_stratified_calibration(
     saipe_data: Optional[dict] = None,
     laus_data: Optional[dict] = None,
     market_data: Optional[dict] = None,
-    natl_unemp_data: Optional[dict] = None,
     national_data: Optional[dict] = None,
     include_kalman: bool = False,
     include_conformal: bool = False,
@@ -1282,7 +1281,6 @@ def run_stratified_calibration(
             load_saipe_data as _load_saipe,
             load_laus_data as _load_laus,
             load_market_signals_data as _load_mkt,
-            load_national_unemployment_data as _load_natl,
             load_national_macro_data as _load_nm,
         )
         from .ml_trend import (
@@ -1295,7 +1293,6 @@ def run_stratified_calibration(
         _saipe = saipe_data if saipe_data is not None else _load_saipe()
         _laus = laus_data if laus_data is not None else _load_laus()
         _mkt = market_data if market_data is not None else _load_mkt()
-        _natl = natl_unemp_data if natl_unemp_data is not None else _load_natl()
         _nm = national_data if national_data is not None else _load_nm()
         ml_panel = _build_panel_index(
             series_by_key,
@@ -1303,7 +1300,6 @@ def run_stratified_calibration(
             saipe_data=_saipe,
             laus_data=_laus,
             market_data=_mkt,
-            natl_unemp_data=_natl,
             national_data=_nm,
         )
         # Group (geoid, indicator) by indicator so we can iterate

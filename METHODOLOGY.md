@@ -1215,7 +1215,33 @@ in band). Permutation importance is modest but theory-consistent and
 spread across families: poverty (S1701) benefits most from national CPI +
 rates (cost-of-living → poverty), home value from the mortgage-rate change
 channel, income/unemployment from the labour-market series (LFPR, JOLTS,
-emp-pop, 10-yr). Ships opt-in (`use_ml=False` default). The `natl_unemp`
-feature is NOT folded into the registry (its `level_diff1` form would drop
-`chg2` and invalidate its shipped ablation) — deferred as a separate
-follow-up.
+emp-pop, 10-yr). Ships opt-in (`use_ml=False` default).
+
+### natl_unemp registry migration (2026-07-15, follow-up completed)
+
+The bespoke `natl_unemp_data` channel was folded into the registry the same
+day, once a risk-free path was found: a third column policy `level_diff2`
+(level + 1-yr + 2-yr pp change) reproduces the exact three columns the
+shipped ablation validated — no information dropped. The registry entry is
+`("unemp", "BLS_FETCH", "LNS14000000", monthly, mean, level_diff2)`; the
+registry is now **14 series → 22 columns**. Migration invariants, each
+pinned by a test or re-run:
+
+- **Data equivalence**: `national_macro.json` `unemp` equals the legacy
+  anchor file's values within rounding (3dp vs 4dp) — both are annual means
+  of monthly LNS14000000 (`test_bundled_unemp_matches_legacy_anchor_file`).
+- **Feature equivalence**: `natl_unemp_lvl/chg1/chg2` reproduce the former
+  `natl_unemp_lag0/chg1/chg2` values exactly
+  (`test_natl_unemp_level_and_changes_match_former_bespoke_values`).
+- **Behavioral re-verification**: the ablation re-run in registry form
+  (arms = registry with/without the `unemp` key) — see the dated
+  `natl_unemp_ablation` report for the verdict and the reproduced
+  S2301 importance.
+
+The bespoke param/sentinel/loader (`natl_unemp_data`, `_NATL_UNEMP`,
+`load_national_unemployment_data`) were removed from
+`ml_features`/`ml_trend`/`calibration`. The legacy anchor data file is still
+written by `refresh_market_panel` (reference value; it does not anchor and
+no code consumes it). Scope for applying the registry pattern to the
+remaining bespoke channels (bps/saipe/laus, market reader):
+`REGISTRY_MIGRATION_SCOPE.md`.

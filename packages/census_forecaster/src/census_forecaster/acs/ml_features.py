@@ -89,12 +89,6 @@ _MKT_ENERGY = "_MKT_ENERGY_MOM"
 _MKT_SHIPPING = "_MKT_SHIPPING_MOM"
 _MKT_REIT = "_MKT_REIT_MOM"
 
-# National unemployment leading indicator (CPS LNS14000000, annual avg %),
-# also geoid-constant → stored under _MKT_GEOID. Sentinel excluded from
-# PanelIndex.indicators (never a cross-indicator feature).
-_NATL_UNEMP = "_NATL_UNEMP_RATE"
-
-
 # ---------------------------------------------------------------------------
 # National-macro feature registry
 # ---------------------------------------------------------------------------
@@ -118,6 +112,10 @@ _NATL_UNEMP = "_NATL_UNEMP_RATE"
 #   "diff1"       → 1 col  natl_<name>_chg1 = v[Y] - v[Y-1]       (pp change)
 #   "level_diff1" → 2 cols natl_<name>_lvl, natl_<name>_chg1      (rate/ratio
 #                          series that mean-revert; level is meaningful)
+#   "level_diff2" → 3 cols natl_<name>_lvl, _chg1, _chg2          (reserved for
+#                          series whose 2-yr swing carries extra signal;
+#                          currently only national unemployment, whose shipped
+#                          ablation validated exactly this 3-column form)
 
 _NM_GEOID = _MKT_GEOID  # national-macro series share the __national__ geoid
 
@@ -145,6 +143,12 @@ NATIONAL_SERIES: tuple[NationalSeriesSpec, ...] = (
     NationalSeriesSpec("lfpr",         "BLS_FETCH", "LNS11300000",   "monthly", "mean", "level_diff1"),
     NationalSeriesSpec("emp_pop",      "BLS_FETCH", "LNS12300000",   "monthly", "mean", "level_diff1"),
     NationalSeriesSpec("jolts_openings","BLS_FETCH","JTS000000000000000JOR","monthly","mean","level_diff1"),
+    # National unemployment — migrated from the bespoke natl_unemp_data
+    # channel (2026-07-15). level_diff2 reproduces the exact 3 columns the
+    # shipped ablation validated (natl_unemp_ablation_2026-07-15.md; lag0
+    # renamed lvl, values numerically identical: annual mean of monthly
+    # LNS14000000). Its lvl column is the strongest S2301 feature (+0.243).
+    NationalSeriesSpec("unemp",        "BLS_FETCH", "LNS14000000",   "monthly", "mean", "level_diff2"),
     # --- Tier 1: FRED keyless CSV (Census HVS national vacancy/homeownership
     #     ride the FRED mirror) ---
     NationalSeriesSpec("rental_vacancy","FRED",     "RRVRUSQ156N",   "quarterly","mean","level_diff1"),
@@ -160,6 +164,9 @@ def national_series_columns(spec: NationalSeriesSpec) -> tuple[str, ...]:
         return (f"natl_{spec.name}_chg1",)
     if spec.col_policy == "level_diff1":
         return (f"natl_{spec.name}_lvl", f"natl_{spec.name}_chg1")
+    if spec.col_policy == "level_diff2":
+        return (f"natl_{spec.name}_lvl", f"natl_{spec.name}_chg1",
+                f"natl_{spec.name}_chg2")
     raise ValueError(f"unknown col_policy: {spec.col_policy!r}")
 
 
@@ -177,7 +184,6 @@ def build_panel_index(
     saipe_data: Optional[Mapping[str, Mapping[int, float]]] = None,
     laus_data: Optional[Mapping[str, Mapping[int, float]]] = None,
     market_data: Optional[Mapping[str, Mapping[int, float]]] = None,
-    natl_unemp_data: Optional[Mapping[int, float]] = None,
     national_data: Optional[Mapping[str, Mapping[int, float]]] = None,
 ) -> PanelIndex:
     """Build a PanelIndex from the calibration panel.
@@ -200,17 +206,16 @@ def build_panel_index(
         stored once under the reserved ``__national__`` pseudo-geoid.
         Momentum values are signed, so unlike the other auxiliaries
         negatives are kept (only non-finite values are dropped).
-    natl_unemp_data : optional {year → national_unemployment_rate_pct}
-        CPS national unemployment rate (annual average, %), geoid-constant
-        (stored under ``__national__``). Feeds the ``natl_unemp_*`` columns
-        — the leading-indicator reframing of the rejected national
-        unemployment anchor.
     national_data : optional {series_name → {year → level}}
         National-macro registry channel (``NATIONAL_SERIES``): CPI
-        subindexes, wages, labour-force participation, JOLTS, mortgage/10yr
-        rates, HVS vacancy/homeownership. Geoid-constant (stored under
+        subindexes, wages, labour-force participation, national
+        unemployment, JOLTS, mortgage/10yr rates, HVS
+        vacancy/homeownership. Geoid-constant (stored under
         ``__national__``, sentinel ``_NM_<NAME>``). Feeds the
         ``natl_<name>_*`` columns per each series' ``col_policy``.
+        (National unemployment migrated here 2026-07-15 from the former
+        bespoke ``natl_unemp_data`` param — the leading-indicator
+        reframing of the rejected national unemployment anchor.)
 
     None of the auxiliary indicators are added to ``indicators`` so they
     never appear as cross-indicator features for other ACS targets —
@@ -261,11 +266,6 @@ def build_panel_index(
             for year, val in year_vals.items():
                 if val is not None and math.isfinite(float(val)):
                     est[(_MKT_GEOID, sentinel, int(year))] = float(val)
-
-    if natl_unemp_data is not None:
-        for year, rate in natl_unemp_data.items():
-            if rate is not None and math.isfinite(float(rate)) and rate > 0:
-                est[(_MKT_GEOID, _NATL_UNEMP, int(year))] = float(rate)
 
     # National-macro registry channel: {series_name: {year: level}} stored
     # under __national__ with sentinel "_NM_"+name.upper(). Levels are signed
@@ -359,22 +359,12 @@ _AUX_COLUMNS: tuple[str, ...] = (
     "mkt_reit_mom_lag0",      # REIT channel (XLRE/VNQ → ZHVI/ZORI)
     "mkt_reit_mom_lag1",      # REIT channel, prior year (VNQ Granger
                               # survives at lag 12 — the lead is ~1yr)
-    # National unemployment leading-indicator columns (CPS LNS14000000,
-    # annual average, %). Geoid-constant (broadcast under __national__).
-    # National labour markets turn before local ones, so the level and
-    # recent change as of the anchor year hint at where local
-    # unemployment / income / rent-burden are heading over the horizon.
-    # This is the reframing of the rejected national-unemployment ANCHOR
-    # (see acs/sources/base.py + METHODOLOGY.md §Market signals): as a
-    # feature the model learns *when* to trust it, dodging the rate-band
-    # / coverage failures that sank the anchor. NaN-filled when absent.
-    "natl_unemp_lag0",    # national unemployment rate (%) at anchor year
-    "natl_unemp_chg1",    # 1-yr change (pp): lag0 − lag1
-    "natl_unemp_chg2",    # 2-yr change (pp): lag0 − lag2
-    # National-macro registry columns (13 series → 19 cols, generated from
-    # NATIONAL_SERIES so fetch + features never drift). Same __national__
-    # geoid-constant / year-effect discipline as the mkt_* and natl_unemp
-    # blocks; the ablation + permutation-importance decide which earn keep.
+    # National-macro registry columns (14 series → 22 cols, generated from
+    # NATIONAL_SERIES so fetch + features never drift). Geoid-constant
+    # year-effects under __national__; ablation + permutation-importance
+    # decide which earn keep. Includes national unemployment (level_diff2:
+    # natl_unemp_lvl/chg1/chg2 — formerly the bespoke natl_unemp_lag0/chg1/
+    # chg2 block, numerically identical values; see METHODOLOGY.md).
     *national_macro_columns(),
 )
 
@@ -584,24 +574,11 @@ def _build_row(
         _mkt(_MKT_REIT, anchor_year - 1),
     ])
 
-    # National unemployment features (geoid-constant; raw % and pp changes).
-    nu0 = panel.get(_MKT_GEOID, _NATL_UNEMP, anchor_year)
-    nu1 = panel.get(_MKT_GEOID, _NATL_UNEMP, anchor_year - 1)
-    nu2 = panel.get(_MKT_GEOID, _NATL_UNEMP, anchor_year - 2)
-    natl_lag0 = float(nu0) if (nu0 is not None and math.isfinite(nu0)) else float("nan")
-    natl_chg1 = (float(nu0) - float(nu1)) if (
-        nu0 is not None and nu1 is not None
-        and math.isfinite(nu0) and math.isfinite(nu1)) else float("nan")
-    natl_chg2 = (float(nu0) - float(nu2)) if (
-        nu0 is not None and nu2 is not None
-        and math.isfinite(nu0) and math.isfinite(nu2)) else float("nan")
-    row.extend([natl_lag0, natl_chg1, natl_chg2])
-
     # National-macro registry features (geoid-constant). ONE generic loop
     # over NATIONAL_SERIES — same iteration order as national_macro_columns(),
     # so column names and row slots stay aligned by construction. Transform
-    # applied here from stored annual levels of Y and Y-1 (level_diff1 emits
-    # level+change; logchange1/diff1 emit change only).
+    # applied here from stored annual levels of Y, Y-1 (and Y-2 for
+    # level_diff2); logchange1/diff1 emit change only.
     nan = float("nan")
     for spec in NATIONAL_SERIES:
         sentinel = "_NM_" + spec.name.upper()
@@ -619,6 +596,13 @@ def _build_row(
         elif spec.col_policy == "level_diff1":    # 2 cols: level, change
             row.append(v0f if v0f is not None else nan)
             row.append(diff)
+        elif spec.col_policy == "level_diff2":    # 3 cols: level, chg1, chg2
+            v2 = panel.get(_NM_GEOID, sentinel, anchor_year - 2)
+            v2f = float(v2) if (v2 is not None and math.isfinite(v2)) else None
+            row.append(v0f if v0f is not None else nan)
+            row.append(diff)
+            row.append((v0f - v2f)
+                       if (v0f is not None and v2f is not None) else nan)
         else:
             raise ValueError(f"unknown col_policy: {spec.col_policy!r}")
 
@@ -794,28 +778,6 @@ def load_market_signals_data() -> Optional[dict[str, dict[int, float]]]:
     }
 
 
-def load_national_unemployment_data() -> Optional[dict[int, float]]:
-    """Load the national unemployment rate series as ``{year → rate_pct}``.
-
-    Reads ``data/anchors/bls_national_unemployment.json`` (``values_by_year``;
-    written by ``refresh_market_panel.py``). Returns None if absent — the
-    ``natl_unemp_*`` columns then NaN-fill. This is the leading-indicator
-    home of national unemployment; it is deliberately NOT registered as an
-    ACS anchor (that was tried and rejected — see ``acs/sources/base.py``).
-    """
-    path = (
-        Path(__file__).parent.parent / "data" / "anchors"
-        / "bls_national_unemployment.json"
-    )
-    if not path.exists():
-        return None
-    import json as _json
-    with open(path) as f:
-        payload = _json.load(f)
-    raw = payload.get("values_by_year", {})
-    return {int(yr): float(v) for yr, v in raw.items() if v is not None}
-
-
 def load_national_macro_data() -> Optional[dict[str, dict[int, float]]]:
     """Load the national-macro registry series as ``{name → {year → level}}``.
 
@@ -855,7 +817,6 @@ __all__ = [
     "load_saipe_data",
     "load_laus_data",
     "load_market_signals_data",
-    "load_national_unemployment_data",
     "load_national_macro_data",
     "make_feature_spec",
     "make_training_rows",

@@ -1,5 +1,5 @@
 {
-  "fetch_date": "2026-07-15",
+  "fetch_date": "2026-07-16",
   "limitations": [
     "Monthly cadence throughout; BLS unemployment is seasonally adjusted, Zillow indexes are smoothed + seasonally adjusted (ZHVI) / smoothed (ZORI).",
     "Zillow monthly values are subject to revision; final value settles ~1 year after first print.",
@@ -5102,7 +5102,7 @@
       },
       {
         "period": "M07",
-        "value": 4.54,
+        "value": 4.541,
         "year": 2026
       }
     ],
@@ -14854,7 +14854,7 @@
       },
       {
         "period": "M07",
-        "value": 6.46,
+        "value": 6.49,
         "year": 2026
       }
     ],
@@ -17140,7 +17140,7 @@
     "LASST150000000000003": "BLS API",
     "LNS11300000": "national-macro refresh",
     "LNS12300000": "national-macro refresh",
-    "LNS14000000": "BLS API",
+    "LNS14000000": "national-macro refresh",
     "MORTGAGE30US": "national-macro refresh",
     "ZHVI_HONOLULU_MONTHLY": "https://files.zillowstatic.com/research/public_csvs/zhvi/County_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv",
     "ZORI_HONOLULU_MONTHLY": "https://files.zillowstatic.com/research/public_csvs/zori/County_zori_uc_sfrcondomfr_sm_month.csv"

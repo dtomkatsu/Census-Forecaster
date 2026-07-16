@@ -47,9 +47,11 @@ NATL = {
 # Registry / column policy
 # ---------------------------------------------------------------------------
 
-def test_column_count_is_19_and_all_in_aux():
+def test_column_count_is_22_and_all_in_aux():
+    # 13 original series (19 cols) + migrated national unemployment
+    # ("unemp", level_diff2 → 3 cols) = 14 series, 22 cols.
     cols = national_macro_columns()
-    assert len(cols) == 19
+    assert len(cols) == 22
     assert all(c in _AUX_COLUMNS for c in cols)
 
 
@@ -58,8 +60,11 @@ def test_col_policy_shapes():
         cols = national_series_columns(spec)
         if spec.col_policy in ("logchange1", "diff1"):
             assert cols == (f"natl_{spec.name}_chg1",)
-        else:
+        elif spec.col_policy == "level_diff1":
             assert cols == (f"natl_{spec.name}_lvl", f"natl_{spec.name}_chg1")
+        else:  # level_diff2
+            assert cols == (f"natl_{spec.name}_lvl", f"natl_{spec.name}_chg1",
+                            f"natl_{spec.name}_chg2")
 
 
 # ---------------------------------------------------------------------------

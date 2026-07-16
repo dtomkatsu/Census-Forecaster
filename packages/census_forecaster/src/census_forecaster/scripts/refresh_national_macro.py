@@ -95,6 +95,23 @@ def fetch_bls_monthly(
         for sid, points in raw.items():
             merged[sid].extend(points)
 
+    # BLS occasionally drops a series from a batched keyless response
+    # without erroring; retry any empty series individually before giving
+    # up on it (observed with LNS14000000, 2026-07-15).
+    for sid in series_ids:
+        if merged.get(sid):
+            continue
+        print(f"::warning::BLS batch returned no rows for {sid}; "
+              "retrying individually", file=sys.stderr)
+        try:
+            for ys, ye in chunks:
+                raw = fetch_cpi_data(series_ids=[sid], start_year=ys,
+                                     end_year=ye, api_key=api_key)
+                merged[sid].extend(raw.get(sid, []))
+        except Exception as exc:  # noqa: BLE001
+            print(f"::warning::individual retry failed for {sid} ({exc})",
+                  file=sys.stderr)
+
     out: dict[str, list[dict]] = {}
     for sid, points in merged.items():
         monthly = [p for p in points

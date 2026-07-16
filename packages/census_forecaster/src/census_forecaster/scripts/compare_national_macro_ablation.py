@@ -4,8 +4,9 @@ Tests whether the 13-series national-macro registry (19 columns: national
 CPI, wages, labour-force participation, JOLTS, mortgage/10yr rates, HVS
 vacancy/homeownership) earns its keep as ML features on the bundled panel.
 
-Two arms, both include_ml=True and carrying the already-shipped mkt_* +
-natl_unemp features; the only difference is the national_data channel:
+Two arms, both include_ml=True and carrying the already-shipped mkt_*
+features; the only difference is the national_data channel (which now
+includes national unemployment via the level_diff2 registry entry):
 
   A. national_data={}    — shipped ML baseline
   B. national_data=real  — baseline + national-macro registry columns
@@ -65,7 +66,7 @@ _PROBE_INDICATORS = (
 )
 
 
-def _national_permutation_importance(series, populations, market, natl_unemp,
+def _national_permutation_importance(series, populations, market,
                                      national) -> list[str]:
     try:
         import numpy as np
@@ -88,7 +89,6 @@ def _national_permutation_importance(series, populations, market, natl_unemp,
         saipe_data=load_saipe_data(),
         laus_data=load_laus_data(),
         market_data=market,
-        natl_unemp_data=natl_unemp,
         national_data=national,
     )
     cols_wanted = national_macro_columns()
@@ -136,8 +136,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
               "refresh_national_macro first", file=sys.stderr)
         return 2
     market = load_market_signals_data() or {}
-    from ..acs.ml_features import load_national_unemployment_data
-    natl_unemp = load_national_unemployment_data()
 
     print("[nm-ablation] loading panel ...", file=sys.stderr)
     series, populations, _ = load_panel()
@@ -147,14 +145,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     cal_a = run_stratified_calibration(
         series_by_key=series, anchor_years=anchor_years, horizons=horizons,
         populations=populations, include_ml=True,
-        market_data=market, natl_unemp_data=natl_unemp, national_data={},
+        market_data=market, national_data={},
     )
     print("[nm-ablation] arm B: ML + national-macro registry ...",
           file=sys.stderr)
     cal_b = run_stratified_calibration(
         series_by_key=series, anchor_years=anchor_years, horizons=horizons,
         populations=populations, include_ml=True,
-        market_data=market, natl_unemp_data=natl_unemp, national_data=national,
+        market_data=market, national_data=national,
     )
 
     res_a = _apply_v3_corrections(_residuals_from_calibration(cal_a), cal_a)
@@ -177,9 +175,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         f"horizons {horizons}. Gates: no RMSE regression > "
         f"{RMSE_REGRESSION_LIMIT:.0%} absolute; CI90 coverage in "
         f"[{COVERAGE_BAND[0]:.0%}, {COVERAGE_BAND[1]:.0%}]. Both arms carry "
-        "the shipped mkt_* + natl_unemp features; the only difference is "
+        "the shipped mkt_* features; the only difference is "
         f"the {len(national_macro_columns())} national-macro columns "
-        "(13 series).",
+        f"(14 series incl. national unemployment).",
         "",
         "## ensemble_with_ml — baseline (A) vs +national-macro (B)",
         "",
@@ -190,7 +188,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "## national-macro permutation importance (top 3 per target)",
         "",
         *_national_permutation_importance(
-            series, populations, market, natl_unemp, national),
+            series, populations, market, national),
         "",
         *verdict,
         "",

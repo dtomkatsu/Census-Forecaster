@@ -1,5 +1,5 @@
 {
-  "fetch_date": "2026-07-15",
+  "fetch_date": "2026-07-16",
   "limitations": [
     "Each value is the CALENDAR-YEAR MEAN level in the series' native units (index level, rate %, or yield %). The forecaster applies the log-change / diff / level transform at row-build time (see acs/ml_features NATIONAL_SERIES col_policy).",
     "No-peeking: the year-Y mean is complete by year-end, well before the ACS target at Y+h (h>=1). The current partial year is a mean of available prints.",
@@ -190,7 +190,7 @@
       "2023": 3.959,
       "2024": 4.208,
       "2025": 4.2932,
-      "2026": 4.3271
+      "2026": 4.3288
     },
     "emp_pop": {
       "2005": 62.6833,
@@ -384,7 +384,7 @@
       "2023": 6.8067,
       "2024": 6.7212,
       "2025": 6.5951,
-      "2026": 6.2822
+      "2026": 6.2918
     },
     "rental_vacancy": {
       "1956": 6.05,
@@ -458,6 +458,30 @@
       "2024": 6.75,
       "2025": 7.1,
       "2026": 7.3
+    },
+    "unemp": {
+      "2005": 5.0833,
+      "2006": 4.6083,
+      "2007": 4.6167,
+      "2008": 5.8,
+      "2009": 9.2833,
+      "2010": 9.6083,
+      "2011": 8.9333,
+      "2012": 8.075,
+      "2013": 7.3583,
+      "2014": 6.1583,
+      "2015": 5.275,
+      "2016": 4.875,
+      "2017": 4.3583,
+      "2018": 3.8917,
+      "2019": 3.675,
+      "2020": 8.1,
+      "2021": 5.35,
+      "2022": 3.65,
+      "2023": 3.625,
+      "2024": 4.025,
+      "2025": 4.2636,
+      "2026": 4.3
     }
   },
   "sources": {
@@ -473,7 +497,8 @@
     "jolts_openings": "BLS API (JTS000000000000000JOR)",
     "lfpr": "BLS API (LNS11300000)",
     "mortgage30": "FRED (MORTGAGE30US)",
-    "rental_vacancy": "FRED (RRVRUSQ156N)"
+    "rental_vacancy": "FRED (RRVRUSQ156N)",
+    "unemp": "BLS API (LNS14000000)"
   },
   "version": 1
 }

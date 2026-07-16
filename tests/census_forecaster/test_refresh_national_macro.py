@@ -19,15 +19,17 @@ from census_forecaster.scripts import refresh_national_macro as script
 # Registry ↔ column consistency
 # ---------------------------------------------------------------------------
 
-def test_registry_produces_19_columns():
-    assert len(national_macro_columns()) == 19
-    assert len(NATIONAL_SERIES) == 13
+def test_registry_produces_22_columns():
+    # 14 series: 13 original + migrated national unemployment (level_diff2).
+    assert len(national_macro_columns()) == 22
+    assert len(NATIONAL_SERIES) == 14
 
 
 def test_every_series_has_a_known_source_and_policy():
     for s in NATIONAL_SERIES:
         assert s.source in ("CPI_PANEL", "BLS_FETCH", "FRED")
-        assert s.col_policy in ("logchange1", "diff1", "level_diff1")
+        assert s.col_policy in ("logchange1", "diff1", "level_diff1",
+                                "level_diff2")
 
 
 # ---------------------------------------------------------------------------

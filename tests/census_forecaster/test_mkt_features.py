@@ -186,40 +186,34 @@ def test_bundled_market_signals_load_and_align():
 
 
 # ---------------------------------------------------------------------------
-# National-unemployment leading-indicator feature
+# National-unemployment feature — MIGRATED to the NATIONAL_SERIES registry
+# (2026-07-15): now the "unemp" entry with col_policy level_diff2, delivered
+# via the national_data channel. Values are numerically identical to the
+# former bespoke natl_unemp_data channel (lag0 renamed lvl). These tests pin
+# the migrated behaviour; registry-wide tests live in
+# test_national_macro_features.py.
 # ---------------------------------------------------------------------------
 
-from census_forecaster.acs.ml_features import (  # noqa: E402
-    _NATL_UNEMP,
-    load_national_unemployment_data,
-)
-
-_NATL_COLS = ("natl_unemp_lag0", "natl_unemp_chg1", "natl_unemp_chg2")
+_NATL_COLS = ("natl_unemp_lvl", "natl_unemp_chg1", "natl_unemp_chg2")
 # national unemployment %: rises into a recession then recovers
 NATL = {2012: 8.1, 2013: 7.4, 2014: 6.2, 2015: 5.3, 2016: 4.9,
         2017: 4.4, 2018: 3.9, 2019: 3.7, 2020: 8.1, 2021: 5.3,
         2022: 3.6, 2023: 3.6, 2024: 4.0}
 
 
-def test_natl_columns_in_aux_block_and_named():
+def test_natl_unemp_columns_in_aux_block():
     assert all(c in _AUX_COLUMNS for c in _NATL_COLS)
 
 
-def test_natl_injected_under_national_geoid_only():
-    panel = build_panel_index(_series(), natl_unemp_data=NATL)
-    assert panel.get(_MKT_GEOID, _NATL_UNEMP, 2020) == pytest.approx(8.1)
-    # sentinel is not a real indicator or geoid
-    assert not any(i.startswith("_NATL") for i in panel.indicators)
-    assert _MKT_GEOID not in panel.geoids
-
-
-def test_natl_level_and_changes_are_correct():
-    panel = build_panel_index(_multi_series(), natl_unemp_data=NATL)
+def test_natl_unemp_level_and_changes_match_former_bespoke_values():
+    """The migrated level_diff2 columns must reproduce the exact values the
+    bespoke channel produced (lvl == old lag0; chg1/chg2 identical)."""
+    panel = build_panel_index(_multi_series(), national_data={"unemp": NATL})
     matrix = make_training_rows(
         panel, {"15003": 1_000_000, "15001": 200_000},
         "B19013_001E", cutoff_year=2024)
     cols = matrix.spec.column_names
-    i0 = cols.index("natl_unemp_lag0")
+    i0 = cols.index("natl_unemp_lvl")
     i1 = cols.index("natl_unemp_chg1")
     i2 = cols.index("natl_unemp_chg2")
     for row, (_g, anchor, _t, _h) in zip(matrix.X, matrix.meta):
@@ -239,32 +233,37 @@ def test_natl_level_and_changes_are_correct():
     assert all(len(v) == 1 for v in by_anchor.values())
 
 
-def test_natl_nan_fill_when_absent():
-    panel = build_panel_index(_series())        # no natl_unemp_data
+def test_natl_unemp_no_peeking_change_needs_prior_year():
+    # Only 2020 present → lvl known, but chg1/chg2 NaN (no prior years).
+    panel = build_panel_index(_series(), national_data={"unemp": {2020: 8.1}})
     matrix = make_training_rows(panel, {"15003": 1_000_000},
                                 "B19013_001E", cutoff_year=2024)
     cols = matrix.spec.column_names
-    for name in _NATL_COLS:
-        i = cols.index(name)
-        assert all(math.isnan(row[i]) for row in matrix.X)
-
-
-def test_natl_no_peeking_change_needs_prior_year():
-    # Only 2020 present → lag0 known, but chg1/chg2 NaN (no prior years).
-    panel = build_panel_index(_series(), natl_unemp_data={2020: 8.1})
-    matrix = make_training_rows(panel, {"15003": 1_000_000},
-                                "B19013_001E", cutoff_year=2024)
-    cols = matrix.spec.column_names
-    i0, i1 = cols.index("natl_unemp_lag0"), cols.index("natl_unemp_chg1")
+    i0, i1 = cols.index("natl_unemp_lvl"), cols.index("natl_unemp_chg1")
     for row, (_g, anchor, _t, _h) in zip(matrix.X, matrix.meta):
         if anchor == 2020:
             assert row[i0] == pytest.approx(8.1)
         assert math.isnan(row[i1])   # never computable with one year
 
 
-def test_bundled_natl_unemployment_loads_if_present():
-    data = load_national_unemployment_data()
-    if data is None:
-        pytest.skip("bls_national_unemployment.json not committed")
-    assert all(isinstance(y, int) for y in data)
-    assert all(0 < v < 30 for v in data.values())   # plausible % range
+def test_bundled_unemp_matches_legacy_anchor_file():
+    """national_macro.json 'unemp' must equal the legacy anchor file's
+    values within rounding (3dp legacy vs 4dp registry) — proof the
+    migration changed the plumbing, not the data."""
+    import json
+    from pathlib import Path
+
+    from census_forecaster.acs.ml_features import load_national_macro_data
+    data = load_national_macro_data()
+    if data is None or "unemp" not in data:
+        pytest.skip("national_macro.json missing 'unemp'")
+    legacy_path = (Path(build_panel_index.__code__.co_filename).parent.parent
+                   / "data" / "anchors" / "bls_national_unemployment.json")
+    if not legacy_path.exists():
+        pytest.skip("legacy anchor file absent")
+    legacy = {int(y): float(v) for y, v in
+              json.loads(legacy_path.read_text())["values_by_year"].items()}
+    common = set(data["unemp"]) & set(legacy)
+    assert common
+    for y in common:
+        assert data["unemp"][y] == pytest.approx(legacy[y], abs=1e-3)
