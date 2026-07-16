@@ -1108,6 +1108,48 @@ Two paths, both ablation-gated by
    Rejected on balance: an anchor that buys point accuracy in shock
    years by making intervals overconfident is the wrong trade for this
    repo's calibration-first discipline. The registry row was removed;
-   tests pin the removal. Future work: a damped/clamped variant or a
-   level-difference anchor type. The data file is still refreshed (the
-   causal screen uses the monthly series) — it just doesn't anchor.
+   tests pin the removal. The data file is still refreshed (the causal
+   screen uses the monthly series) — it just doesn't anchor.
+
+3. **National unemployment reframed as an ML feature (2026-07-15).**
+   The rejected anchor's signal was moved to where it belongs — the ML
+   leading-indicator path. National unemployment isn't a good
+   *contemporaneous* anchor for S2301 (LAUS already owns the county
+   level), but national labour markets *lead* local ones, and a tree
+   can learn *when* to trust the signal instead of applying it blindly.
+   `load_national_unemployment_data()` reads the same
+   `bls_national_unemployment.json` (annual-average %) into three
+   geoid-constant columns under `__national__`: `natl_unemp_lag0`
+   (level at the anchor year) plus `natl_unemp_chg1`/`chg2` (1- and
+   2-year percentage-point changes — the change is what leads). This
+   sidesteps every anchor failure: no log-space SE (raw % + pp
+   deltas), no level-offset (only the change is used directionally),
+   and inverse-variance weighting is replaced by the tree deciding
+   relevance. No-peeking holds structurally: the anchor-year annual
+   average is final by the following January, before the ACS target
+   (anchor + h, h ≥ 1) is published. Ablation-gated by
+   `scripts/compare_natl_unemp_ablation.py`
+   (`backtests/results/natl_unemp_ablation_2026-07-15.md`); ships
+   opt-in. Verdict: ensemble-level wash (national geoid-constant signals
+   act as year-effects), but permutation importance is decisive and
+   theory-consistent — `natl_unemp_lag0` is the single **strongest**
+   feature for S2301 unemployment (+0.243) and the 2-year change
+   predicts S1701 poverty (+0.033). The vindication of the feature path:
+   the same strong predictive content the anchor carried is now weighed
+   adaptively by the tree, without the anchor's coverage collapse.
+
+### Feature-column ordering fix (2026-07-15)
+
+While adding the national-unemployment columns, a latent bug surfaced:
+`FeatureSpec.column_names` concatenated the auxiliary blocks
+(bps/saipe/laus/mkt) *ahead* of the cross-indicator columns, but
+`_build_row` emits them *after* — so the name→position map was off by
+the cross-column count whenever cross columns existed. The trained
+model was unaffected (it is name-blind, and training and inference use
+the same builder), but any name-keyed readout — notably permutation
+importance — read mislabeled columns, which is why the mkt importance
+table in `market_ml_ablation_2026-07-14.md` is unreliable.
+`column_names` now interleaves the cross block correctly
+(`_BASE_COLUMNS + cross + _AUX_COLUMNS + horizon`), and
+`test_column_names_match_actual_row_order` pins a multi-indicator
+panel against distinctive aux values so this can't silently return.

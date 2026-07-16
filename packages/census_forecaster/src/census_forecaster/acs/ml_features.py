@@ -84,10 +84,15 @@ _LAUS_INDICATOR = "_LAUS_UNEMPLOYMENT_RATE"
 # sentinel "_" + name.upper().
 _MKT_GEOID = "__national__"
 # The fixed channel set the mkt_* columns read (must stay aligned with
-# the mkt_* block in _CORE_COLUMNS).
+# the mkt_* block in _AUX_COLUMNS).
 _MKT_ENERGY = "_MKT_ENERGY_MOM"
 _MKT_SHIPPING = "_MKT_SHIPPING_MOM"
 _MKT_REIT = "_MKT_REIT_MOM"
+
+# National unemployment leading indicator (CPS LNS14000000, annual avg %),
+# also geoid-constant → stored under _MKT_GEOID. Sentinel excluded from
+# PanelIndex.indicators (never a cross-indicator feature).
+_NATL_UNEMP = "_NATL_UNEMP_RATE"
 
 
 def build_panel_index(
@@ -96,6 +101,7 @@ def build_panel_index(
     saipe_data: Optional[Mapping[str, Mapping[int, float]]] = None,
     laus_data: Optional[Mapping[str, Mapping[int, float]]] = None,
     market_data: Optional[Mapping[str, Mapping[int, float]]] = None,
+    natl_unemp_data: Optional[Mapping[int, float]] = None,
 ) -> PanelIndex:
     """Build a PanelIndex from the calibration panel.
 
@@ -117,6 +123,11 @@ def build_panel_index(
         stored once under the reserved ``__national__`` pseudo-geoid.
         Momentum values are signed, so unlike the other auxiliaries
         negatives are kept (only non-finite values are dropped).
+    natl_unemp_data : optional {year → national_unemployment_rate_pct}
+        CPS national unemployment rate (annual average, %), geoid-constant
+        (stored under ``__national__``). Feeds the ``natl_unemp_*`` columns
+        — the leading-indicator reframing of the rejected national
+        unemployment anchor.
 
     None of the auxiliary indicators are added to ``indicators`` so they
     never appear as cross-indicator features for other ACS targets —
@@ -168,6 +179,11 @@ def build_panel_index(
                 if val is not None and math.isfinite(float(val)):
                     est[(_MKT_GEOID, sentinel, int(year))] = float(val)
 
+    if natl_unemp_data is not None:
+        for year, rate in natl_unemp_data.items():
+            if rate is not None and math.isfinite(float(rate)) and rate > 0:
+                est[(_MKT_GEOID, _NATL_UNEMP, int(year))] = float(rate)
+
     return PanelIndex(
         estimate_by_key=est,
         indicators=tuple(sorted(indicators)),
@@ -180,12 +196,21 @@ def build_panel_index(
 # Feature spec
 # -----------------------------------------------------------------------------
 
-# Fixed order of "core" feature columns (lagged target + county metadata).
-# Cross-indicator columns are appended in the panel's `indicators` order
-# (ascending by code), excluding the target indicator. Horizon column is
-# always last so back-end code can index by name.
+# Column ordering (must mirror `_build_row` exactly):
+#
+#     _BASE_COLUMNS  +  cross_indicator_columns  +  _AUX_COLUMNS  +  (horizon,)
+#
+# `_build_row` emits the base block, then the cross-indicator columns (in
+# the panel's `indicators` order, excluding the target), then the auxiliary
+# leading-indicator blocks, then horizon. `FeatureSpec.column_names` must
+# interleave the cross block in the SAME place — see the property below.
+# (A prior version concatenated all aux columns into `_CORE_COLUMNS` ahead
+# of the cross block, so `column_names` disagreed with the real row order
+# by the cross-column count; harmless to the model, which is name-blind,
+# but it mislabeled any name→position lookup such as permutation
+# importance. Regression-tested in test_ml_features.py.)
 
-_CORE_COLUMNS: tuple[str, ...] = (
+_BASE_COLUMNS: tuple[str, ...] = (
     "log_lag_0",       # log(y[anchor])
     "log_lag_1",       # log(y[anchor - 1])
     "log_lag_2",       # log(y[anchor - 2])
@@ -201,6 +226,11 @@ _CORE_COLUMNS: tuple[str, ...] = (
     # Filled in with sin/cos of 2-pi · (anchor mod 11) / 11 — no actual
     # cyclical structure, but a robust target-encoded pseudo-time index.
     "anchor_year_norm",
+)
+
+# Auxiliary leading-indicator blocks — appended AFTER the cross-indicator
+# columns in the real row (see `_build_row`).
+_AUX_COLUMNS: tuple[str, ...] = (
     # BPS leading-indicator columns (18-24 month lead for vacancy/migration).
     # Log-scaled permit counts; NaN-filled when BPS data absent for that
     # county/year. HistGradientBoosting handles NaN via native missing-value
@@ -236,7 +266,24 @@ _CORE_COLUMNS: tuple[str, ...] = (
     "mkt_reit_mom_lag0",      # REIT channel (XLRE/VNQ → ZHVI/ZORI)
     "mkt_reit_mom_lag1",      # REIT channel, prior year (VNQ Granger
                               # survives at lag 12 — the lead is ~1yr)
+    # National unemployment leading-indicator columns (CPS LNS14000000,
+    # annual average, %). Geoid-constant (broadcast under __national__).
+    # National labour markets turn before local ones, so the level and
+    # recent change as of the anchor year hint at where local
+    # unemployment / income / rent-burden are heading over the horizon.
+    # This is the reframing of the rejected national-unemployment ANCHOR
+    # (see acs/sources/base.py + METHODOLOGY.md §Market signals): as a
+    # feature the model learns *when* to trust it, dodging the rate-band
+    # / coverage failures that sank the anchor. NaN-filled when absent.
+    "natl_unemp_lag0",    # national unemployment rate (%) at anchor year
+    "natl_unemp_chg1",    # 1-yr change (pp): lag0 − lag1
+    "natl_unemp_chg2",    # 2-yr change (pp): lag0 − lag2
 )
+
+# Back-compat alias: full core-column tuple (base + aux), length-preserving.
+# NOTE: this is NOT the row order — see `_BASE_COLUMNS`/`_AUX_COLUMNS` and
+# `FeatureSpec.column_names` for the real ordering with cross columns.
+_CORE_COLUMNS: tuple[str, ...] = _BASE_COLUMNS + _AUX_COLUMNS
 
 _HORIZON_COLUMN = "horizon"
 
@@ -249,7 +296,13 @@ class FeatureSpec:
 
     @property
     def column_names(self) -> tuple[str, ...]:
-        return _CORE_COLUMNS + self.cross_indicator_columns + (_HORIZON_COLUMN,)
+        # Mirrors `_build_row`: base, then cross, then aux blocks, then horizon.
+        return (
+            _BASE_COLUMNS
+            + self.cross_indicator_columns
+            + _AUX_COLUMNS
+            + (_HORIZON_COLUMN,)
+        )
 
     @property
     def n_features(self) -> int:
@@ -433,6 +486,19 @@ def _build_row(
         _mkt(_MKT_REIT, anchor_year - 1),
     ])
 
+    # National unemployment features (geoid-constant; raw % and pp changes).
+    nu0 = panel.get(_MKT_GEOID, _NATL_UNEMP, anchor_year)
+    nu1 = panel.get(_MKT_GEOID, _NATL_UNEMP, anchor_year - 1)
+    nu2 = panel.get(_MKT_GEOID, _NATL_UNEMP, anchor_year - 2)
+    natl_lag0 = float(nu0) if (nu0 is not None and math.isfinite(nu0)) else float("nan")
+    natl_chg1 = (float(nu0) - float(nu1)) if (
+        nu0 is not None and nu1 is not None
+        and math.isfinite(nu0) and math.isfinite(nu1)) else float("nan")
+    natl_chg2 = (float(nu0) - float(nu2)) if (
+        nu0 is not None and nu2 is not None
+        and math.isfinite(nu0) and math.isfinite(nu2)) else float("nan")
+    row.extend([natl_lag0, natl_chg1, natl_chg2])
+
     row.append(float(horizon))
     return row
 
@@ -605,6 +671,28 @@ def load_market_signals_data() -> Optional[dict[str, dict[int, float]]]:
     }
 
 
+def load_national_unemployment_data() -> Optional[dict[int, float]]:
+    """Load the national unemployment rate series as ``{year → rate_pct}``.
+
+    Reads ``data/anchors/bls_national_unemployment.json`` (``values_by_year``;
+    written by ``refresh_market_panel.py``). Returns None if absent — the
+    ``natl_unemp_*`` columns then NaN-fill. This is the leading-indicator
+    home of national unemployment; it is deliberately NOT registered as an
+    ACS anchor (that was tried and rejected — see ``acs/sources/base.py``).
+    """
+    path = (
+        Path(__file__).parent.parent / "data" / "anchors"
+        / "bls_national_unemployment.json"
+    )
+    if not path.exists():
+        return None
+    import json as _json
+    with open(path) as f:
+        payload = _json.load(f)
+    raw = payload.get("values_by_year", {})
+    return {int(yr): float(v) for yr, v in raw.items() if v is not None}
+
+
 __all__ = [
     "PanelIndex",
     "FeatureSpec",
@@ -614,6 +702,7 @@ __all__ = [
     "load_saipe_data",
     "load_laus_data",
     "load_market_signals_data",
+    "load_national_unemployment_data",
     "make_feature_spec",
     "make_training_rows",
     "make_inference_row",

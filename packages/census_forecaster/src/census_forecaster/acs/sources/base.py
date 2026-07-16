@@ -406,10 +406,13 @@ _REGISTRY_SPEC = [
     #     built for price/income indexes; recession swings in a *rate*
     #     series are too violent for its SE assumptions — which is the
     #     mechanism behind the coverage loss above.
-    # Possible future work: a damped/clamped variant or a level-difference
-    # anchor type. The data file (bls_national_unemployment.json) is still
-    # refreshed — the causal screen uses the monthly series — it just
-    # doesn't anchor.
+    # The data file (bls_national_unemployment.json) is still refreshed and
+    # DOES feed the forecaster — but as an ML leading-indicator FEATURE
+    # (acs/ml_features.py natl_unemp_* columns; load_national_unemployment_data),
+    # not as an anchor. The feature path dodges every failure above: raw %
+    # + pp changes (no log-space SE), only the change transfers (no level
+    # offset), and the tree learns when to trust it. See METHODOLOGY.md
+    # §Market signals and compare_natl_unemp_ablation.py.
 ]
 
 

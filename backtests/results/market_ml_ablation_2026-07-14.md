@@ -25,6 +25,15 @@ Panel: 1440 series; anchors [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 202
 
 ### mkt_* permutation importance (year-effect collinearity check)
 
+> **⚠️ These importance numbers are MISLABELED — do not cite them.**
+> They were produced before the `FeatureSpec.column_names` ordering fix
+> (2026-07-15): `column_names` disagreed with the real `_build_row`
+> column order by the cross-indicator-column count, so `cols.index(name)`
+> read the wrong column. The RMSE/coverage table above is unaffected
+> (the model is name-blind; both arms use the same builder). Corrected
+> importances live in `natl_unemp_ablation_2026-07-15.md` and are
+> regression-guarded by `test_column_names_match_actual_row_order`.
+
 - B19013_001E / mkt_energy_mom_lag0: +0.01789 ± 0.00075
 - B19013_001E / mkt_shipping_mom_lag0: +0.00882 ± 0.00063
 - B19013_001E / mkt_reit_mom_lag0: +0.00423 ± 0.00036

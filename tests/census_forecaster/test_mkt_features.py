@@ -6,8 +6,10 @@ import math
 import pytest
 
 from census_forecaster.acs.ml_features import (
-    _CORE_COLUMNS,
+    _AUX_COLUMNS,
+    _BASE_COLUMNS,
     _MKT_GEOID,
+    _HORIZON_COLUMN,
     build_panel_index,
     load_market_signals_data,
     make_feature_spec,
@@ -31,6 +33,17 @@ def _series(geoid="15003", indicator="B19013_001E",
     }
 
 
+def _multi_series(geoids=("15003", "15001"),
+                  indicators=(("B19013_001E", 80_000.0),
+                              ("B25077_001E", 500_000.0))):
+    """Multi-indicator panel → cross_indicator_columns is non-empty."""
+    out = {}
+    for g in geoids:
+        for ind, base in indicators:
+            out.update(_series(g, ind, base=base))
+    return out
+
+
 MARKET = {
     "mkt_energy_mom": {y: 0.10 + 0.01 * (y - 2012) for y in range(2012, 2025)},
     "mkt_shipping_mom": {y: -0.05 for y in range(2012, 2025)},
@@ -45,10 +58,40 @@ _MKT_COLS = ("mkt_energy_mom_lag0", "mkt_shipping_mom_lag0",
 # Column layout
 # ---------------------------------------------------------------------------
 
-def test_mkt_columns_present_and_last_before_horizon():
-    # The mkt block is the tail of _CORE_COLUMNS (order stability matters
-    # for any persisted model's feature alignment).
-    assert _CORE_COLUMNS[-4:] == _MKT_COLS
+def test_mkt_columns_in_aux_block():
+    # The mkt block lives in the aux columns (after cross, before horizon).
+    assert all(c in _AUX_COLUMNS for c in _MKT_COLS)
+
+
+def test_column_names_match_actual_row_order():
+    """REGRESSION: column_names must describe the REAL _build_row order.
+
+    A prior version concatenated aux columns ahead of the cross block in
+    column_names, so with any cross-indicator columns present the name→
+    position map was off by the cross-column count (silent: the model is
+    name-blind, but permutation importance read mislabeled columns).
+    Multi-indicator panel + distinctive aux values pin every named column
+    to its true row slot."""
+    laus = {"15003": {y: 3.5 for y in range(2012, 2025)},
+            "15001": {y: 4.5 for y in range(2012, 2025)}}
+    panel = build_panel_index(_multi_series(), laus_data=laus,
+                              market_data=MARKET)
+    matrix = make_training_rows(
+        panel, {"15003": 1_000_000, "15001": 200_000},
+        "B19013_001E", cutoff_year=2024)
+    assert matrix.spec.cross_indicator_columns, "need cross cols for this test"
+    cols = matrix.spec.column_names
+    assert len(cols) == len(matrix.X[0])
+    # Base columns come first, cross next, aux after, horizon last.
+    n_base = len(_BASE_COLUMNS)
+    assert cols[:n_base] == _BASE_COLUMNS
+    assert cols[-1] == _HORIZON_COLUMN
+    # The named aux columns must hold their real values, per row.
+    i_laus = cols.index("laus_lag0")
+    i_energy = cols.index("mkt_energy_mom_lag0")
+    for row, (geoid, anchor, _t, _h) in zip(matrix.X, matrix.meta):
+        assert row[i_laus] == pytest.approx(3.5 if geoid == "15003" else 4.5)
+        assert row[i_energy] == pytest.approx(MARKET["mkt_energy_mom"][anchor])
 
 
 def test_spec_column_order_stable_with_market_data():
@@ -140,3 +183,88 @@ def test_bundled_market_signals_load_and_align():
         assert all(math.isfinite(v) for v in by_year.values())
         # momenta are log changes; anything beyond ±2 (≈ ±640%) is corrupt
         assert all(abs(v) < 2.0 for v in by_year.values()), name
+
+
+# ---------------------------------------------------------------------------
+# National-unemployment leading-indicator feature
+# ---------------------------------------------------------------------------
+
+from census_forecaster.acs.ml_features import (  # noqa: E402
+    _NATL_UNEMP,
+    load_national_unemployment_data,
+)
+
+_NATL_COLS = ("natl_unemp_lag0", "natl_unemp_chg1", "natl_unemp_chg2")
+# national unemployment %: rises into a recession then recovers
+NATL = {2012: 8.1, 2013: 7.4, 2014: 6.2, 2015: 5.3, 2016: 4.9,
+        2017: 4.4, 2018: 3.9, 2019: 3.7, 2020: 8.1, 2021: 5.3,
+        2022: 3.6, 2023: 3.6, 2024: 4.0}
+
+
+def test_natl_columns_in_aux_block_and_named():
+    assert all(c in _AUX_COLUMNS for c in _NATL_COLS)
+
+
+def test_natl_injected_under_national_geoid_only():
+    panel = build_panel_index(_series(), natl_unemp_data=NATL)
+    assert panel.get(_MKT_GEOID, _NATL_UNEMP, 2020) == pytest.approx(8.1)
+    # sentinel is not a real indicator or geoid
+    assert not any(i.startswith("_NATL") for i in panel.indicators)
+    assert _MKT_GEOID not in panel.geoids
+
+
+def test_natl_level_and_changes_are_correct():
+    panel = build_panel_index(_multi_series(), natl_unemp_data=NATL)
+    matrix = make_training_rows(
+        panel, {"15003": 1_000_000, "15001": 200_000},
+        "B19013_001E", cutoff_year=2024)
+    cols = matrix.spec.column_names
+    i0 = cols.index("natl_unemp_lag0")
+    i1 = cols.index("natl_unemp_chg1")
+    i2 = cols.index("natl_unemp_chg2")
+    for row, (_g, anchor, _t, _h) in zip(matrix.X, matrix.meta):
+        assert row[i0] == pytest.approx(NATL[anchor])
+        if anchor - 1 in NATL:
+            assert row[i1] == pytest.approx(NATL[anchor] - NATL[anchor - 1])
+        else:
+            assert math.isnan(row[i1])
+        if anchor - 2 in NATL:
+            assert row[i2] == pytest.approx(NATL[anchor] - NATL[anchor - 2])
+        else:
+            assert math.isnan(row[i2])
+    # geoid-constant: identical across counties at the same anchor
+    by_anchor = {}
+    for row, (_g, anchor, _t, h) in zip(matrix.X, matrix.meta):
+        by_anchor.setdefault((anchor, h), set()).add(row[i0])
+    assert all(len(v) == 1 for v in by_anchor.values())
+
+
+def test_natl_nan_fill_when_absent():
+    panel = build_panel_index(_series())        # no natl_unemp_data
+    matrix = make_training_rows(panel, {"15003": 1_000_000},
+                                "B19013_001E", cutoff_year=2024)
+    cols = matrix.spec.column_names
+    for name in _NATL_COLS:
+        i = cols.index(name)
+        assert all(math.isnan(row[i]) for row in matrix.X)
+
+
+def test_natl_no_peeking_change_needs_prior_year():
+    # Only 2020 present → lag0 known, but chg1/chg2 NaN (no prior years).
+    panel = build_panel_index(_series(), natl_unemp_data={2020: 8.1})
+    matrix = make_training_rows(panel, {"15003": 1_000_000},
+                                "B19013_001E", cutoff_year=2024)
+    cols = matrix.spec.column_names
+    i0, i1 = cols.index("natl_unemp_lag0"), cols.index("natl_unemp_chg1")
+    for row, (_g, anchor, _t, _h) in zip(matrix.X, matrix.meta):
+        if anchor == 2020:
+            assert row[i0] == pytest.approx(8.1)
+        assert math.isnan(row[i1])   # never computable with one year
+
+
+def test_bundled_natl_unemployment_loads_if_present():
+    data = load_national_unemployment_data()
+    if data is None:
+        pytest.skip("bls_national_unemployment.json not committed")
+    assert all(isinstance(y, int) for y in data)
+    assert all(0 < v < 30 for v in data.values())   # plausible % range
