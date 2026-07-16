@@ -47,10 +47,26 @@ MONTHLY_TARGETS: dict[str, tuple[str, str]] = {
     "HONOLULU_CPI":         ("CUURS49ASA0",             "log_diff"),  # bimonthly
 }
 
-# Pre-registered ticker → monthly-target pairs. The ACS-cell affinities
-# in universe.py are annual concepts; each maps here to its testable
-# monthly counterpart (income → labour market, home value/rent → Zillow,
-# price level → CPI).
+# National-macro monthly PREDICTORS (predictor_name → macro_monthly.json
+# series id). These are national Census/BLS/FRED series that plausibly LEAD
+# Hawaii trends; run_market_screen merges them into the predictor dict
+# alongside the tickers. CAVEAT (documented in the report limitations):
+# run_screen applies log_return to whatever it is handed, so for rate-level
+# series (mortgage, 10yr, LFPR) the "log_return" is a rough proxy for a
+# percentage-point change — acceptable for a predictive-precedence screen,
+# never used as a forecast input.
+NATIONAL_PREDICTORS: dict[str, str] = {
+    "US_AHE":        "CES0500000003",         # avg hourly earnings (wages)
+    "US_LFPR":       "LNS11300000",           # labour-force participation
+    "US_EMPPOP":     "LNS12300000",           # employment-population ratio
+    "US_JOLTS":      "JTS000000000000000JOR", # job openings rate
+    "US_MORTGAGE30": "MORTGAGE30US",          # 30-yr mortgage rate (FRED)
+    "US_DGS10":      "DGS10",                 # 10-yr Treasury yield (FRED)
+}
+
+# Pre-registered predictor → monthly-target pairs. Tickers map ACS-cell
+# affinities (universe.py) to a monthly counterpart; national predictors
+# map to the labour-market / housing channel they lead.
 HYPOTHESIS_PAIRS: tuple[tuple[str, str], ...] = (
     ("SPY", "HI_UNEMPLOYMENT"),
     ("QQQ", "HI_UNEMPLOYMENT"),
@@ -68,6 +84,15 @@ HYPOTHESIS_PAIRS: tuple[tuple[str, str], ...] = (
     ("HE", "HI_UNEMPLOYMENT"),
     ("MATX", "HONOLULU_CPI"),
     ("MATX", "HONOLULU_ZHVI"),
+    # --- national-macro predictors (Phase 2) ---
+    ("US_MORTGAGE30", "HONOLULU_ZHVI"),   # rates → home values (inverse, lagged)
+    ("US_MORTGAGE30", "HONOLULU_ZORI"),   # rates → rents
+    ("US_DGS10", "HONOLULU_ZHVI"),        # long rates → home values
+    ("US_JOLTS", "US_UNEMPLOYMENT"),      # openings lead national unemployment
+    ("US_JOLTS", "HI_UNEMPLOYMENT"),      # ...and local
+    ("US_AHE", "HI_UNEMPLOYMENT"),        # national wages vs local slack
+    ("US_LFPR", "HI_UNEMPLOYMENT"),       # participation vs local slack
+    ("US_EMPPOP", "HI_UNEMPLOYMENT"),
 )
 
 # Ticker transforms screened. mom12 is only used for cross-correlation

@@ -27,6 +27,7 @@ from ..markets.panel import load_prices_panel
 from ..markets.screen import (
     HYPOTHESIS_PAIRS,
     MONTHLY_TARGETS,
+    NATIONAL_PREDICTORS,
     ScreenReport,
     annual_descriptive_leads,
     month_index,
@@ -71,6 +72,23 @@ def load_monthly_targets() -> dict[str, dict[int, float]]:
         rows = macro.get(source_id) or cpi.get(source_id)
         if rows:
             out[key] = series_to_monthly_dict(rows)
+    return out
+
+
+def load_national_monthly_predictors() -> dict[str, dict[int, float]]:
+    """National-macro monthly predictors keyed by their US_* screen name.
+
+    Reads the raw monthly levels from macro_monthly.json (written by
+    refresh_national_macro) and returns ``{US_NAME: {month_index: level}}``
+    for merging into the screen's predictor dict alongside the tickers.
+    """
+    out: dict[str, dict[int, float]] = {}
+    macro_path = _MARKETS_DIR / "macro_monthly.json"
+    macro = _load_json(macro_path)["series"] if macro_path.exists() else {}
+    for name, source_id in NATIONAL_PREDICTORS.items():
+        rows = macro.get(source_id)
+        if rows:
+            out[name] = series_to_monthly_dict(rows)
     return out
 
 
@@ -204,6 +222,13 @@ def render_markdown(
         "- Signals passing here still require the Phase-3 walk-forward "
         "ablation (RMSE improvement + CI90 coverage in [85%, 95%]) "
         "before touching any forecast.",
+        "- National-macro predictors (US_*): the screen applies log_return "
+        "to whatever it is handed, so for rate-level series (US_MORTGAGE30, "
+        "US_DGS10, US_LFPR, US_EMPPOP) the transform is a rough proxy for a "
+        "percentage-point change. Fine for predictive precedence; these are "
+        "never used as forecast inputs. Labor-participation leads that are "
+        "not robust to 2020 exclusion are COVID-coincident (xcorr peaks at "
+        "lag 0), not genuine leads.",
         "",
     ]
     return "\n".join(lines)
@@ -271,6 +296,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
 
     tickers = ticker_month_series(panel)
+    # Merge national-macro monthly predictors (Phase 2) into the predictor
+    # dict; run_screen is shape-agnostic and only tests registered pairs.
+    national = load_national_monthly_predictors()
+    tickers.update(national)
+    if national:
+        print(f"[screen] +{len(national)} national predictors: "
+              f"{', '.join(sorted(national))}", file=sys.stderr)
     targets = load_monthly_targets()
     missing = [k for k in MONTHLY_TARGETS if k not in targets]
     if missing:
