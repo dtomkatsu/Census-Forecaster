@@ -46,7 +46,7 @@ geo = ["geopandas>=0.14"]
 cex = ["pyreadstat>=1.2"]
 
 [tool.hatch.build.targets.wheel]
+# packages already ships every tracked file under src/tax_modeler,
+# including data/. Do NOT re-add a force-include for data/ — hatchling
+# ≥1.19 fails the build on the duplicate paths it creates.
 packages = ["src/tax_modeler"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"src/tax_modeler/data" = "tax_modeler/data"
