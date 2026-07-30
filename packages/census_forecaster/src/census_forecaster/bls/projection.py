@@ -9,9 +9,19 @@ with a calibrated 90% prediction interval.
 
 Algorithm
 ~~~~~~~~~
-1. Recency-weighted geometric mean of pairwise per-month rates over the
-   last *N* pairs (`max_pairs`, default = all). Most recent pair weight
-   1.0; each step back halves the weight.
+1. Trend rate estimation, one of two paths:
+   a. **Year-over-year path** (default whenever the series has at least
+      `_MIN_YOY_OBS` observations with a print exactly 12 months prior):
+      per-month log rates from 12-month changes, blended with a
+      time-based recency weight `0.5^(months_back / 8.3)`. YoY
+      differencing cancels seasonality by construction (these are NSA
+      series), and per-calendar-month decay makes the estimate
+      cadence-invariant — a bimonthly and a monthly series tracing the
+      same path get the same trend.
+   b. **Legacy pairwise path** (short series): recency-weighted mean of
+      consecutive-pair per-month rates, weight halving per *pair*. Kept
+      for series too short to difference annually; note its newest pair
+      carries ~50% of total weight, so it is deliberately reactive.
 2. Clip the rate to ±`PROJ_MONTHLY_CAP` (default 0.0189/mo ≈ ±25%/yr).
 3. Apply Gardner-McKenzie damped compounding: at horizon h, rate at month
    k applies ``rate × phi^(k-1)``. Default phi = 0.92, half-life ≈ 8 months.
@@ -63,6 +73,20 @@ PROJ_DAMPING = 0.92
 # for your own region with `census_forecaster.backtest.cpi.calibrate`.
 _PROJ_SE_INFLATOR = 1.50
 
+# Recency half-life (calendar months) for the YoY trend estimator: a
+# 12-month log change observed H months ago carries half the weight of
+# one observed at the series end. 8.3 mirrors PROJ_DAMPING's half-life
+# (ln 0.5 / ln 0.92 ≈ 8.31) but is an independent, sweepable constant —
+# changing φ does NOT silently retune the smoother.
+_TREND_HALF_LIFE_MONTHS = 8.3
+
+# Minimum YoY observations before the seasonality-free path activates.
+# Below this the legacy pairwise smoother runs (its 2-point degenerate
+# behavior is part of the public contract). 4 YoY obs ≈ 16 months of
+# monthly data or ~19 months bimonthly — every bundled panel series
+# clears it; short synthetic fixtures do not.
+_MIN_YOY_OBS = 4
+
 # Fallback residual log-std for series with only one valid pair (n=2).
 # Median across-series in-sample std of pairwise log rates is ≈ 0.005 for
 # Honolulu food/rent/all-items at the bimonthly cadence.
@@ -113,24 +137,65 @@ def _latest_observed_point(points: list[dict]) -> dict | None:
     return max(points, key=lambda p: (p["year"], int(p["period"][1:])))
 
 
+def _yoy_monthly_log_rates(ordered: list[dict]) -> list[tuple[int, float]]:
+    """Per-month log rates from exact 12-month differences.
+
+    Returns [(month_index, log(v_t / v_{t-12}) / 12), …] in chronological
+    order, one entry per observation whose exact 12-months-prior print
+    exists. Same-calendar-month differencing cancels seasonality on NSA
+    series and is unaffected by the print cadence (a bimonthly odd-month
+    grid pairs with itself) or by isolated holes (e.g. a missing 2025-10
+    print only removes the two YoY pairs that touch it).
+    """
+    by_index: dict[int, float] = {}
+    for p in ordered:
+        if p["value"] > 0:
+            by_index[p["year"] * 12 + int(p["period"][1:])] = p["value"]
+    out: list[tuple[int, float]] = []
+    for idx in sorted(by_index):
+        prev = by_index.get(idx - 12)
+        if prev is not None:
+            out.append((idx, math.log(by_index[idx] / prev) / 12.0))
+    return out
+
+
 def smoothed_monthly_rate(
     ordered: list[dict],
     max_pairs: int | None = None,
 ) -> float | None:
-    """Recency-weighted geometric mean of pairwise per-month growth rates.
+    """Recency-weighted per-month trend rate.
 
-    For a series with N≥2 observations, computes the per-month compound
-    rate between each consecutive pair, then blends with exponential
-    recency weights (most-recent = 1.0, prior = 0.5, prior-prior = 0.25, …).
+    Two paths, selected by data availability:
 
-    With exactly 2 points, returns the single pairwise rate (degenerate
-    case preserved for backwards compatibility). With 3+ points, smoothing
-    absorbs single-period noise.
+    **YoY path** (≥ `_MIN_YOY_OBS` year-over-year observations): blends
+    the per-month log rates of exact 12-month changes with a time-based
+    recency weight `0.5^(months_back / _TREND_HALF_LIFE_MONTHS)`.
+    Seasonality-free (NSA series difference against the same calendar
+    month) and cadence-invariant (decay is per calendar month, not per
+    print). `max_pairs` caps the lookback to the most recent N YoY
+    observations.
 
-    `max_pairs` (optional) caps the lookback to the most recent N pairs.
+    **Legacy pairwise path** (shorter series): recency-weighted mean of
+    consecutive-pair per-month compound rates, weight halving per pair
+    (most-recent = 1.0, prior = 0.5, …). With exactly 2 points, returns
+    the single pairwise rate (degenerate case preserved for backwards
+    compatibility). `max_pairs` caps the lookback to the most recent N
+    pairs.
 
     Returns None if no usable pair exists.
     """
+    yoy = _yoy_monthly_log_rates(ordered)
+    if len(yoy) >= _MIN_YOY_OBS:
+        if max_pairs is not None and max_pairs > 0:
+            yoy = yoy[-max_pairs:]
+        end_idx = yoy[-1][0]
+        num = den = 0.0
+        for idx, log_rate in yoy:
+            w = 0.5 ** ((end_idx - idx) / _TREND_HALF_LIFE_MONTHS)
+            num += log_rate * w
+            den += w
+        return math.expm1(num / den)
+
     if max_pairs is not None and max_pairs > 0 and len(ordered) > max_pairs + 1:
         ordered = ordered[-(max_pairs + 1):]
 

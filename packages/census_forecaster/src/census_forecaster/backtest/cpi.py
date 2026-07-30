@@ -90,20 +90,24 @@ from ..bls.client import fetch_cpi_data
 CACHE_DIR   = Path(os.environ.get("CENSUS_FORECASTER_BACKTEST_DIR", str(Path.cwd() / "backtests"))) / "cache" / "cpi"
 RESULTS_DIR = Path(os.environ.get("CENSUS_FORECASTER_BACKTEST_DIR", str(Path.cwd() / "backtests"))) / "results"
 
-# Series scope. Honolulu CPI; bimonthly with odd-month data periods.
+# Series scope. Urban Hawaii CPI (S49F, published from 2017; all-items
+# bimonthly on odd months). CORRECTED 2026-07-27: the previous S49A IDs
+# were labelled Honolulu but are Los Angeles per the BLS API catalog —
+# the κ=1.50 provenance run ("5-series × 63-anchor") was therefore an
+# LA panel at monthly cadence. See census_forecaster.bls.panel.
 BACKTEST_SERIES = [
-    "CUURS49ASAF11",   # food at home
-    "CUURS49ASEHA",    # rent of primary residence
-    "CUURS49ASA0",     # all items
-    "CUURS49ASEFV",    # fruits and vegetables
-    "CUURS49ASETB01",  # gasoline (high-volatility stress test)
+    "CUURS49FSAF11",   # food at home
+    "CUURS49FSEHA",    # rent of primary residence
+    "CUURS49FSA0",     # all items
+    "CUURS49FSEFV",    # fruits and vegetables
+    "CUURS49FSETB01",  # gasoline (high-volatility stress test)
 ]
 SERIES_LABEL = {
-    "CUURS49ASAF11":  "food-at-home",
-    "CUURS49ASEHA":   "rent",
-    "CUURS49ASA0":    "all-items",
-    "CUURS49ASEFV":   "fruits-veg",
-    "CUURS49ASETB01": "gasoline",
+    "CUURS49FSAF11":  "food-at-home",
+    "CUURS49FSEHA":   "rent",
+    "CUURS49FSA0":    "all-items",
+    "CUURS49FSEFV":   "fruits-veg",
+    "CUURS49FSETB01": "gasoline",
 }
 
 START_YEAR = 2018

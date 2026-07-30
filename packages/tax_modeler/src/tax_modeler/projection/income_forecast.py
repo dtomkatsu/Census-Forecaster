@@ -98,9 +98,18 @@ logger = logging.getLogger(__name__)
 DEFAULT_HAWAII_GEOID: str = "15003"
 DEFAULT_INCOME_INDICATOR: str = "B19013_001E"
 
-# BLS series IDs for the preferred CPI path (bundled monthly panel).
-# Honolulu Urban All-Items (bimonthly): more precise than the annual JSON.
-_HONOLULU_BLS_SERIES_ID: str = "CUURS49ASA0"
+# BLS series ID for the preferred CPI path (bundled panel).
+# Urban Hawaii all-items (bimonthly, published from 2017): more precise
+# than the annual JSON.
+#
+# CORRECTED 2026-07-27. This was `CUURS49ASA0`, labelled "Urban Honolulu"
+# throughout the repo, but the BLS API catalog resolves that ID to
+# *Los Angeles-Long Beach-Anaheim, CA*. Los Angeles ran ~0.34 pp/yr hotter
+# than Urban Hawaii over 2018-2025 (CAGR 3.687% vs 3.350%), so every
+# Hawaii deflator built on it was overstated — ~2.6% compounded across a
+# 2023->2031 window. `S49F` is the real Hawaii area code; see
+# `census_forecaster.bls.panel` for the full area-label audit.
+_HONOLULU_BLS_SERIES_ID: str = "CUURS49FSA0"
 
 # 8 largest mainland US counties (excluding Hawaii / Alaska) by 2020 pop.
 # Each has a full 14-obs B19013_001E series in the bundled panel.
@@ -201,6 +210,18 @@ def _load_bls_panel() -> dict[str, list]:
     return d.get("series", {})
 
 
+@functools.lru_cache(maxsize=1)
+def _load_bls_calibration() -> Optional[dict]:
+    """Load and cache the bundled BLS v3 stratified calibration.
+
+    Returns None when the file is absent or unreadable, in which case
+    ``compute_cpi_ratio`` falls back to the legacy global κ=1.50 and
+    applies no bias correction.
+    """
+    from census_forecaster.bls.calibration import load_bls_calibration
+    return load_bls_calibration()
+
+
 def _bls_cpi_ratio(series_id: str, base_year: int, target_year: int) -> Optional[float]:
     """Compute Dec→Dec CPI ratio using the bundled monthly BLS panel.
 
@@ -208,6 +229,15 @@ def _bls_cpi_ratio(series_id: str, base_year: int, target_year: int) -> Optional
     - Monthly data extends ~2-3 months past real-time vs annual-JSON's Dec cutoff.
     - ``project_forward_full`` (damped compound) is better calibrated than
       ``project_damped_trend`` on annual data.
+
+    The v3 stratified calibration is passed through (2026-07-30). On this
+    path it takes effect as the per-(series, h_bucket, vol_regime)
+    **geometric bias correction** applied to the returned ratio. Note the
+    κ SE-rescale that ``compute_cpi_ratio`` also performs is computed and
+    discarded here: this function returns a point ratio only, and no
+    caller propagates CPI prediction intervals. Wiring κ through to a
+    published interval requires plumbing ``ratio_ci90_low/high`` into the
+    revenue path — until then κ's value is diagnostic.
 
     Returns ``target_cpi / base_cpi`` (e.g. 1.093 for 9.3% cumulative inflation),
     or ``None`` if the series or either date is unavailable.
@@ -224,7 +254,10 @@ def _bls_cpi_ratio(series_id: str, base_year: int, target_year: int) -> Optional
     baseline_date = date(base_year, 12, 1)
     target_date = date(target_year, 12, 1)
 
-    result = compute_cpi_ratio(cpi_data, series_id, baseline_date, target_date)
+    result = compute_cpi_ratio(
+        cpi_data, series_id, baseline_date, target_date,
+        calibration=_load_bls_calibration(),
+    )
     if result["method"] == "unavailable" or not (result["ratio"] > 0):
         logger.warning(
             "compute_cpi_ratio unavailable for %s (%d→%d)", series_id, base_year, target_year
@@ -232,9 +265,12 @@ def _bls_cpi_ratio(series_id: str, base_year: int, target_year: int) -> Optional
         return None
 
     logger.debug(
-        "BLS panel CPI ratio %s (%d→%d Dec): %.4f [method=%s, horizon=%s mo]",
+        "BLS panel CPI ratio %s (%d→%d Dec): %.4f [method=%s, horizon=%s mo, "
+        "kappa=%s (%s), bias=%s (%s)]",
         series_id, base_year, target_year,
         result["ratio"], result["method"], result["horizon_months"],
+        result["kappa_used"], result["kappa_source"],
+        result["bias_used"], result["bias_source"],
     )
     return result["ratio"]
 

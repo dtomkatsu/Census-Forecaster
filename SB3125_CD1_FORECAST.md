@@ -1,11 +1,114 @@
 # SB 3125 CD1 — Hawaii Income Tax Fiscal Impact Forecast
 ## Tax Years 2027–2031
 
-**Last updated:** May 27, 2026
+**Last updated:** July 30, 2026
 **Analyst:** Hawaii Appleseed Center for Law and Economic Justice
-**Model version:** CD2 vintage carryforward model + Round-2 REEC refinements (May 14, 2026).
+**Model version:** CD2 vintage carryforward model + Round-2 REEC refinements (May 14, 2026), on the corrected Hawaii CPI basis (July 30, 2026).
 
 > **Maintenance note:** This document must be updated whenever forecast methodology changes — including parameter recalibration, new behavioral channels, tax treatment corrections, or data source changes. Update the relevant section(s) and the Results table before committing.
+
+---
+
+## Hawaii CPI series correction — July 30, 2026
+
+**Data-integrity correction. This changes every nominal-income-dependent
+number in the forecast.** The BLS series the model used as its Hawaii
+price deflator was not a Hawaii series.
+
+### What was wrong
+
+`CUURS49ASA0`, labelled "Urban Honolulu, HI" throughout the repo and used
+as `_HONOLULU_BLS_SERIES_ID` in `projection/income_forecast.py`, resolves
+in the BLS API catalog to **Los Angeles-Long Beach-Anaheim, CA**. Five of
+the eleven area labels in the CPI panel were shifted, and no Hawaii series
+was present at all. The cheap tell: BLS publishes the all-items index
+monthly for exactly four areas (U.S. average, New York, Chicago, Los
+Angeles), so a "Honolulu" series returning 12 prints a year is
+mislabelled — the panel's four monthly series were precisely that set.
+
+Two further defects surfaced in the same audit:
+
+1. The annual anchor files `cpi_honolulu_allitems.json` and
+   `cpi_honolulu_rent.json` declared BLS series IDs (`CUUSA426SA0`,
+   `CUUSA426SEHA`) that **do not exist**. The all-items file's values
+   converged to Los Angeles by 2024, consistent with its having been
+   extended forward using the mislabelled series.
+2. The trend smoother in `bls/projection.py` weighted the newest print
+   pair at ~50% of total weight and read consecutive-month changes of
+   these NSA series as trend. A jackknife (drop the newest print) moved
+   the implied annual rate by ~4 pp on both series — Urban Hawaii read
+   9.86%/yr and Los Angeles 0.75%/yr against actual ~3.4%/yr CAGRs.
+
+### What changed
+
+| Component | Before | After |
+|---|---|---|
+| Hawaii deflator series | `CUURS49ASA0` (Los Angeles) | **`CUURS49FSA0` (Urban Hawaii)** |
+| CPI panel | 11 areas / 55 series, 5 labels wrong | 12 areas / 60 series, audited vs API catalog |
+| All-items anchor | `CUUSA426SA0` (nonexistent) | `CUUSS49FSA0`, 2017–2025 observed |
+| Rent anchor | `CUUSA426SEHA` (nonexistent) | `CUUSS49FSEHA`, 2017–2025 observed |
+| Trend estimator | pairwise, ~50% weight on newest print | YoY log changes + time-decay (8.3-mo half-life) |
+| v3 κ / bias | computed, not passed to production | passed through `_bls_cpi_ratio` |
+
+BLS publishes Urban Hawaii only from 2017, so anchor years 2010–2016 are
+**rate-chained**: the legacy files' year-over-year rates applied backward
+to the 2017 Urban Hawaii level. Those rates could not be re-verified
+against a live series and are flagged in each file's `limitations`.
+
+### Forecast impact
+
+Los Angeles ran ~0.34 pp/yr hotter than Urban Hawaii over 2018–2025 (CAGR
+3.687% vs 3.350%), but the naive CAGR gap understates the effect: the old
+smoother extrapolated each series' short-run momentum, which diverged
+sharply. Corrected Hawaii nominal income growth from the TY2023 base:
+
+| Tax year | real | CPI factor | **nominal** | implied ann. |
+|---|---:|---:|---:|---:|
+| 2027 | 1.0374 | 1.1147 | **1.1564** | 3.70% |
+| 2028 | 1.0698 | 1.1345 | **1.2137** | 3.95% |
+| 2029 | 1.1063 | 1.1516 | **1.2740** | 4.12% |
+| 2030 | 1.1451 | 1.1663 | **1.3355** | 4.22% |
+| 2031 | 1.1856 | 1.1789 | **1.3977** | 4.27% |
+
+Credit overlay on the corrected basis (`reec_effective_claim_share=0.65`,
+`cgec_annual_growth=0.015`):
+
+| Tax year | REEC baseline $M | REEC savings $M | CGEC savings $M |
+|---|---:|---:|---:|
+| 2027 | 83.55 | **43.55** | 0.00 |
+| 2029 | 82.37 | 42.37 | 22.14 |
+| 2031 | 83.20 | 83.20 | 24.07 |
+
+**TY2027 REEC savings move $41.8M → $43.55M (+$1.75M, +4.2%).** The chain
+is: Hawaii CPI runs hotter than Los Angeles → higher projected nominal
+income → higher REEC baseline → more savings against the fixed $40M cap.
+The v3 bias correction contributes ~+1.0% of the deflator on top of the
+series swap. Results tables elsewhere in this document that predate
+July 30, 2026 were computed on the Los Angeles basis and are superseded
+by this section pending a full re-run.
+
+### Known limitation — prediction intervals
+
+Passing the v3 calibration into `_bls_cpi_ratio` applies the geometric
+**bias** correction to the point estimate, but the κ SE rescale (3.00 vs
+the legacy global 1.50, which would double CI90 width) is computed and
+discarded: that function returns a point ratio, and no consumer
+propagates CPI prediction intervals. Published intervals therefore do
+**not** yet reflect the calibrated κ. Plumbing `ratio_ci90_low/high`
+through the revenue path is outstanding.
+
+### Files changed
+
+- `packages/census_forecaster/src/census_forecaster/bls/panel.py` — area labels corrected, `S49F` Urban Hawaii added, cadence audit documented.
+- `packages/census_forecaster/src/census_forecaster/bls/projection.py` — YoY + time-decay trend estimator, pairwise fallback below 4 YoY observations.
+- `packages/census_forecaster/src/census_forecaster/backtest/cpi.py` — `BACKTEST_SERIES` to the real Hawaii IDs; κ=1.50 provenance noted as an LA panel.
+- `packages/census_forecaster/src/census_forecaster/data/bls_panel/` — panel refetched (60 series, 9,333 obs).
+- `packages/census_forecaster/src/census_forecaster/data/anchors/cpi_honolulu_{allitems,rent}.json` — rebuilt from genuine Urban Hawaii series.
+- `packages/census_forecaster/src/census_forecaster/data/anchors/bls_calibration.json` — v3 re-derived (42,908 folds, 421 strata cells).
+- `packages/tax_modeler/src/tax_modeler/projection/income_forecast.py` — deflator series corrected; v3 calibration passed through.
+- `METHODOLOGY.md` — §5 of the BLS v3 section documents both the identity correction and the estimator change.
+- `backtests/results/bls_v3_calibration_2026-07-30.md` — new calibration report.
+- Tests: 6 new YoY-smoother tests; the TY2027 REEC sanity band re-centred 41.8 → 44.0 with provenance.
 
 ---
 
@@ -549,6 +652,7 @@ The tables below show every bracket for each filing status and each effective pe
 | Source | Description | Use |
 |--------|-------------|-----|
 | **ACS B19013 (Median Household Income by County)** | Census Bureau, bundled ACS panel | County-level income growth rates for TY projection |
+| **BLS CPI-U `CUURS49FSA0` (Urban Hawaii, all items)** | BLS, bundled CPI panel; bimonthly, published from 2017 | Hawaii price deflator for nominal↔real income conversion. **Corrected July 30, 2026** — previously `CUURS49ASA0`, which is Los Angeles. |
 | **SEIA U.S. Solar Market Insight (2025)** | National residential solar demand forecasts | REEC demand decay scenarios post-OBBBA |
 
 ### Academic Literature (Behavioral Response)

@@ -348,7 +348,7 @@ data geometry.
 ACS uses (indicator, method, pop_bucket, h_bucket). BLS uses
 **(series_id, h_bucket, vol_regime)**:
 
-* `series_id` — the BLS series (e.g. `CUURS49ASA0`, `CUUR0000SEHA`).
+* `series_id` — the BLS series (e.g. `CUURS49FSA0`, `CUUR0000SEHA`).
 * `h_bucket` — `short` for h ∈ {1–5} months, `long` for h ∈ {6+} months.
 * `vol_regime` — `low` if the rolling 24-month return SD ≤ per-series
   median; `high` otherwise.
@@ -376,12 +376,13 @@ search procedure.
 
 ### 3. Multi-MSA panel
 
-The v2 calibration ran on 5 Honolulu series. v3 runs on **55 series**:
-11 areas (national + Honolulu + 9 top-population MSAs) × 5 CPI
-subindexes (all-items, food-at-home, rent, housing, gasoline). The
-panel is bundled at `data/bls_panel/cpi_panel.json` (~750 KB) and
-refreshed via `python -m census_forecaster.scripts.refresh_bls_panel`
-with a `BLS_API_KEY`.
+The v2 calibration ran on 5 "Honolulu" series (see §5 — those IDs were
+actually Los Angeles). v3 now runs on **60 series**: 12 areas (national
++ Urban Hawaii + 10 large MSAs) × 5 CPI subindexes (all-items,
+food-at-home, rent, housing/shelter, gasoline). The panel is bundled at
+`data/bls_panel/cpi_panel.json` and refreshed via
+`python -m census_forecaster.scripts.refresh_bls_panel` with a
+`BLS_API_KEY`.
 
 Empirical κ values from the v3 calibration on this panel:
 
@@ -416,6 +417,47 @@ On the Hawaii calibration, BEA per-capita personal income gets the
 **highest weight** in the income anchor ensemble (~25%), beating QCEW
 wages (~23%), the Cleveland Fed-style CPI all-items (~19%), the PCE
 deflator (~19%), and Honolulu metro RPP (~13%).
+
+### 5. Series-identity correction + YoY trend estimator (July 2026)
+
+**Identity correction (2026-07-27).** The series the repo had labelled
+"Urban Honolulu, HI" — `CUURS49ASA0`, the production Hawaiʻi income
+deflator — is actually **Los Angeles-Long Beach-Anaheim, CA** per the
+BLS API catalog. Five of eleven panel area labels were shifted; no
+Hawaiʻi series was in the panel at all. Corrections:
+
+* Panel areas fixed and **`S49F` "Urban Hawaii"** added (bimonthly,
+  published from 2017). `bls/panel.py` documents the audit; the cadence
+  tell is that BLS publishes SA0 monthly for exactly four areas (US,
+  NY, Chicago, LA) — a monthly "Honolulu" series is mislabelled.
+* `_HONOLULU_BLS_SERIES_ID` → `CUURS49FSA0` (tax_modeler income path).
+* The annual anchor files `cpi_honolulu_allitems.json` /
+  `cpi_honolulu_rent.json` declared BLS series IDs that do not exist;
+  both were rebuilt from the genuine semiannual Urban Hawaii series
+  (`CUUSS49FSA0` / `CUUSS49FSEHA`), 2017–2025 observed, 2010–2016
+  rate-chained backward from the legacy files' year-over-year rates
+  (flagged in each file's limitations).
+* LA ran ~0.34 pp/yr hotter than Urban Hawaii over 2018–2025 (CAGR
+  3.687% vs 3.350%), so LA-based Hawaiʻi deflators were overstated
+  ~2.6% compounded over a 2023→2031 window.
+
+**YoY trend estimator (2026-07-27).** The pairwise smoother in
+`bls/projection.py` weighted the newest print pair at ~50% and read
+consecutive-month changes of NSA series (seasonality) as trend — a
+jackknife (drop the newest print) moved its implied annual rate by
+~4 pp on both Urban Hawaii and LA. `smoothed_monthly_rate` now uses
+**year-over-year log changes** (same-calendar-month differencing
+cancels seasonality; unaffected by cadence or isolated holes) blended
+with a **time-based recency weight** `0.5^(months_back / 8.3)` — decay
+per calendar month, so bimonthly and monthly series with the same path
+get the same trend. The 8.3-month half-life mirrors φ=0.92/month's
+half-life but is an independent, sweepable constant. Series with <4 YoY
+observations fall back to the legacy pairwise smoother (its 2-point
+behavior is a public contract). Validation on the corrected panel:
+implied trends land within ~0.15 pp/yr of 24-month CAGRs and jackknife
+swings drop from ~4 pp to ≤0.3 pp. The v3 calibration was re-derived on
+the corrected panel + new estimator (42,908 folds, 421 strata cells —
+`backtests/results/bls_v3_calibration_2026-07-27.md`).
 
 ### Auto-refresh
 

@@ -216,11 +216,15 @@ def test_compute_credit_overlay_backward_compat_no_new_params():
     """Calling without new params produces the same numbers as before."""
     r = compute_credit_overlay(2027, reec_effective_claim_share=0.65,
                                cgec_annual_growth=0.015)
-    # Legacy static overlay: baseline $81.8M, after_bill $40M, savings $41.8M.
+    # Legacy static overlay: baseline − $40M cap. Center re-pinned 41.8→44.0
+    # on 2026-07-30 after the Hawaii CPI correction (the old center was
+    # computed on Los Angeles CPI mislabelled as Honolulu — see
+    # census_forecaster.bls.panel; higher corrected nominal growth raises
+    # the projected baseline and thus cap savings).
     # Tolerance is wide enough (abs=1.5) to absorb routine monthly drift in the
     # refreshed calibration anchors (the refresh-data gate runs this test
     # against freshly-pulled data); it's a sanity band, not a tripwire.
-    assert r["reec_savings_$M"] == pytest.approx(41.8, abs=1.5)
+    assert r["reec_savings_$M"] == pytest.approx(44.0, abs=1.5)
 
 
 def test_compute_credit_overlay_vintage_with_new_knobs_returns_diagnostics():
