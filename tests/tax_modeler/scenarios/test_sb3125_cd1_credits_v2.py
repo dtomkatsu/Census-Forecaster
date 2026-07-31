@@ -241,3 +241,29 @@ def test_compute_credit_overlay_vintage_with_new_knobs_returns_diagnostics():
     assert r["reec_interpretation"] == "A"
     # Pro-rata suppression should have triggered (binding cap, eta > 0)
     assert 0.0 < r["reec_suppression_factor"] < 1.0
+
+
+def test_compute_credit_overlay_ci_band():
+    """The κ-calibrated CI90 band brackets the point estimate on both the
+    growth factor and the savings, and the band is genuinely two-sided."""
+    r = compute_credit_overlay(2027, reec_effective_claim_share=0.65,
+                               cgec_annual_growth=0.015)
+    assert (r["growth_individual_ci90_low"]
+            < r["growth_individual"]
+            < r["growth_individual_ci90_high"])
+    assert (r["reec_savings_ci90_low_$M"]
+            <= r["reec_savings_$M"]
+            <= r["reec_savings_ci90_high_$M"])
+    assert r["reec_savings_ci90_low_$M"] < r["reec_savings_ci90_high_$M"]
+    assert r["growth_individual_se_log"] > 0
+
+
+def test_compute_credit_overlay_ci_band_vintage_path():
+    """CI keys also appear on the vintage-simulation path."""
+    r = compute_credit_overlay(
+        2027, reec_effective_claim_share=0.65, cgec_annual_growth=0.015,
+        model_carryforward_pool=True, interpretation="A",
+    )
+    assert (r["reec_savings_ci90_low_$M"]
+            <= r["reec_savings_$M"]
+            <= r["reec_savings_ci90_high_$M"])

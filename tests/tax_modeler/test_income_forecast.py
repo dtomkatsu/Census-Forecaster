@@ -22,6 +22,7 @@ from tax_modeler.projection.income_forecast import (
     _ensemble_enabled,
     _load_pce_deflator_series,
     _project_cpi,
+    get_hawaii_real_growth_detail,
     get_hawaii_real_growth_factor,
     get_national_real_growth_factor,
 )
@@ -626,3 +627,44 @@ def test_national_factor_lru_cached(caplog):
     assert len(info_records) == 1, (
         f"expected 1 INFO log on cache hit, got {len(info_records)}"
     )
+
+
+# -----------------------------------------------------------------------------
+# RealGrowthDetail — uncertainty plumbing (July 2026)
+# -----------------------------------------------------------------------------
+
+
+def test_detail_point_matches_float_api():
+    """Detail and float wrappers delegate to the same core — identical points."""
+    d = get_hawaii_real_growth_detail(2023, 2026)
+    f = get_hawaii_real_growth_factor(2023, 2026)
+    assert d is not None and f is not None
+    assert d.real_factor == pytest.approx(f, rel=1e-12)
+
+
+def test_detail_uncertainty_decomposition():
+    """se_real² = se_nom² + se_inf² (independence), CI ordered around point,
+    and the Hawaii path reports the κ-calibrated BLS leg."""
+    import math
+
+    d = get_hawaii_real_growth_detail(2023, 2028)
+    assert d is not None
+    assert d.inflation_source == "bls_panel"
+    assert d.kappa_used is not None and d.kappa_used >= 1.0
+    assert d.se_log_nominal is not None and d.se_log_nominal > 0
+    assert d.se_log_inflation is not None and d.se_log_inflation > 0
+    assert d.se_log_real == pytest.approx(
+        math.sqrt(d.se_log_nominal ** 2 + d.se_log_inflation ** 2), rel=1e-12)
+    assert d.real_ci90_low < d.real_factor < d.real_ci90_high
+    # real = nominal / inflation, exactly.
+    assert d.real_factor == pytest.approx(
+        d.nominal_factor / d.inflation_factor, rel=1e-12)
+
+
+def test_detail_identity_at_zero_horizon():
+    """target == base → exact identity with zero uncertainty."""
+    d = get_hawaii_real_growth_detail(2023, 2023)
+    assert d is not None
+    assert d.real_factor == 1.0
+    assert d.se_log_real == 0.0
+    assert d.real_ci90_low == 1.0 and d.real_ci90_high == 1.0

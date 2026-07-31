@@ -457,7 +457,16 @@ behavior is a public contract). Validation on the corrected panel:
 implied trends land within ~0.15 pp/yr of 24-month CAGRs and jackknife
 swings drop from ~4 pp to ≤0.3 pp. The v3 calibration was re-derived on
 the corrected panel + new estimator (42,908 folds, 421 strata cells —
-`backtests/results/bls_v3_calibration_2026-07-27.md`).
+`backtests/results/bls_v3_calibration_2026-07-30.md`).
+
+**Uncertainty plumbing (2026-07-30).** The κ-rescaled CPI projection SE
+now propagates to consumers: `RealGrowthDetail`
+(tax_modeler `projection/income_forecast.py`) combines the ACS-forecast
+log-SE with the κ-rescaled BLS log-SE under an independence assumption,
+and `compute_credit_overlay` (SB 3125) reruns itself at the real-growth
+CI90 bounds to emit savings bands. See the SB3125_CD1_FORECAST.md
+"Prediction-interval plumbing" section for the decomposition and the
+channels deliberately held at point.
 
 ### Auto-refresh
 

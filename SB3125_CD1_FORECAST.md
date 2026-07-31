@@ -87,15 +87,36 @@ series swap. Results tables elsewhere in this document that predate
 July 30, 2026 were computed on the Los Angeles basis and are superseded
 by this section pending a full re-run.
 
-### Known limitation — prediction intervals
+### Prediction-interval plumbing — July 30, 2026 (supersedes the earlier "known limitation")
 
-Passing the v3 calibration into `_bls_cpi_ratio` applies the geometric
-**bias** correction to the point estimate, but the κ SE rescale (3.00 vs
-the legacy global 1.50, which would double CI90 width) is computed and
-discarded: that function returns a point ratio, and no consumer
-propagates CPI prediction intervals. Published intervals therefore do
-**not** yet reflect the calibrated κ. Plumbing `ratio_ci90_low/high`
-through the revenue path is outstanding.
+The κ-calibrated uncertainty now reaches the credit-overlay outputs.
+`RealGrowthDetail` (in `projection/income_forecast.py`) carries the full
+decomposition — ACS-forecast SE and κ-rescaled BLS CPI projection SE,
+combined under an independence assumption
+(`se_log_real = sqrt(se_nom² + se_inf²)`) — and `compute_credit_overlay`
+reruns itself at the real-growth CI90 bounds via a scoped scale on
+`_hawaii_nominal_growth`, emitting
+`reec_savings_ci90_low/high_$M`, `total_credit_savings_ci90_low/high_$M`,
+and `growth_individual_ci90_low/high`.
+
+At TY2027 the decomposition is se_nom=0.033, se_inf=0.023 (κ=3.0) →
+se_real=0.041: **the calibrated CPI leg contributes ~33% of the
+real-growth variance** and would have been invisible under the legacy
+κ=1.50-and-discarded path.
+
+| Tax year | REEC savings $M | CI90 |
+|---|---:|---|
+| 2027 | 43.55 | [41.29, 45.94] |
+| 2031 | 83.20 | [79.92, 86.71] |
+
+Held at point inside the band, by design: corporate growth (a fixed-rate
+assumption, not income-forecast-derived) and the annual-anchor
+re-inflate leg (no SE surface; its error is positively correlated with
+the deflate leg, so an independence treatment would misstate the band).
+The band therefore covers the ACS-forecast and BLS-deflator channels
+only, and is a lower bound on total forecast uncertainty. The
+microsimulation income-aging path (`apply_income_growth`) remains
+point-based.
 
 ### Files changed
 
