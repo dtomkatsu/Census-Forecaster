@@ -118,6 +118,44 @@ only, and is a lower bound on total forecast uncertainty. The
 microsimulation income-aging path (`apply_income_growth`) remains
 point-based.
 
+### Empirical REEC demand check — DPP solar permits (July 30, 2026)
+
+First empirical read on the *projected* REEC demand vintages. Honolulu
+DPP building permits (data.honolulu.gov `4vab-c87q`, aggregated by the
+new `refresh_dpp_solar` fetcher into a bundled JSON; diagnostics in
+`scenarios/reec_demand_validation.py`) provide residential solar permit
+counts and declared values through 2025-06-30 — past the last DOTAX
+claim actual (TY2022) and into the vintages the model projects as
+`base_2023 × g(y) × d(y)`.
+
+| Year | window | empirical (value) | empirical (count) | model g×d (all scenarios) |
+|---|---|---:|---:|---:|
+| 2024 | full-year | **0.843** | **0.798** | 1.059 |
+| 2025 | H1/H1 | 0.744 | 0.824 | 1.077–1.185 |
+
+**The TY2024 vintage looks ~20-25% overstated.** Every scenario pins
+d(2024)=1.00, so modeled 2024 demand is pure income growth (×1.059) —
+while actual residential solar permits *fell* ~16% by value and ~20% by
+count. This is pre-OBBBA data (the federal §25D termination hits 2026+),
+so it cannot be explained by the decay the scenarios model; it suggests
+Hawaiʻi rooftop saturation was already binding harder than the
+"pre-decay demand persists" assumption. If permits translate ~1:1 to
+claims, the REEC baseline for the cap years is high, and **cap savings
+are overstated** — indicatively, a 20% lower TY2027 baseline (~$67M vs
+$83.5M) would cut static-overlay savings from ~$43.5M to ~$27M.
+
+Read the 2025 row cautiously: the §25D pull-forward story (+37% HECO
+surge) is specifically an **H2-2025** phenomenon, and the permit window
+ends June 30, 2025 — the H1/H1 ratio structurally cannot see it. The
+next data refresh decides whether the 2025 d=1.10 assumption held.
+
+Caveats (full list in the bundle's `limitations`): declared permit value
+≠ credit basis (ratios only); Oʻahu only; permits lead claims by months;
+observed publication lag of the portal is ~12 months despite frequent
+row-updates. **No forecast input has been changed** — this is a
+diagnostic; re-anchoring the demand scenarios on permit actuals is a
+scenario-design decision pending the TY2024 DOTAX claim actuals.
+
 ### Files changed
 
 - `packages/census_forecaster/src/census_forecaster/bls/panel.py` — area labels corrected, `S49F` Urban Hawaii added, cadence audit documented.
@@ -675,6 +713,7 @@ The tables below show every bracket for each filing status and each effective pe
 | **ACS B19013 (Median Household Income by County)** | Census Bureau, bundled ACS panel | County-level income growth rates for TY projection |
 | **BLS CPI-U `CUURS49FSA0` (Urban Hawaii, all items)** | BLS, bundled CPI panel; bimonthly, published from 2017 | Hawaii price deflator for nominal↔real income conversion. **Corrected July 30, 2026** — previously `CUURS49ASA0`, which is Los Angeles. |
 | **SEIA U.S. Solar Market Insight (2025)** | National residential solar demand forecasts | REEC demand decay scenarios post-OBBBA |
+| **Honolulu DPP building permits** | data.honolulu.gov `4vab-c87q`, bundled solar-permit aggregates (1999→2025-06) | Empirical validation of REEC demand scenarios (diagnostic only; ~12-month publication lag) |
 
 ### Academic Literature (Behavioral Response)
 | Citation | Use |

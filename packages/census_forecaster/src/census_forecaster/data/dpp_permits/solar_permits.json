@@ -1,0 +1,271 @@
+{
+  "annual": {
+    "2005": {
+      "com_n": 3,
+      "com_val": 398755.0,
+      "res_n": 1327,
+      "res_val": 20048618.24
+    },
+    "2006": {
+      "com_n": 7,
+      "com_val": 1832144.0,
+      "res_n": 2504,
+      "res_val": 66826883.26
+    },
+    "2007": {
+      "com_n": 20,
+      "com_val": 16692617.0,
+      "pv_res_n": 3,
+      "pv_res_val": 37750.0,
+      "res_n": 2598,
+      "res_val": 59852044.64
+    },
+    "2008": {
+      "com_n": 80,
+      "com_val": 28829579.15,
+      "pv_res_n": 359,
+      "pv_res_val": 6445509.6,
+      "res_n": 4500,
+      "res_val": 94935536.53
+    },
+    "2009": {
+      "com_n": 81,
+      "com_val": 21756381.3,
+      "pv_res_n": 938,
+      "pv_res_val": 18347665.24,
+      "res_n": 4284,
+      "res_val": 132538804.79
+    },
+    "2010": {
+      "com_n": 108,
+      "com_val": 42710876.58,
+      "pv_res_n": 2206,
+      "pv_res_val": 53201544.45,
+      "res_n": 5276,
+      "res_val": 310793133.15
+    },
+    "2011": {
+      "com_n": 240,
+      "com_val": 101364214.0,
+      "pv_res_n": 5143,
+      "pv_res_val": 151839305.09,
+      "res_n": 8564,
+      "res_val": 423951701.85
+    },
+    "2012": {
+      "com_n": 301,
+      "com_val": 278961512.77,
+      "pv_res_n": 16415,
+      "pv_res_val": 560667723.2,
+      "res_n": 19363,
+      "res_val": 822677184.96
+    },
+    "2013": {
+      "com_n": 456,
+      "com_val": 140286413.85,
+      "pv_res_n": 12854,
+      "pv_res_val": 355472999.24,
+      "res_n": 15706,
+      "res_val": 669397144.65
+    },
+    "2014": {
+      "com_n": 238,
+      "com_val": 58123442.57,
+      "pv_res_n": 6352,
+      "pv_res_val": 167115271.6,
+      "res_n": 8650,
+      "res_val": 416638957.43
+    },
+    "2015": {
+      "com_n": 394,
+      "com_val": 200036296.3,
+      "pv_res_n": 7226,
+      "pv_res_val": 185390050.85,
+      "res_n": 9557,
+      "res_val": 522894204.44
+    },
+    "2016": {
+      "com_n": 425,
+      "com_val": 168379377.77,
+      "pv_res_n": 4550,
+      "pv_res_val": 104649736.8,
+      "res_n": 6509,
+      "res_val": 381950879.47
+    },
+    "2017": {
+      "com_n": 222,
+      "com_val": 101734170.69,
+      "pv_res_n": 2099,
+      "pv_res_val": 51824475.2,
+      "res_n": 4633,
+      "res_val": 337693297.7
+    },
+    "2018": {
+      "com_n": 185,
+      "com_val": 159238962.99,
+      "pv_res_n": 990,
+      "pv_res_val": 27008008.86,
+      "res_n": 4200,
+      "res_val": 292377515.34
+    },
+    "2019": {
+      "com_n": 216,
+      "com_val": 208147373.21,
+      "pv_res_n": 1070,
+      "pv_res_val": 19982384.8,
+      "res_n": 5896,
+      "res_val": 365352912.45
+    },
+    "2020": {
+      "com_n": 173,
+      "com_val": 68821820.06,
+      "pv_res_n": 1026,
+      "pv_res_val": 26158229.59,
+      "res_n": 6272,
+      "res_val": 435669899.46
+    },
+    "2021": {
+      "com_n": 104,
+      "com_val": 134909426.12,
+      "pv_res_n": 596,
+      "pv_res_val": 12339343.13,
+      "res_n": 6636,
+      "res_val": 456408112.69
+    },
+    "2022": {
+      "com_n": 56,
+      "com_val": 67689889.0,
+      "pv_res_n": 407,
+      "pv_res_val": 8170120.65,
+      "res_n": 6627,
+      "res_val": 380354885.59
+    },
+    "2023": {
+      "com_n": 25,
+      "com_val": 408596310.04,
+      "pv_res_n": 419,
+      "pv_res_val": 6932139.64,
+      "res_n": 7451,
+      "res_val": 405019465.28
+    },
+    "2024": {
+      "com_n": 6,
+      "com_val": 7889226.0,
+      "pv_res_n": 535,
+      "pv_res_val": 8928259.29,
+      "res_n": 5946,
+      "res_val": 341421861.26
+    },
+    "2025": {
+      "com_n": 9,
+      "com_val": 31400850.0,
+      "pv_res_n": 185,
+      "pv_res_val": 3142461.42,
+      "res_n": 2848,
+      "res_val": 152346480.36
+    }
+  },
+  "dataset_id": "4vab-c87q",
+  "fetch_date": "2026-07-31",
+  "h1_residential": {
+    "2005": {
+      "res_n": 511,
+      "res_val": 8401842.99
+    },
+    "2006": {
+      "res_n": 1138,
+      "res_val": 36016463.0
+    },
+    "2007": {
+      "res_n": 1178,
+      "res_val": 33391650.63
+    },
+    "2008": {
+      "res_n": 1597,
+      "res_val": 46855596.85
+    },
+    "2009": {
+      "res_n": 2025,
+      "res_val": 53317613.75
+    },
+    "2010": {
+      "res_n": 2253,
+      "res_val": 149074023.13
+    },
+    "2011": {
+      "res_n": 3240,
+      "res_val": 173074917.13
+    },
+    "2012": {
+      "res_n": 6623,
+      "res_val": 299992341.04
+    },
+    "2013": {
+      "res_n": 7283,
+      "res_val": 320662357.47
+    },
+    "2014": {
+      "res_n": 4365,
+      "res_val": 199426763.82
+    },
+    "2015": {
+      "res_n": 4382,
+      "res_val": 280839468.26
+    },
+    "2016": {
+      "res_n": 3437,
+      "res_val": 203285621.54
+    },
+    "2017": {
+      "res_n": 1945,
+      "res_val": 159858871.55
+    },
+    "2018": {
+      "res_n": 1977,
+      "res_val": 132396375.93
+    },
+    "2019": {
+      "res_n": 2015,
+      "res_val": 153150079.55
+    },
+    "2020": {
+      "res_n": 2546,
+      "res_val": 187119810.54
+    },
+    "2021": {
+      "res_n": 2640,
+      "res_val": 224608208.22
+    },
+    "2022": {
+      "res_n": 2807,
+      "res_val": 177813040.92
+    },
+    "2023": {
+      "res_n": 3457,
+      "res_val": 204650320.39
+    },
+    "2024": {
+      "res_n": 2704,
+      "res_val": 184991377.79
+    },
+    "2025": {
+      "res_n": 2848,
+      "res_val": 152346480.36
+    }
+  },
+  "limitations": [
+    "Permit issuance is a *leading* proxy for REEC claims: systems are typically installed within months of permit issuance and credited in the installation tax year, but slippage and abandonment are not observed.",
+    "estimatedvalueofwork is the contractor-declared job value, not the credit basis; use year-over-year *ratios*, never levels, and note declared values are not audited.",
+    "O\u02bbahu only. Honolulu County is ~65-70% of state population and the dominant share of residential REEC claims, but neighbor-island demand is invisible here.",
+    "The solar='Y' flag includes solar water heating (also REEC-creditable). The PV-specific solarvpinstallation flag appears unmaintained after ~2017 and is carried for history only.",
+    "Commercial solar is lumpy (single utility-scale permits dominate years) \u2014 mirrors the corporate-REEC volatility noted in the DOTAX actuals; do not trend it.",
+    "The current year is partial through max_issuedate; use the h1 block for same-window year-over-year comparisons.",
+    "Observed publication lag is ~12 months: the portal row-updates frequently, but the content window trails far behind (2026-07 fetch \u2192 max issuedate 2025-07-01). Check max_issuedate, not fetch_date, before trusting recency."
+  ],
+  "max_issuedate": "2025-07-01",
+  "source": "Honolulu DPP building permits (data.honolulu.gov)",
+  "units": {
+    "*_n": "permits issued",
+    "*_val": "USD, declared job value"
+  }
+}
