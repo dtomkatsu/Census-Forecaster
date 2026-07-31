@@ -156,6 +156,37 @@ row-updates. **No forecast input has been changed** — this is a
 diagnostic; re-anchoring the demand scenarios on permit actuals is a
 scenario-design decision pending the TY2024 DOTAX claim actuals.
 
+### Revenue ground-truth check — DOTAX monthly collections (July 31, 2026)
+
+New intake: DOTAX "State Tax Collections and Distribution" monthly XLSX
+reports (`refresh_dotax_collections` fetcher; the bundle is an
+*accumulating archive* because DOTAX keeps only ~one fiscal year of XLSX
+online — never truncate it to one fetch). 13 series including individual
+withholding, GE&Use, county surcharge, TAT, corporate income, and the
+General Fund total; diagnostics in `projection/dotax_validation.py`
+compare same-window year-over-year sums (never single months — deposit
+timing is spiky) against the model's implied annual nominal growth.
+
+First read (windows ending Dec 2025 / Apr 2026):
+
+| series | window | YoY |
+|---|---|---:|
+| Individual withholding | Jul–Dec 2025 | **−11.5%** |
+| GE & Use (collec) | Jul–Dec 2025 | +6.5% |
+| GE allocated (fresher report) | Jul 2025–Apr 2026 | +2.7% |
+| TAT | Jul–Dec 2025 | +2.0% |
+| Model implied annual nominal | 2025 / 2026 | +1.7% / −1.0% |
+
+Interpretation: the withholding collapse is dominated by the **Act 46
+bracket cuts phasing in from TY2025** — it measures wages *plus policy*
+and cannot be read as wage decline. The rate-stable GE gauges show
+nominal activity growing ~3–6%/yr, which sits *above* the model's
+implied 2025–2026 nominal income path (+1.7%, then −1.0%). Tension, not
+contradiction — GE measures gross receipts, the model measures median
+household income — but the model's implied 2026 dip is worth watching
+as more GE months accumulate. Diagnostic only; no forecast input
+changed.
+
 ### Files changed
 
 - `packages/census_forecaster/src/census_forecaster/bls/panel.py` — area labels corrected, `S49F` Urban Hawaii added, cadence audit documented.
@@ -714,6 +745,7 @@ The tables below show every bracket for each filing status and each effective pe
 | **BLS CPI-U `CUURS49FSA0` (Urban Hawaii, all items)** | BLS, bundled CPI panel; bimonthly, published from 2017 | Hawaii price deflator for nominal↔real income conversion. **Corrected July 30, 2026** — previously `CUURS49ASA0`, which is Los Angeles. |
 | **SEIA U.S. Solar Market Insight (2025)** | National residential solar demand forecasts | REEC demand decay scenarios post-OBBBA |
 | **Honolulu DPP building permits** | data.honolulu.gov `4vab-c87q`, bundled solar-permit aggregates (1999→2025-06) | Empirical validation of REEC demand scenarios (diagnostic only; ~12-month publication lag) |
+| **DOTAX monthly collections** | files.hawaii.gov/tax/stats/monthly `{YYYYMM}collec.xlsx` + `{YYYYMM}ge.xlsx`, bundled accumulating archive (2024-07→) | Revenue ground-truth validation: withholding (wages+policy), GE&Use (rate-stable activity), TAT (tourism). Diagnostic only |
 
 ### Academic Literature (Behavioral Response)
 | Citation | Use |

@@ -1,0 +1,255 @@
+{
+  "fetch_date": "2026-07-31",
+  "limitations": [
+    "Collections are cash-basis by *deposit* month \u2014 payment-deadline timing (estimated-tax due dates, filing season) makes single months noisy; compare year-over-year same-month or rolling windows only.",
+    "Withholding growth conflates wage growth with WITHHOLDING-RATE policy: the Act 46 (2024) bracket cuts phase in from TY2025 and mechanically depress withholding relative to wages. GE&Use (rate-stable) is the cleaner pure-activity gauge.",
+    "The full 'collec' report publishes with ~6-7 months of lag and only the current fiscal year stays up as XLSX; the bundle accumulates history across refreshes and must never be truncated to one fetch.",
+    "ge_allocated comes from the GE-specific report (~3-month lag); it is 'allocated collections', which differs in timing from the collec report's 'General Excise & Use' row \u2014 do not mix the two series.",
+    "Later reports revise the prior-year comparison column; on overlap the value from the most recent report wins (value_asof records the source file per month)."
+  ],
+  "monthly": {
+    "2024-07": {
+      "corp_est": 13690246.67,
+      "corp_refunds": -10991402.77,
+      "corp_ret": 2315899.6,
+      "county_surcharge": 50084748.11,
+      "ge_allocated": 413903516.0,
+      "ge_use": 409791217.26,
+      "general_fund": 779833798.9,
+      "ind_est": 43040006.82,
+      "ind_refunds": -47534943.66,
+      "ind_ret": 15903637.14,
+      "ind_wh": 266574547.32,
+      "tat": 74158092.01,
+      "total": 979468975.64
+    },
+    "2024-08": {
+      "corp_est": 10973019.05,
+      "corp_refunds": -31207489.49,
+      "corp_ret": 1533466.59,
+      "county_surcharge": 46735506.34,
+      "ge_allocated": 391554965.0,
+      "ge_use": 402491010.39,
+      "general_fund": 742041001.86,
+      "ind_est": 33933506.56,
+      "ind_refunds": -30891920.01,
+      "ind_ret": 13917607.26,
+      "ind_wh": 202740180.32,
+      "tat": 74927055.34,
+      "total": 852375112.99
+    },
+    "2024-09": {
+      "corp_est": 94773776.92,
+      "corp_refunds": -11009749.68,
+      "corp_ret": 7903871.73,
+      "county_surcharge": 46379350.95,
+      "ge_allocated": 377946566.0,
+      "ge_use": 356451965.85,
+      "general_fund": 1225432186.47,
+      "ind_est": 134650207.71,
+      "ind_refunds": -26252774.2,
+      "ind_ret": 14380168.3,
+      "ind_wh": 238269382.73,
+      "tat": 65335596.24,
+      "total": 1324053496.94
+    },
+    "2024-10": {
+      "corp_est": 32218487.81,
+      "corp_refunds": -4886777.62,
+      "corp_ret": 16222040.55,
+      "county_surcharge": 45784585.19,
+      "ge_allocated": 377501054.0,
+      "ge_use": 339502356.37,
+      "general_fund": 822199299.35,
+      "ind_est": 64571199.11,
+      "ind_refunds": -46401191.28,
+      "ind_ret": 45582548.36,
+      "ind_wh": 273599243.42,
+      "tat": 56519963.2,
+      "total": 980137980.85
+    },
+    "2024-11": {
+      "corp_est": 11025051.78,
+      "corp_refunds": -5734745.71,
+      "corp_ret": 132227.73,
+      "county_surcharge": 43162406.7,
+      "ge_allocated": 357382853.0,
+      "ge_use": 346980614.55,
+      "general_fund": 678073758.18,
+      "ind_est": 33097752.11,
+      "ind_refunds": -49322770.89,
+      "ind_ret": 14144842.19,
+      "ind_wh": 219422772.2,
+      "tat": 56623168.88,
+      "total": 774316653.96
+    },
+    "2024-12": {
+      "corp_est": 78837593.27,
+      "corp_refunds": -783473.92,
+      "corp_ret": 5090398.33,
+      "county_surcharge": 43161424.7,
+      "ge_allocated": 355811004.0,
+      "ge_use": 357909091.76,
+      "general_fund": 830747376.47,
+      "ind_est": 40782522.81,
+      "ind_refunds": -16902469.07,
+      "ind_ret": 10454626.15,
+      "ind_wh": 244842354.38,
+      "tat": 59099700.08,
+      "total": 928174832.27
+    },
+    "2025-01": {
+      "ge_allocated": 465578482.96
+    },
+    "2025-02": {
+      "ge_allocated": 381491340.17
+    },
+    "2025-03": {
+      "ge_allocated": 344452368.26
+    },
+    "2025-04": {
+      "ge_allocated": 433176232.26
+    },
+    "2025-07": {
+      "corp_est": 16111862.59,
+      "corp_refunds": -5699490.58,
+      "corp_ret": -460741.49,
+      "county_surcharge": 51730288.11,
+      "ge_allocated": 425856217.24,
+      "ge_use": 431543135.25,
+      "general_fund": 755000265.81,
+      "ind_est": 25049728.11,
+      "ind_refunds": -40284754.14,
+      "ind_ret": 14144863.67,
+      "ind_wh": 237215406.9,
+      "tat": 74454545.65,
+      "total": 938819661.0
+    },
+    "2025-08": {
+      "corp_est": 7664969.06,
+      "corp_refunds": -4768730.72,
+      "corp_ret": 1998650.72,
+      "county_surcharge": 46315977.89,
+      "ge_allocated": 383655697.79,
+      "ge_use": 383811729.19,
+      "general_fund": 703225225.16,
+      "ind_est": 25663344.07,
+      "ind_refunds": -34636162.84,
+      "ind_ret": 12109750.08,
+      "ind_wh": 189129190.92,
+      "tat": 75335321.19,
+      "total": 807654257.69
+    },
+    "2025-09": {
+      "corp_est": 92597450.29,
+      "corp_refunds": -7209331.91,
+      "corp_ret": 6375280.94,
+      "county_surcharge": 46975850.72,
+      "ge_allocated": 378889301.22,
+      "ge_use": 381784652.95,
+      "general_fund": 886311988.39,
+      "ind_est": 127028576.53,
+      "ind_refunds": -27936866.72,
+      "ind_ret": 16949318.3,
+      "ind_wh": 195117586.24,
+      "tat": 67228134.03,
+      "total": 995181142.17
+    },
+    "2025-10": {
+      "corp_est": 15619393.28,
+      "corp_refunds": -16041895.27,
+      "corp_ret": 8755502.11,
+      "county_surcharge": 48677733.16,
+      "ge_allocated": 387560488.82,
+      "ge_use": 394811318.85,
+      "general_fund": 768027843.76,
+      "ind_est": 39370497.35,
+      "ind_refunds": -62882868.27,
+      "ind_ret": 51097096.6,
+      "ind_wh": 232442964.26,
+      "tat": 56890654.6,
+      "total": 916094140.03
+    },
+    "2025-11": {
+      "corp_est": 3643024.48,
+      "corp_refunds": -13098043.63,
+      "corp_ret": 675631.38,
+      "county_surcharge": 45283828.15,
+      "ge_allocated": 392162474.27,
+      "ge_use": 396914867.88,
+      "general_fund": 685593822.57,
+      "ind_est": 28402377.36,
+      "ind_refunds": -24015195.51,
+      "ind_ret": 12757827.88,
+      "ind_wh": 178033759.8,
+      "tat": 59560612.82,
+      "total": 789183323.73
+    },
+    "2025-12": {
+      "corp_est": 90738678.2,
+      "corp_refunds": -562727.68,
+      "corp_ret": 3009963.57,
+      "county_surcharge": 49940438.0,
+      "ge_allocated": 369053659.05,
+      "ge_use": 367289401.33,
+      "general_fund": 884747038.41,
+      "ind_est": 62986985.41,
+      "ind_refunds": -8920004.78,
+      "ind_ret": 11389673.56,
+      "ind_wh": 247800220.74,
+      "tat": 60826205.77,
+      "total": 988315337.65
+    },
+    "2026-01": {
+      "ge_allocated": 484199956.02
+    },
+    "2026-02": {
+      "ge_allocated": 388616079.61
+    },
+    "2026-03": {
+      "ge_allocated": 365135414.98
+    },
+    "2026-04": {
+      "ge_allocated": 430308341.92
+    }
+  },
+  "series_keys": [
+    "corp_est",
+    "corp_refunds",
+    "corp_ret",
+    "county_surcharge",
+    "ge_allocated",
+    "ge_use",
+    "general_fund",
+    "ind_est",
+    "ind_refunds",
+    "ind_ret",
+    "ind_wh",
+    "tat",
+    "total"
+  ],
+  "source": "Hawaii DOTAX monthly collection reports (files.hawaii.gov/tax/stats/monthly)",
+  "units": "USD, cash collections in deposit month",
+  "value_asof": {
+    "2024-07": "202507ge.xlsx",
+    "2024-08": "202508ge.xlsx",
+    "2024-09": "202509ge.xlsx",
+    "2024-10": "202510ge.xlsx",
+    "2024-11": "202511ge.xlsx",
+    "2024-12": "202512ge.xlsx",
+    "2025-01": "202601ge.xlsx",
+    "2025-02": "202602ge.xlsx",
+    "2025-03": "202603ge.xlsx",
+    "2025-04": "202604ge.xlsx",
+    "2025-07": "202507ge.xlsx",
+    "2025-08": "202508ge.xlsx",
+    "2025-09": "202509ge.xlsx",
+    "2025-10": "202510ge.xlsx",
+    "2025-11": "202511ge.xlsx",
+    "2025-12": "202512ge.xlsx",
+    "2026-01": "202601ge.xlsx",
+    "2026-02": "202602ge.xlsx",
+    "2026-03": "202603ge.xlsx",
+    "2026-04": "202604ge.xlsx"
+  }
+}
