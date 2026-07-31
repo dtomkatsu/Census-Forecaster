@@ -1114,6 +1114,35 @@ pricing) — which is what a screen behaving honestly should find.
   they act as year-effects and are near-collinear with
   `anchor_year_norm`. The Phase-3 ablation must check permutation
   importance before trusting them.
+- **The genuine Urban Hawaii CPI (bimonthly) cannot be a Granger
+  target** — the all-lags-present rule needs monthly cadence. The old
+  XLE→CPI screen passes existed only because the mislabelled target was
+  secretly monthly Los Angeles (see the July 2026 correction). CPI-
+  directed hypotheses are xcorr-descriptive until a monthly Hawaii
+  price proxy exists.
+
+### Experimental: search-attention terms (`markets/attention.py`, July 2026)
+
+Google Trends terms as *demand-side* screen candidates — search embeds
+intent (booking, house-shopping, PV-shopping) with zero publication
+lag, complementing prices which embed expectations. Four terms are
+pre-registered with hypotheses, mirroring the ticker universe's
+multiple-testing discipline. A 2026-07 probe using the screen's own
+machinery found `flights to hawaii` / `hawaii vacation` →
+HI_UNEMPLOYMENT at Granger p ≈ 2e-5..2e-4 (n≈153, lags 3/6)
+**with 2020 excluded** — notably the *inverse* of the ticker pattern
+(tickers died on 2020-exclusion; here the COVID collapse masks the
+relationship). Correlation signs are unstable across terms, so this is
+predictive content, not mechanism.
+
+Not wired into the screen registry, no bundled data, no CI: the
+endpoints are unofficial (cookie→explore→token dance, breaks at
+Google's whim), and values are per-window-normalized *samples* — the
+repo's byte-stable bundle discipline is unachievable; promotion would
+need pinned-window multi-fetch averaging plus the standard BH /
+2020-robustness / ablation gates. Direct ticker-attention terms
+("BOH stock") were rejected: Hawaii microcap search volume is below
+Trends' privacy thresholds.
 
 ### Phase-3 integration (ML features + national anchor)
 
