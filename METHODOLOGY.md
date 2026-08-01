@@ -1171,13 +1171,43 @@ through the standard gauntlet in reverse.
 
 Consequence: the tracker's damped-drift + calibrated-band forecast
 stays as-is, now backed by evidence rather than assumption. Untested
-and still plausible: *volatility* conditioning (macro state → band
-multiplier — vol is forecastable where returns are not) and long-
-horizon fair-value consistency checks (e.g. BOH's revenue base vs the
-SB3125 income path) — both are framed as tracker context, never
-trading signals. Revision caveat applies throughout: screens run on
-revised LAUS/Zillow histories, so even these nulls are *optimistic*
-upper bounds on real-time performance.
+and still plausible: long-horizon fair-value consistency checks (e.g.
+BOH's revenue base vs the SB3125 income path) — framed as tracker
+context, never trading signals. Revision caveat applies throughout:
+screens run on revised LAUS/Zillow histories, so even these nulls are
+*optimistic* upper bounds on real-time performance.
+
+### The forecast board + vol bake-off (`markets/forecaster.py`, July 2026)
+
+The markets subpackage now exposes a standalone multi-horizon stock
+forecaster (`forecast_board` / `python -m
+census_forecaster.markets.forecaster`): damped-drift point + calibrated
+90% band per ticker × horizon, with diagnostics per row — 12-month
+momentum, a volatility-regime flag, and whether the ticker is itself a
+robust *forward*-screen survivor (the direction that works).
+
+Where returns proved unforecastable (above), volatility is not — so the
+band's σ was put through the same discipline. Walk-forward bake-off,
+3,806 pooled (ticker, anchor, horizon) forecasts, identical damped-drift
+points, multipliers calibrated *sequentially* from past standardized
+errors (no lookahead), scored by 90% interval score:
+
+| σ estimator | coverage | mean IS |
+|---|---:|---:|
+| rolling-36 SD (original) | 0.896 | 0.6152 |
+| **EWMA λ=0.97 (RiskMetrics monthly)** | 0.898 | **0.6076** |
+| GARCH(1,1) via `arch` | 0.898 | 0.6277 |
+
+EWMA wins on sharpness at identical coverage and is dependency-free;
+**GARCH lost to the original** — monthly cadence leaves ML vol fitting
+too few observations — so the `arch` dependency was evaluated and
+rejected on evidence. The board defaults to EWMA;
+`forecast_ticker`/`calibrate_band_multiplier` gained a `vol_method`
+parameter but keep `rolling` as their default so existing callers'
+numbers are unchanged (multiplier and σ must always be calibrated under
+the same method). Standing rule restated: the board is tracker context,
+not trading advice, and no fundamentals-derived return signal touches
+the point forecast (the null above is load-bearing).
 
 ### Phase-3 integration (ML features + national anchor)
 
