@@ -1144,6 +1144,41 @@ need pinned-window multi-fetch averaging plus the standard BH /
 ("BOH stock") were rejected: Hawaii microcap search volume is below
 Trends' privacy thresholds.
 
+### Reverse direction: fundamentals → ticker returns (`markets/fundamentals.py`, July 2026 — null result)
+
+The standing direction is prices → economy because prices embed
+expectations before agencies publish; the reverse — census/BLS/Zillow
+data informing *stock* forecasts — collides with market efficiency.
+The narrow defensible hypothesis (slow information diffusion into the
+thinly-followed Hawaii tier — Hong/Lim/Stein 2000, Hou & Moskowitz
+2005) was pre-registered as six fundamental→ticker pairs
+(HI unemployment → BOH/FHB/HE, ZHVI → BOH/FHB, ZORI → BOH) and run
+through the standard gauntlet in reverse.
+
+**Verdict: clean EMH null, both stages.**
+
+* *Screen:* `hi_unemployment→BOH` passes BH-FDR (p=0.001/0.003 at lags
+  6/12) **only with 2020 included** and collapses on exclusion
+  (p=0.74/0.49) — the exact COVID-coincidence artifact the robustness
+  gate exists to catch, and the mirror image of the attention terms
+  (which strengthen on exclusion). Zero of six pairs survive.
+* *Ablation:* one-step-ahead OLS on availability-lagged fundamentals
+  (LAUS/Zillow declare `availability_lag_months`; only
+  actually-public-at-forecast-time values are used) beats **neither**
+  the predict-zero nor the expanding-mean benchmark for any pair; the
+  BOH/unemployment signal is catastrophically worse (+129% RMSE) —
+  the regression fits the 2020 outlier and pays for it out of sample.
+
+Consequence: the tracker's damped-drift + calibrated-band forecast
+stays as-is, now backed by evidence rather than assumption. Untested
+and still plausible: *volatility* conditioning (macro state → band
+multiplier — vol is forecastable where returns are not) and long-
+horizon fair-value consistency checks (e.g. BOH's revenue base vs the
+SB3125 income path) — both are framed as tracker context, never
+trading signals. Revision caveat applies throughout: screens run on
+revised LAUS/Zillow histories, so even these nulls are *optimistic*
+upper bounds on real-time performance.
+
 ### Phase-3 integration (ML features + national anchor)
 
 Two paths, both ablation-gated by
