@@ -1217,52 +1217,123 @@ Note: Q1 filers (avg income ~$3K) are **completely unaffected** because their gr
 
 ### Annual Fiscal Impact by Scenario ($M, vs. Act 46 baseline)
 
-**Updated May 7, 2026** from fresh forecast run incorporating population growth (0.5%/yr DBEDT 2050) and COR March 2026 projections. PTE shift is $0 in this run. Results are post-behavioral (ETI/migration only).
+**Updated August 3, 2026** — full re-run of `forecast_sb3125_enhanced.py --cd 1` (static credit overlay) on the corrected Hawaii CPI basis (see "Hawaii CPI series correction," July 30, 2026, above) and the wired-through v3 κ calibration. Every number below supersedes the May 7, 2026 run, which was computed on the mislabelled Los Angeles CPI series. PTE shift is still $0 in this run (unresolved — see the Section 5c note; not re-investigated as part of this rerun). Results are post-behavioral (ETI/migration only).
 
 | Tax Year | LOW | **MID** | HIGH | RECESSION |
 |----------|----:|--------:|-----:|----------:|
-| 2027 | $92.6M | **$101.2M** | $124.2M | $97.5M |
-| 2028 | $102.6M | **$122.0M** | $154.6M | $120.6M |
-| 2029 | $116.5M | **$139.7M** | $180.2M | $138.8M |
-| 2030 | $111.4M | **$137.2M** | $183.9M | $141.0M |
-| 2031 | $146.8M | **$173.0M** | $226.9M | $176.5M |
-| **5-year total** | **$569.9M** | **$673.0M** | **$869.9M** | **$674.5M** |
+| 2027 | $109.2M | **$121.9M** | $145.6M | $115.7M |
+| 2028 | $119.7M | **$139.2M** | $174.6M | $138.7M |
+| 2029 | $133.7M | **$157.6M** | $200.9M | $158.1M |
+| 2030 | $126.0M | **$156.8M** | $203.8M | $159.0M |
+| 2031 | $163.3M | **$191.2M** | $248.0M | $195.1M |
+| **5-year total** | **$651.8M** | **$766.7M** | **$972.9M** | **$766.6M** |
 
 *Positive = net revenue gain for the State. Includes bracket microsim + credit overlay + behavioral response.*
 
-**RECESSION scenario note:** See Section 8b. ⚠️ RECESSION is slightly above MID in 2030–2031 in this run — unexpected behavior that needs investigation before citing.
+The CPI correction raises every scenario's 5-year total by roughly $90-105M (MID: $673.0M → $766.7M, +13.9%) — the corrected Hawaii nominal-income path runs hotter than the Los Angeles path it replaced, which raises both the bracket base and the REEC demand baseline (REEC scales with nominal income; see Section 6a).
+
+**RECESSION scenario note (unchanged from the prior run):** See Section 8b. ⚠️ RECESSION is still slightly above MID in 2030–2031 ($159.0M vs $156.8M in 2030; $195.1M vs $191.2M in 2031) — the same unexpected ordering flagged in the May 7 run persists after the CPI fix, confirming it is not a CPI-series artifact. Still needs investigation before citing the RECESSION scenario as strictly conservative.
 
 ### MID Scenario Decomposition
 
 | Channel | 5-year Total |
 |---------|-------------:|
-| Static bracket gain (13% top bracket + middle cuts) | +$411.6M |
-| ETI / migration behavioral offset | −$73.2M |
+| Static bracket gain (13% top bracket + middle cuts) | +$498.9M |
+| ETI / migration behavioral offset | −$79.1M |
 | PTE election shift | $0 ⚠️ |
-| **Post-behavioral bracket delta** | **+$338.4M** |
-| REEC savings (cap + elimination) | +$236.3M |
+| **Post-behavioral bracket delta** | **+$419.8M** |
+| REEC savings (static cap overlay) | +$248.5M |
 | CGEC savings (sunset) | +$90.5M |
-| TCRA savings (acceleration) | +$7.8M |
-| **Credit overlay total** | **+$334.6M** |
-| **Total MID** | **+$673.0M** |
+| TCRA savings (acceleration) | +$7.9M |
+| **Credit overlay total** | **+$346.9M** |
+| **Total MID** | **+$766.7M** |
 
-*⚠️ PTE shift is $0 in this run — previously modeled at −$120.4M. Needs investigation to confirm whether this is intentional (e.g., PTE disabled in latest pipeline) or a bug. Credit overlay revised down from $503.2M to $334.6M reflecting updated REEC and CGEC baselines.*
+*⚠️ PTE shift is still $0 — carried over from the May 7 run, unresolved (see Section 5c). Static bracket gain rose $87.3M and REEC savings rose $12.2M vs. the May 7 run, both driven by the corrected (hotter) Hawaii nominal-income path; CGEC and TCRA are unchanged (their growth path — Section 6b/6c — is a separate 3%/yr assumption, not derived from `_hawaii_nominal_growth`).*
 
-### Distributional Impact — TY 2027 Bracket Change (MID)
+Year-by-year (MID, $M):
 
-| Quintile | Income Range | Avg Income | Delta $M | Avg $/Filer |
-|----------|-------------|-----------|---------|------------|
-| Q1 (Bottom 20%) | Below $11K | $2,919 | $0 | $0 |
-| Q2 | $11K – $29K | $18,858 | −$0.3M | −$3 |
-| Q3 | $29K – $54K | $41,070 | −$4.9M | −$42 |
-| Q4 | $54K – $102K | $74,612 | −$9.8M | −$82 |
-| Q5 (Top 20%) | $102K – $165M | $244,822 | +$97.6M | +$824 |
+| Tax Year | Static bracket | ETI/migration | Post-behav. bracket | REEC | CGEC | TCRA | Credit total | **Total** |
+|----------|---------------:|---------------:|---------------------:|-----:|-----:|-----:|-------------:|----------:|
+| 2027 | 81.6 | −3.2 | 78.3 | 43.5 | 0.0 | 0.0 | 43.5 | **121.9** |
+| 2028 | 87.0 | −9.2 | 77.9 | 40.8 | 20.6 | 0.0 | 61.3 | **139.2** |
+| 2029 | 101.1 | −15.9 | 85.2 | 42.4 | 22.1 | 7.9 | 72.4 | **157.6** |
+| 2030 | 111.0 | −22.6 | 88.5 | 44.7 | 23.7 | 0.0 | 68.4 | **156.8** |
+| 2031 | 118.2 | −28.3 | 89.9 | 77.2 | 24.1 | 0.0 | 101.3 | **191.2** |
 
-*Negative = filer pays less (savings from rate cut). Positive = filer pays more. Bracket change only; credit overlay excluded.*
+### Distributional Impact — TY 2027 (MID)
+
+**Updated August 3, 2026.** The prior table's quintiles were filer-based bracket-only figures with income-range labels from an earlier, separate quintile run; the current pipeline (`forecast_sb3125_enhanced.py`'s native distributional module) reports **household**-based quintiles with the credit-cap loss broken out alongside the bracket change, and does not emit income-range boundaries per quintile — rather than approximate those from a different run, this table reports exactly what the current pipeline produces.
+
+| Quintile | Households | Bracket Δ ($M) | Credit-cap loss ($M) | Total Δ ($M) | Avg/HH bracket | Avg/HH credit loss | Avg/HH total | % pay more | % pay less |
+|----------|-----------:|---------------:|----------------------:|-------------:|---------------:|--------------------:|--------------:|-----------:|-----------:|
+| Q1 (bottom 20%) | 78,773 | −$0.4M | $1.0M | $0.6M | −$5 | $13 | $8 | 85.1% | 14.9% |
+| Q2 | 90,742 | −$4.6M | $1.0M | −$3.6M | −$51 | $11 | −$40 | 13.9% | 86.1% |
+| Q3 | 100,291 | −$7.9M | $2.1M | −$5.8M | −$78 | $21 | −$58 | 0.9% | 99.1% |
+| Q4 | 107,459 | −$9.8M | $3.8M | −$6.0M | −$92 | $35 | −$56 | 3.4% | 96.6% |
+| Q5 (top 20%) | 116,782 | +$107.7M | $17.8M | +$125.5M | +$922 | $152 | +$1,075 | 62.8% | 37.2% |
+
+*Negative Δ = filer pays less / State collects less. "Credit-cap loss" is the household's imputed share of REEC/CGEC/TCRA savings — a cost to filers who would otherwise have claimed those credits, hence it adds (not subtracts) to the household's total change in all quintiles. Q1's positive total despite a negative bracket change reflects a small credit-cap loss exceeding its (near-zero) bracket savings.*
+
+---
+
+### SB 3125 CD2 Results — August 3, 2026 (post CPI-correction rerun)
+
+Full re-run of `forecast_sb3125_enhanced.py --cd 2` (vintage carryforward
+model) on the corrected Hawaii CPI basis. Supersedes the May 14, 2026
+table below, which was computed on the mislabelled Los Angeles CPI series.
+
+**CD2 vs Act 46 baseline, post-behavioral, post-Round-2 ($M):**
+
+| Tax Year | LOW | **MID** | HIGH | RECESSION |
+|----------|----:|--------:|-----:|----------:|
+| 2027 | $125.0M | **$127.5M** | $149.0M | $121.3M |
+| 2028 | $139.6M | **$152.6M** | $184.6M | $152.0M |
+| 2029 | $155.9M | **$174.0M** | $212.4M | $174.5M |
+| 2030 | $179.8M | **$208.6M** | $252.3M | $210.8M |
+| 2031 | $188.6M | **$214.4M** | $268.9M | $218.3M |
+| **5-year total** | **$788.9M** | **$877.0M** | **$1,067.2M** | **$876.9M** |
+
+MID rises $95.1M vs. the May 14 run ($781.9M → $877.0M, +12.2%) — the
+same corrected-CPI mechanism as the CD1 rerun above (hotter Hawaii
+nominal-income path → higher REEC baseline), amplified here because the
+vintage carryforward model's REEC savings ($358.9M 5yr, vs. CD1's static
+$248.5M) scale more directly with the nominal-income-driven baseline.
+
+**MID scenario, vintage-model REEC diagnostics by year:**
+
+| Tax Year | REEC savings | CGEC savings | Credit total | Bracket (post-behav.) | **Total** |
+|----------|-------------:|-------------:|-------------:|------------------------:|----------:|
+| 2027 | $49.2M | $0.0M | $49.2M | $78.3M | **$127.5M** |
+| 2028 | $54.1M | $20.6M | $74.7M | $77.9M | **$152.6M** |
+| 2029 | $58.8M | $22.1M | $88.8M | $85.2M | **$174.0M** |
+| 2030 | $96.4M | $23.7M | $120.1M | $88.5M | **$208.6M** |
+| 2031 | $100.4M | $24.1M | $124.5M | $89.9M | **$214.4M** |
+
+The TY2030 jump (REEC savings $58.8M → $96.4M) is the same
+§235-12.5(p) sunset driver documented in the May 14 finding below — it
+is a discrete step in the vintage simulation's cap/sunset logic, not a
+CPI artifact, and persists after the correction.
+
+**Credit savings breakdown, MID scenario ($M) — legacy static overlay (CD1) vs. vintage carryforward (CD2):**
+
+| Year | Legacy static (CD1) | Vintage model (CD2) | Δ |
+|------|---------------------:|----------------------:|--:|
+| 2027 | $43.5M | $49.2M | +$5.6M |
+| 2028 | $61.3M | $74.7M | +$13.3M |
+| 2029 | $72.4M | $88.8M | +$16.4M |
+| 2030 | $68.4M | $120.1M | +$51.8M |
+| 2031 | $101.3M | $124.5M | +$23.3M |
+
+*Bracket-change impact (identical across CD1/CD2 — see the May 11, 2026
+finding below) is unaffected by which REEC model is used; only the
+credit-overlay column differs.*
 
 ---
 
 ### SB 3125 CD2 Results — May 14, 2026 (vintage carryforward correction)
+
+**Superseded by the August 3, 2026 rerun above** (same methodology, corrected
+CPI basis). Retained for historical reference.
 
 **Key finding (revised May 14):** The previous static credit overlay
 understated REEC savings by ~$107M over 5 years because it (a) treated
@@ -1329,7 +1400,23 @@ historical reference.
 | 2031 | $147.4M | **$172.4M** | $224.4M | $175.9M |
 | **5-year total** | **$570.7M** | **$674.5M** | **$869.2M** | **$672.1M** |
 
-**CD2 sensitivity (static scoring, no behavioral response, $M):**
+**CD2 sensitivity (static scoring, no behavioral response, $M) — updated August 3, 2026:**
+
+Re-run of `forecast_sb3125_sensitivity.py --cd 2`, which always uses the
+static (non-vintage) credit overlay regardless of `--cd` — this table
+measures Pareto-α × REEC-scenario sensitivity in isolation, not the
+vintage carryforward model. Supersedes the values below it.
+
+| Tax Year | LOW | **MID** | HIGH |
+|----------|----:|--------:|-----:|
+| 2027 | $79.3M | **$88.1M** | $108.5M |
+| 2028 | $111.7M | **$121.5M** | $141.4M |
+| 2029 | $136.4M | **$144.5M** | $163.8M |
+| 2030 | $141.8M | **$148.6M** | $166.3M |
+| 2031 | $192.3M | **$191.1M** | $213.6M |
+| **5-year total** | **$661.5M** | **$693.8M** | **$793.6M** |
+
+*Superseded (pre-CPI-correction) values, retained for reference:*
 
 | Tax Year | LOW | **MID** | HIGH |
 |----------|----:|--------:|-----:|
@@ -1337,25 +1424,62 @@ historical reference.
 | 2028 | $114.1M | **$123.8M** | $143.1M |
 | 2029 | $139.0M | **$147.0M** | $165.8M |
 | 2030 | $141.8M | **$148.5M** | $165.8M |
-| 2031 | $193.0M | **$192.3M** | $214.0M** |
+| 2031 | $193.0M | **$192.3M** | $214.0M |
 | **5-year total** | **$667.2M** | **$699.6M** | **$796.7M** |
 
-**CD2 vs FY2026-frozen baseline (ITEP-comparable, $M):**
+*The near-unchanged totals (5yr MID $699.6M → $693.8M, essentially flat)
+confirm this table's methodology is insensitive to the CPI correction —
+expected, since REEC demand here scales off a fixed 3%/yr backcast growth
+rate for out-of-range years and the scenario-level REEC baselines rather
+than `_hawaii_nominal_growth` directly; the modest per-year shifts are
+noise from the underlying microsim rerun, not a CPI effect.*
 
-*Answers: "What does CD2 cost vs if nothing had been enacted after 2026?" Negative = revenue lost.*
+**CD2 vs FY2026-frozen baseline (ITEP-comparable, $M) — updated August 3, 2026:**
+
+*Answers: "What does CD2 cost vs if nothing had been enacted after 2026?" Negative = revenue lost. Re-run of `forecast_sb3125_vs_fy26base.py --cd 2` on the corrected CPI basis.*
 
 | Tax Year | Bracket effect | SD expansion | **Total** | ITEP estimate | Gap |
 |----------|---------------:|-------------:|----------:|---------------:|-----:|
-| 2027 | −$171.4M | −$32.4M | **−$203.7M** | −$227.0M | +$23.3M |
-| 2028 | −$161.6M | −$67.2M | **−$228.9M** | −$258.0M | +$29.1M |
-| 2029 | −$387.6M | −$85.3M | **−$472.9M** | −$534.0M | +$61.1M |
-| 2030 | −$375.5M | −$123.1M | **−$498.6M** | −$563.0M | +$64.4M |
-| 2031 | −$353.6M | −$182.9M | **−$536.5M** | −$622.0M | +$85.5M |
+| 2027 | −$160.2M | −$31.7M | **−$191.9M** | −$227.0M | +$35.1M |
+| 2028 | −$148.9M | −$65.6M | **−$214.5M** | −$258.0M | +$43.5M |
+| 2029 | −$372.0M | −$82.3M | **−$454.3M** | −$534.0M | +$79.7M |
+| 2030 | −$360.2M | −$119.3M | **−$479.5M** | −$563.0M | +$83.5M |
+| 2031 | −$336.7M | −$177.6M | **−$514.3M** | −$622.0M | +$107.7M |
+| **5-year Σ** | **−$1,378.1M** | **−$476.4M** | **−$1,854.5M** | **−$2,204.0M** | **+$349.5M** |
+
+Our microsim now runs ~15.9% below ITEP on the vs-frozen baseline (was
+~12% pre-correction) — the corrected, hotter Hawaii nominal-income path
+narrows our bracket-effect losses, widening the gap to ITEP's estimate.
+Likely sources unchanged from the prior note: ITEP includes non-residents
+and PTE pass-through attribution not in the microsim; their dynamic
+inflation assumptions may also differ over the 5-year window — the CPI
+correction narrows one plausible source of the original gap (our CPI
+assumption running cooler than reality) while the gap widening suggests
+the remaining sources (PTE, non-resident) are doing more of the work
+than previously apparent.
+
+*Superseded (pre-CPI-correction) values, retained for reference:*
+
+| Tax Year | Bracket effect | SD expansion | Total | ITEP estimate | Gap |
+|----------|---------------:|-------------:|------:|---------------:|-----:|
+| 2027 | −$171.4M | −$32.4M | −$203.7M | −$227.0M | +$23.3M |
+| 2028 | −$161.6M | −$67.2M | −$228.9M | −$258.0M | +$29.1M |
+| 2029 | −$387.6M | −$85.3M | −$472.9M | −$534.0M | +$61.1M |
+| 2030 | −$375.5M | −$123.1M | −$498.6M | −$563.0M | +$64.4M |
+| 2031 | −$353.6M | −$182.9M | −$536.5M | −$622.0M | +$85.5M |
 | **5-year Σ** | **−$1,449.7M** | **−$491.0M** | **−$1,940.6M** | **−$2,204.0M** | **+$263.4M** |
 
-Our microsim runs ~12% below ITEP on the vs-frozen baseline. Likely sources: ITEP includes non-residents and PTE pass-through attribution not in the microsim; their dynamic inflation assumptions may also differ over the 5-year window.
+**MID scenario quintile breakdown, TY 2027, CD2 vs Act 46 — updated August 3, 2026:**
 
-**MID scenario quintile breakdown (bracket only, TY 2027, CD2 vs Act 46):**
+The current pipeline's distributional module produces **identical**
+household-based quintile figures for CD1 and CD2 (bracket structure is
+shared between the two conference drafts; only the credit-overlay model
+differs, and this table is bracket-only). See the CD1 "Distributional
+Impact" table in Section 10 above for the updated household-based
+breakdown with the same figures — the filer-based, income-range-labelled
+table below is retained as-is because the current pipeline does not
+reproduce those income-range boundaries (see the Section 10 note); it is
+not being actively re-derived.
 
 | Quintile | Income Range | Avg Income | N filers | Bracket Delta | Avg $/filer |
 |----------|---------------|-----------|----------|--------------|-------------|
@@ -1365,9 +1489,12 @@ Our microsim runs ~12% below ITEP on the vs-frozen baseline. Likely sources: ITE
 | Q4 | $56.0K – $103.5K | $76,346 | 125,006 | −$10.5M | −$84 |
 | Q5 (Top 20%) | $103.5K – $211.6M | $253,959 | 124,994 | **+$82.7M** | **+$662** |
 
+*Not re-derived this rerun — retained from the May 11 run pending a
+quintile script re-run with income-range output.*
+
 ### Baseline Validation
 
-The microsim TY2027 Act 46 baseline is approximately $2.26B — roughly $790M below the COR's $3.05B FY2027 projection. This gap is **expected and not a calibration error**:
+**Updated August 3, 2026** (corrected-CPI rerun): the microsim TY2027 Act 46 baseline is approximately $2.24B — roughly $810M (27%) below the COR's $3.05B FY2027 projection, versus $2.26B / $790M pre-correction. This gap is **expected and not a calibration error**:
 
 - Pass-through entity (PTE) tax revenue (~$124M+): taxed at entity level, not on individual returns
 - Non-resident withholding: captured in DOTAX but not in PUMS-based microsim
