@@ -348,7 +348,7 @@ data geometry.
 ACS uses (indicator, method, pop_bucket, h_bucket). BLS uses
 **(series_id, h_bucket, vol_regime)**:
 
-* `series_id` — the BLS series (e.g. `CUURS49ASA0`, `CUUR0000SEHA`).
+* `series_id` — the BLS series (e.g. `CUURS49FSA0`, `CUUR0000SEHA`).
 * `h_bucket` — `short` for h ∈ {1–5} months, `long` for h ∈ {6+} months.
 * `vol_regime` — `low` if the rolling 24-month return SD ≤ per-series
   median; `high` otherwise.
@@ -376,12 +376,13 @@ search procedure.
 
 ### 3. Multi-MSA panel
 
-The v2 calibration ran on 5 Honolulu series. v3 runs on **55 series**:
-11 areas (national + Honolulu + 9 top-population MSAs) × 5 CPI
-subindexes (all-items, food-at-home, rent, housing, gasoline). The
-panel is bundled at `data/bls_panel/cpi_panel.json` (~750 KB) and
-refreshed via `python -m census_forecaster.scripts.refresh_bls_panel`
-with a `BLS_API_KEY`.
+The v2 calibration ran on 5 "Honolulu" series (see §5 — those IDs were
+actually Los Angeles). v3 now runs on **60 series**: 12 areas (national
++ Urban Hawaii + 10 large MSAs) × 5 CPI subindexes (all-items,
+food-at-home, rent, housing/shelter, gasoline). The panel is bundled at
+`data/bls_panel/cpi_panel.json` and refreshed via
+`python -m census_forecaster.scripts.refresh_bls_panel` with a
+`BLS_API_KEY`.
 
 Empirical κ values from the v3 calibration on this panel:
 
@@ -416,6 +417,56 @@ On the Hawaii calibration, BEA per-capita personal income gets the
 **highest weight** in the income anchor ensemble (~25%), beating QCEW
 wages (~23%), the Cleveland Fed-style CPI all-items (~19%), the PCE
 deflator (~19%), and Honolulu metro RPP (~13%).
+
+### 5. Series-identity correction + YoY trend estimator (July 2026)
+
+**Identity correction (2026-07-27).** The series the repo had labelled
+"Urban Honolulu, HI" — `CUURS49ASA0`, the production Hawaiʻi income
+deflator — is actually **Los Angeles-Long Beach-Anaheim, CA** per the
+BLS API catalog. Five of eleven panel area labels were shifted; no
+Hawaiʻi series was in the panel at all. Corrections:
+
+* Panel areas fixed and **`S49F` "Urban Hawaii"** added (bimonthly,
+  published from 2017). `bls/panel.py` documents the audit; the cadence
+  tell is that BLS publishes SA0 monthly for exactly four areas (US,
+  NY, Chicago, LA) — a monthly "Honolulu" series is mislabelled.
+* `_HONOLULU_BLS_SERIES_ID` → `CUURS49FSA0` (tax_modeler income path).
+* The annual anchor files `cpi_honolulu_allitems.json` /
+  `cpi_honolulu_rent.json` declared BLS series IDs that do not exist;
+  both were rebuilt from the genuine semiannual Urban Hawaii series
+  (`CUUSS49FSA0` / `CUUSS49FSEHA`), 2017–2025 observed, 2010–2016
+  rate-chained backward from the legacy files' year-over-year rates
+  (flagged in each file's limitations).
+* LA ran ~0.34 pp/yr hotter than Urban Hawaii over 2018–2025 (CAGR
+  3.687% vs 3.350%), so LA-based Hawaiʻi deflators were overstated
+  ~2.6% compounded over a 2023→2031 window.
+
+**YoY trend estimator (2026-07-27).** The pairwise smoother in
+`bls/projection.py` weighted the newest print pair at ~50% and read
+consecutive-month changes of NSA series (seasonality) as trend — a
+jackknife (drop the newest print) moved its implied annual rate by
+~4 pp on both Urban Hawaii and LA. `smoothed_monthly_rate` now uses
+**year-over-year log changes** (same-calendar-month differencing
+cancels seasonality; unaffected by cadence or isolated holes) blended
+with a **time-based recency weight** `0.5^(months_back / 8.3)` — decay
+per calendar month, so bimonthly and monthly series with the same path
+get the same trend. The 8.3-month half-life mirrors φ=0.92/month's
+half-life but is an independent, sweepable constant. Series with <4 YoY
+observations fall back to the legacy pairwise smoother (its 2-point
+behavior is a public contract). Validation on the corrected panel:
+implied trends land within ~0.15 pp/yr of 24-month CAGRs and jackknife
+swings drop from ~4 pp to ≤0.3 pp. The v3 calibration was re-derived on
+the corrected panel + new estimator (42,908 folds, 421 strata cells —
+`backtests/results/bls_v3_calibration_2026-07-30.md`).
+
+**Uncertainty plumbing (2026-07-30).** The κ-rescaled CPI projection SE
+now propagates to consumers: `RealGrowthDetail`
+(tax_modeler `projection/income_forecast.py`) combines the ACS-forecast
+log-SE with the κ-rescaled BLS log-SE under an independence assumption,
+and `compute_credit_overlay` (SB 3125) reruns itself at the real-growth
+CI90 bounds to emit savings bands. See the SB3125_CD1_FORECAST.md
+"Prediction-interval plumbing" section for the decomposition and the
+channels deliberately held at point.
 
 ### Auto-refresh
 
@@ -1063,6 +1114,100 @@ pricing) — which is what a screen behaving honestly should find.
   they act as year-effects and are near-collinear with
   `anchor_year_norm`. The Phase-3 ablation must check permutation
   importance before trusting them.
+- **The genuine Urban Hawaii CPI (bimonthly) cannot be a Granger
+  target** — the all-lags-present rule needs monthly cadence. The old
+  XLE→CPI screen passes existed only because the mislabelled target was
+  secretly monthly Los Angeles (see the July 2026 correction). CPI-
+  directed hypotheses are xcorr-descriptive until a monthly Hawaii
+  price proxy exists.
+
+### Experimental: search-attention terms (`markets/attention.py`, July 2026)
+
+Google Trends terms as *demand-side* screen candidates — search embeds
+intent (booking, house-shopping, PV-shopping) with zero publication
+lag, complementing prices which embed expectations. Four terms are
+pre-registered with hypotheses, mirroring the ticker universe's
+multiple-testing discipline. A 2026-07 probe using the screen's own
+machinery found `flights to hawaii` / `hawaii vacation` →
+HI_UNEMPLOYMENT at Granger p ≈ 2e-5..2e-4 (n≈153, lags 3/6)
+**with 2020 excluded** — notably the *inverse* of the ticker pattern
+(tickers died on 2020-exclusion; here the COVID collapse masks the
+relationship). Correlation signs are unstable across terms, so this is
+predictive content, not mechanism.
+
+Not wired into the screen registry, no bundled data, no CI: the
+endpoints are unofficial (cookie→explore→token dance, breaks at
+Google's whim), and values are per-window-normalized *samples* — the
+repo's byte-stable bundle discipline is unachievable; promotion would
+need pinned-window multi-fetch averaging plus the standard BH /
+2020-robustness / ablation gates. Direct ticker-attention terms
+("BOH stock") were rejected: Hawaii microcap search volume is below
+Trends' privacy thresholds.
+
+### Reverse direction: fundamentals → ticker returns (`markets/fundamentals.py`, July 2026 — null result)
+
+The standing direction is prices → economy because prices embed
+expectations before agencies publish; the reverse — census/BLS/Zillow
+data informing *stock* forecasts — collides with market efficiency.
+The narrow defensible hypothesis (slow information diffusion into the
+thinly-followed Hawaii tier — Hong/Lim/Stein 2000, Hou & Moskowitz
+2005) was pre-registered as six fundamental→ticker pairs
+(HI unemployment → BOH/FHB/HE, ZHVI → BOH/FHB, ZORI → BOH) and run
+through the standard gauntlet in reverse.
+
+**Verdict: clean EMH null, both stages.**
+
+* *Screen:* `hi_unemployment→BOH` passes BH-FDR (p=0.001/0.003 at lags
+  6/12) **only with 2020 included** and collapses on exclusion
+  (p=0.74/0.49) — the exact COVID-coincidence artifact the robustness
+  gate exists to catch, and the mirror image of the attention terms
+  (which strengthen on exclusion). Zero of six pairs survive.
+* *Ablation:* one-step-ahead OLS on availability-lagged fundamentals
+  (LAUS/Zillow declare `availability_lag_months`; only
+  actually-public-at-forecast-time values are used) beats **neither**
+  the predict-zero nor the expanding-mean benchmark for any pair; the
+  BOH/unemployment signal is catastrophically worse (+129% RMSE) —
+  the regression fits the 2020 outlier and pays for it out of sample.
+
+Consequence: the tracker's damped-drift + calibrated-band forecast
+stays as-is, now backed by evidence rather than assumption. Untested
+and still plausible: long-horizon fair-value consistency checks (e.g.
+BOH's revenue base vs the SB3125 income path) — framed as tracker
+context, never trading signals. Revision caveat applies throughout:
+screens run on revised LAUS/Zillow histories, so even these nulls are
+*optimistic* upper bounds on real-time performance.
+
+### The forecast board + vol bake-off (`markets/forecaster.py`, July 2026)
+
+The markets subpackage now exposes a standalone multi-horizon stock
+forecaster (`forecast_board` / `python -m
+census_forecaster.markets.forecaster`): damped-drift point + calibrated
+90% band per ticker × horizon, with diagnostics per row — 12-month
+momentum, a volatility-regime flag, and whether the ticker is itself a
+robust *forward*-screen survivor (the direction that works).
+
+Where returns proved unforecastable (above), volatility is not — so the
+band's σ was put through the same discipline. Walk-forward bake-off,
+3,806 pooled (ticker, anchor, horizon) forecasts, identical damped-drift
+points, multipliers calibrated *sequentially* from past standardized
+errors (no lookahead), scored by 90% interval score:
+
+| σ estimator | coverage | mean IS |
+|---|---:|---:|
+| rolling-36 SD (original) | 0.896 | 0.6152 |
+| **EWMA λ=0.97 (RiskMetrics monthly)** | 0.898 | **0.6076** |
+| GARCH(1,1) via `arch` | 0.898 | 0.6277 |
+
+EWMA wins on sharpness at identical coverage and is dependency-free;
+**GARCH lost to the original** — monthly cadence leaves ML vol fitting
+too few observations — so the `arch` dependency was evaluated and
+rejected on evidence. The board defaults to EWMA;
+`forecast_ticker`/`calibrate_band_multiplier` gained a `vol_method`
+parameter but keep `rolling` as their default so existing callers'
+numbers are unchanged (multiplier and σ must always be calibrated under
+the same method). Standing rule restated: the board is tracker context,
+not trading advice, and no fundamentals-derived return signal touches
+the point forecast (the null above is load-bearing).
 
 ### Phase-3 integration (ML features + national anchor)
 

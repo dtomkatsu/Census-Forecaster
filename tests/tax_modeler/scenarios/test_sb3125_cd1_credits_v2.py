@@ -216,11 +216,15 @@ def test_compute_credit_overlay_backward_compat_no_new_params():
     """Calling without new params produces the same numbers as before."""
     r = compute_credit_overlay(2027, reec_effective_claim_share=0.65,
                                cgec_annual_growth=0.015)
-    # Legacy static overlay: baseline $81.8M, after_bill $40M, savings $41.8M.
+    # Legacy static overlay: baseline − $40M cap. Center re-pinned 41.8→44.0
+    # on 2026-07-30 after the Hawaii CPI correction (the old center was
+    # computed on Los Angeles CPI mislabelled as Honolulu — see
+    # census_forecaster.bls.panel; higher corrected nominal growth raises
+    # the projected baseline and thus cap savings).
     # Tolerance is wide enough (abs=1.5) to absorb routine monthly drift in the
     # refreshed calibration anchors (the refresh-data gate runs this test
     # against freshly-pulled data); it's a sanity band, not a tripwire.
-    assert r["reec_savings_$M"] == pytest.approx(41.8, abs=1.5)
+    assert r["reec_savings_$M"] == pytest.approx(44.0, abs=1.5)
 
 
 def test_compute_credit_overlay_vintage_with_new_knobs_returns_diagnostics():
@@ -237,3 +241,29 @@ def test_compute_credit_overlay_vintage_with_new_knobs_returns_diagnostics():
     assert r["reec_interpretation"] == "A"
     # Pro-rata suppression should have triggered (binding cap, eta > 0)
     assert 0.0 < r["reec_suppression_factor"] < 1.0
+
+
+def test_compute_credit_overlay_ci_band():
+    """The κ-calibrated CI90 band brackets the point estimate on both the
+    growth factor and the savings, and the band is genuinely two-sided."""
+    r = compute_credit_overlay(2027, reec_effective_claim_share=0.65,
+                               cgec_annual_growth=0.015)
+    assert (r["growth_individual_ci90_low"]
+            < r["growth_individual"]
+            < r["growth_individual_ci90_high"])
+    assert (r["reec_savings_ci90_low_$M"]
+            <= r["reec_savings_$M"]
+            <= r["reec_savings_ci90_high_$M"])
+    assert r["reec_savings_ci90_low_$M"] < r["reec_savings_ci90_high_$M"]
+    assert r["growth_individual_se_log"] > 0
+
+
+def test_compute_credit_overlay_ci_band_vintage_path():
+    """CI keys also appear on the vintage-simulation path."""
+    r = compute_credit_overlay(
+        2027, reec_effective_claim_share=0.65, cgec_annual_growth=0.015,
+        model_carryforward_pool=True, interpretation="A",
+    )
+    assert (r["reec_savings_ci90_low_$M"]
+            <= r["reec_savings_$M"]
+            <= r["reec_savings_ci90_high_$M"])

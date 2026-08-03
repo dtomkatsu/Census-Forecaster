@@ -58,6 +58,7 @@ This overlay does NOT model:
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import Dict
 import logging
 
@@ -268,6 +269,27 @@ _load_dotax_historical()
 # Growth factors
 # ---------------------------------------------------------------------------
 
+# Multiplicative scale on the income-linked (individual) growth factor.
+# 1.0 in normal operation; set only via `_scaled_growth()` during the
+# CI evaluation passes of `compute_credit_overlay`, where it shifts the
+# Hawaii nominal growth to its 90% bounds. Applied inside
+# `_hawaii_nominal_growth` — after the cached real-factor lookup, so the
+# lru caches always hold unscaled values. Corporate growth is a fixed-rate
+# assumption, not income-forecast-derived, and is deliberately unscaled.
+_growth_scale: float = 1.0
+
+
+@contextmanager
+def _scaled_growth(scale: float):
+    """Temporarily scale `_hawaii_nominal_growth` output (CI passes only)."""
+    global _growth_scale
+    prev = _growth_scale
+    _growth_scale = scale
+    try:
+        yield
+    finally:
+        _growth_scale = prev
+
 
 def _hawaii_nominal_growth(target_year: int) -> float:
     """Cumulative Hawaii nominal income growth from BASE_YEAR (2023) to target_year.
@@ -285,7 +307,7 @@ def _hawaii_nominal_growth(target_year: int) -> float:
             raise ValueError("real growth factor unavailable")
         cpi = _load_cpi_honolulu_series()
         cpi_factor = _project_cpi(cpi, target_year) / _project_cpi(cpi, BASE_YEAR)
-        return real * cpi_factor
+        return real * cpi_factor * _growth_scale
     except Exception as e:
         years = target_year - BASE_YEAR
         fallback = (1.04) ** years
@@ -293,7 +315,7 @@ def _hawaii_nominal_growth(target_year: int) -> float:
             "Hawaii nominal growth unavailable (%s); falling back to 4%%/yr -> factor=%.4f",
             e, fallback,
         )
-        return fallback
+        return fallback * _growth_scale
 
 
 def _hawaii_corporate_growth(target_year: int, annual_rate: float = 0.030) -> float:
@@ -890,6 +912,7 @@ def compute_credit_overlay(
     pro_rata_elasticity: float = 0.0,
     interpretation: str = "B",
     dynamic_refundable_share: bool = False,
+    _ci_pass: bool = False,
 ) -> Dict[str, float]:
     """Compute SB 3125 CD1 credit-cap fiscal impact for ``target_year``.
 
@@ -1078,4 +1101,63 @@ def compute_credit_overlay(
         "total_credit_savings_$M":       round(total_credit_savings, 2),
     }
     result.update(cf_keys)
+
+    # ---- 90% CI on the income-linked channel (κ-calibrated) -------------
+    # Rerun the full overlay with `_hawaii_nominal_growth` scaled to the
+    # real-growth CI90 bounds from `get_hawaii_real_growth_detail` (ACS
+    # forecast SE ⊕ κ-rescaled BLS CPI projection SE). The scale rides
+    # through every growth call site — static overlay and vintage
+    # simulation alike. Held at point: corporate growth (fixed-rate
+    # assumption) and the annual-anchor re-inflate leg (no SE surface;
+    # its error is also positively correlated with the deflator leg, so
+    # treating it as independent would misstate the band in both
+    # directions). The band therefore reflects the deflate-leg CPI and
+    # ACS-forecast uncertainty only.
+    if not _ci_pass:
+        try:
+            from tax_modeler.projection.income_forecast import (
+                get_hawaii_real_growth_detail,
+            )
+            detail = get_hawaii_real_growth_detail(BASE_YEAR, target_year)
+        except Exception as e:
+            logger.debug("growth detail unavailable for CI pass: %s", e)
+            detail = None
+        if (detail is not None and detail.se_log_real
+                and detail.real_ci90_low is not None
+                and detail.real_ci90_high is not None
+                and detail.real_factor > 0):
+            rerun_kwargs = dict(
+                reec_demand_scenario=reec_demand_scenario,
+                corp_subject_to_agi_limit=corp_subject_to_agi_limit,
+                reec_effective_claim_share=reec_effective_claim_share,
+                cgec_annual_growth=cgec_annual_growth,
+                reec_carryforward_utilization_m=reec_carryforward_utilization_m,
+                model_carryforward_pool=model_carryforward_pool,
+                agi_eligibility_by_year=agi_eligibility_by_year,
+                pro_rata_elasticity=pro_rata_elasticity,
+                interpretation=interpretation,
+                dynamic_refundable_share=dynamic_refundable_share,
+                _ci_pass=True,
+            )
+            bounds = {}
+            for tag, bound in (("low", detail.real_ci90_low),
+                               ("high", detail.real_ci90_high)):
+                with _scaled_growth(bound / detail.real_factor):
+                    bounds[tag] = compute_credit_overlay(target_year, **rerun_kwargs)
+            # Savings are monotone in growth, but order defensively.
+            sav = sorted((bounds["low"]["reec_savings_$M"],
+                          bounds["high"]["reec_savings_$M"]))
+            tot = sorted((bounds["low"]["total_credit_savings_$M"],
+                          bounds["high"]["total_credit_savings_$M"]))
+            result.update({
+                "growth_individual_se_log":   round(detail.se_log_real, 6),
+                "growth_individual_ci90_low":  round(
+                    result["growth_individual"] * detail.real_ci90_low / detail.real_factor, 4),
+                "growth_individual_ci90_high": round(
+                    result["growth_individual"] * detail.real_ci90_high / detail.real_factor, 4),
+                "reec_savings_ci90_low_$M":   sav[0],
+                "reec_savings_ci90_high_$M":  sav[1],
+                "total_credit_savings_ci90_low_$M":  tot[0],
+                "total_credit_savings_ci90_high_$M": tot[1],
+            })
     return result

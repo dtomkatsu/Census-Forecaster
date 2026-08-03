@@ -215,6 +215,100 @@ class TestProjectForward:
 
 
 # ---------------------------------------------------------------------------
+# YoY trend path (seasonality-free, cadence-invariant smoother)
+# ---------------------------------------------------------------------------
+
+def _seasonal_series(months, g=0.0025, amp=0.01, start_year=2023,
+                     start_month=1, step=1, base=100.0):
+    """NSA-style fixture: exponential trend g/mo + period-12 seasonality."""
+    import math as _m
+    pts = []
+    for k in range(months):
+        m_abs = (start_year * 12 + start_month - 1) + k * step
+        y, m = divmod(m_abs, 12)
+        val = base * _m.exp(g * k * step + amp * _m.sin(2 * _m.pi * (m_abs % 12) / 12))
+        pts.append(_make_point(y, m + 1, val))
+    return pts
+
+
+class TestYoySmoothing:
+    """The YoY path activates on long series and ignores seasonality."""
+
+    G = 0.0025  # ~3.05%/yr underlying trend
+
+    def test_yoy_recovers_trend_through_seasonality(self):
+        """On a trending series with period-12 seasonality, the smoothed
+        rate equals the trend exactly — same-month differencing cancels
+        the seasonal term by construction."""
+        pts = _seasonal_series(26, g=self.G)
+        import math as _m
+        assert smoothed_monthly_rate(pts) == pytest.approx(
+            _m.expm1(self.G), rel=1e-9)
+
+    def test_yoy_cadence_invariance(self):
+        """Monthly and bimonthly samplings of the same path agree —
+        the recency decay is per calendar month, not per print."""
+        monthly = _seasonal_series(26, g=self.G, step=1)
+        bimonthly = _seasonal_series(14, g=self.G, step=2)
+        r_m = smoothed_monthly_rate(monthly)
+        r_b = smoothed_monthly_rate(bimonthly)
+        assert r_m == pytest.approx(r_b, rel=1e-9)
+
+    def test_yoy_stable_under_final_print_spike(self):
+        """A +2% spike on the newest print must barely move the trend —
+        the failure mode of the pairwise smoother (which put ~50% weight
+        on the newest pair) that this path exists to fix."""
+        pts = _seasonal_series(26, g=self.G, amp=0.0)
+        spiked = pts[:-1] + [_make_point(
+            pts[-1]["year"], int(pts[-1]["period"][1:]),
+            pts[-1]["value"] * 1.02)]
+        swing = abs(smoothed_monthly_rate(spiked) - smoothed_monthly_rate(pts))
+        assert swing < 5e-4  # <0.05pp/mo; pairwise swung ~1pp/mo here
+
+    def test_yoy_survives_missing_print(self):
+        """An isolated hole (cf. the 2025-10 shutdown gap) only drops the
+        YoY pairs touching it; the trend estimate is unaffected."""
+        pts = _seasonal_series(14, g=self.G, step=2)
+        holed = pts[:6] + pts[7:]
+        import math as _m
+        assert smoothed_monthly_rate(holed) == pytest.approx(
+            _m.expm1(self.G), rel=1e-9)
+
+    def test_yoy_max_pairs_restricts_lookback(self):
+        """On an accelerating series, restricting to the newest YoY obs
+        yields a higher rate than the full window."""
+        slow = _seasonal_series(14, g=0.001, amp=0.0)
+        last = slow[-1]
+        y0, m0 = last["year"], int(last["period"][1:])
+        fast = list(slow)
+        v = last["value"]
+        for k in range(1, 13):
+            m_abs = (y0 * 12 + m0 - 1) + k
+            yy, mm = divmod(m_abs, 12)
+            v *= 1.005
+            fast.append(_make_point(yy, mm + 1, v))
+        r_narrow = smoothed_monthly_rate(fast, max_pairs=2)
+        r_full = smoothed_monthly_rate(fast)
+        assert r_narrow > r_full
+
+    def test_below_min_yoy_obs_falls_back_to_pairwise(self):
+        """With <4 YoY observations the legacy pairwise smoother runs,
+        bit-for-bit (its short-series behavior is a public contract)."""
+        # 15 monthly points → 3 YoY obs → fallback.
+        pts = _seasonal_series(15, g=self.G, amp=0.0)
+        expected_pairs = []
+        for i in range(1, len(pts)):
+            prev, curr = pts[i - 1], pts[i]
+            mb = ((curr["year"] - prev["year"]) * 12
+                  + int(curr["period"][1:]) - int(prev["period"][1:]))
+            rate = (curr["value"] / prev["value"]) ** (1.0 / mb) - 1.0
+            expected_pairs.append((rate, 0.5 ** (len(pts) - 1 - i)))
+        expected = (sum(r * w for r, w in expected_pairs)
+                    / sum(w for _, w in expected_pairs))
+        assert smoothed_monthly_rate(pts) == pytest.approx(expected, rel=1e-12)
+
+
+# ---------------------------------------------------------------------------
 # Projection uncertainty surface
 # ---------------------------------------------------------------------------
 

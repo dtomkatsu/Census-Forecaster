@@ -12,11 +12,20 @@ BLS uses a two-tier area code:
 * `S{R}{S}{X}` where R = region code (1-4), S = size class (1-9),
   X = letter selecting a specific MSA within that region/size class
 
-The codes below were verified empirically against the BLS public API
-on 2026-04-26 (see `scripts/refresh_bls_panel.py` for the probe). All
-11 areas publish all 5 series. Four areas publish the all-items index
-(SA0) monthly; the remaining seven publish bimonthly. The other four
-series (food, rent, housing, gasoline) publish monthly across all areas.
+Area codes were re-verified against the BLS API **catalog** (which returns
+official series titles; requires a registered key) on 2026-07-27. The
+earlier 2026-04-26 probe only confirmed that each ID *returns data* — not
+what area it names — and five labels were wrong as a result. Notably
+`S49A` was labelled "Urban Honolulu, HI" but is really Los Angeles, and
+no Hawaii series was in the panel at all. Corrected 2026-07-27; the
+Hawaii headline target is `S49F` ("Urban Hawaii").
+
+Cadence is the cheap sanity check: BLS publishes the all-items index (SA0)
+monthly for exactly four areas — U.S. City Average, New York (S12A),
+Chicago (S23A) and Los Angeles (S49A). Any "Honolulu"/Hawaii SA0 series
+returning 12 observations a year is mislabelled. The remaining eight areas
+publish SA0 bimonthly; the other four series (food, rent, housing/shelter,
+gasoline) publish monthly across all areas.
 
 Series suffix conventions
 -------------------------
@@ -32,8 +41,9 @@ low-volatility; gasoline is high-volatility; housing sits between).
 
 Panel size
 ----------
-* 11 areas × 5 series = 55 BLS series
-* ~15 years (2010-2024) of monthly/bimonthly observations
+* 12 areas × 5 series = 60 BLS series
+* ~15 years (2010-2024) of monthly/bimonthly observations, except
+  Urban Hawaii (`S49F`), which BLS only publishes from 2017 onward
 * ~9,000 raw observations after concatenation
 * ~40,000 walk-forward folds across (anchor, h ∈ {2,4,6,8,12})
 * ~220 strata cells (series × h_bucket × vol_regime)
@@ -45,9 +55,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-# Top 10 MSAs by 2020 population + national + Honolulu (existing primary).
-# Names below are the BLS publication labels; the (region, size_class)
-# columns describe the BLS area code structure for context.
+# Large MSAs by 2020 population + national + Urban Hawaii (the primary
+# forecast target). Names below are the BLS publication labels as returned
+# by the API catalog; the (region, size_class) columns are descriptive
+# metadata only — they are written to the manifest and drive no logic.
 @dataclass(frozen=True)
 class BlsArea:
     """One BLS publication area in the v3 calibration panel."""
@@ -61,25 +72,29 @@ class BlsArea:
 BLS_PANEL_AREAS: tuple[BlsArea, ...] = (
     BlsArea(code="0000", name="U.S. City Average",
             region="national", size_class="national", headline_frequency="monthly"),
-    BlsArea(code="S49A", name="Urban Honolulu, HI",
+    # The Hawaii headline target. Bimonthly, history starts 2017 (the BLS
+    # area restructure) — shorter than every other panel area.
+    BlsArea(code="S49F", name="Urban Hawaii",
             region="Pacific", size_class="A", headline_frequency="bimonthly"),
     BlsArea(code="S12A", name="New York-Newark-Jersey City, NY-NJ-PA",
             region="Mid-Atlantic", size_class="A", headline_frequency="monthly"),
     BlsArea(code="S23A", name="Chicago-Naperville-Elgin, IL-IN-WI",
             region="East-North-Central", size_class="A", headline_frequency="monthly"),
-    BlsArea(code="S49B", name="Los Angeles-Long Beach-Anaheim, CA",
+    BlsArea(code="S49A", name="Los Angeles-Long Beach-Anaheim, CA",
+            region="Pacific", size_class="A", headline_frequency="monthly"),
+    BlsArea(code="S49B", name="San Francisco-Oakland-Hayward, CA",
             region="Pacific", size_class="B", headline_frequency="bimonthly"),
-    BlsArea(code="S48A", name="Dallas-Fort Worth-Arlington, TX",
-            region="West-South-Central", size_class="A", headline_frequency="bimonthly"),
-    BlsArea(code="S48B", name="Houston-The Woodlands-Sugar Land, TX",
-            region="West-South-Central", size_class="B", headline_frequency="bimonthly"),
+    BlsArea(code="S48A", name="Phoenix-Mesa-Scottsdale, AZ",
+            region="Mountain", size_class="A", headline_frequency="bimonthly"),
+    BlsArea(code="S48B", name="Denver-Aurora-Lakewood, CO",
+            region="Mountain", size_class="B", headline_frequency="bimonthly"),
     BlsArea(code="S35A", name="Washington-Arlington-Alexandria, DC-VA-MD-WV",
             region="South-Atlantic", size_class="A", headline_frequency="bimonthly"),
-    BlsArea(code="S37A", name="Miami-Fort Lauderdale-West Palm Beach, FL",
-            region="South-Atlantic", size_class="A2", headline_frequency="bimonthly"),
+    BlsArea(code="S37A", name="Dallas-Fort Worth-Arlington, TX",
+            region="West-South-Central", size_class="A", headline_frequency="bimonthly"),
     BlsArea(code="S11A", name="Boston-Cambridge-Newton, MA-NH",
             region="New-England", size_class="A", headline_frequency="bimonthly"),
-    BlsArea(code="S24A", name="Minneapolis-St. Paul-Bloomington, MN-WI",
+    BlsArea(code="S24A", name="Minneapolis-St.Paul-Bloomington, MN-WI",
             region="West-North-Central", size_class="A", headline_frequency="bimonthly"),
 )
 

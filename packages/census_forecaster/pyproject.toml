@@ -33,6 +33,9 @@ ml = ["scikit-learn>=1.1", "numpy>=1.21"]
 # markets/client.py is stdlib-only, so the markets subpackage works
 # without this extra (yfinance drags pandas — keep it out of core).
 markets = ["yfinance>=0.2", "numpy>=1.21"]
+# openpyxl is only needed by scripts/refresh_dotax_collections.py (DOTAX
+# publishes XLSX); the bundled JSON is readable without it.
+dotax = ["openpyxl>=3.1"]
 
 [project.urls]
 Homepage = "https://github.com/dtomkatsu/Census-Forecaster"
