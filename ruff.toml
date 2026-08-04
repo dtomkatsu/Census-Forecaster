@@ -38,7 +38,6 @@ ignore = [
 "tests/**/*.py" = ["B", "SIM"]
 # Forecast scripts are top-level analytical scripts; minimal lint
 "forecast_*.py" = ["E402", "F401"]
-"pipeline_run.py" = ["E402", "F401"]
 
 [format]
 quote-style = "double"

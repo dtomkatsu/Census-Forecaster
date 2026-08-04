@@ -7,7 +7,6 @@ on:
       - 'packages/**'
       - 'tests/**'
       - 'forecast_*.py'
-      - 'pipeline_run.py'
       - 'pyproject.toml'
       - 'ruff.toml'
       - 'uv.lock'
