@@ -23,38 +23,19 @@ Output:
 """
 from __future__ import annotations
 
-import argparse
-import logging
-import os
 import sys
 import traceback
 from pathlib import Path
 
-DATA_DIR = Path(
-    os.environ.get("HAWAII_PUMS_DIR")
-    or Path.home() / "ctc-and-eitc" / "data" / "raw" / "pums"
+from _forecast_common import (
+    TARGET_YEARS, load_cached_units, parse_cd_args, silence_noise,
 )
-# Versioned artifacts live in-repo (gitignored) — /tmp caches had no
-# invalidation and silently served stale bases across code changes.
-CACHE_FILE = Path(__file__).parent / "data" / "artifacts" / "tax_units_cache.parquet"
-TARGET_YEARS = [2027, 2028, 2029, 2030, 2031]
 
 SCENARIOS = [
     ("LOW",  1.6, "obbba_severe"),
     ("MID",  1.5, "obbba_mid"),
     ("HIGH", 1.4, "pre_obbba"),
 ]
-
-REPO = Path(__file__).parent
-
-
-def _parse_args():
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument(
-        "--cd", choices=["1", "2"], default="1",
-        help="Conference draft to model: 1=CD1 (default), 2=CD2",
-    )
-    return p.parse_args()
 
 
 def run_one_scenario(
@@ -117,11 +98,9 @@ def run_one_scenario(
 
 
 if __name__ == "__main__":
-    import warnings
-    warnings.filterwarnings("ignore")
-    logging.disable(logging.WARNING)
+    silence_noise()
 
-    args = _parse_args()
+    args = parse_cd_args(__doc__)
     CD = args.cd
     OUT_CSV = Path(f"/tmp/sb3125_cd{CD}_sensitivity_2027_2031.csv")
 
@@ -140,19 +119,11 @@ if __name__ == "__main__":
         from tax_modeler.scenarios.top_income_synthesis import (
             synthesize_top_filers, validate_top_synthesis,
         )
+        from tax_modeler.artifacts import load_canonical_deduction_params
 
         wall_start = time.perf_counter()
 
-        if not CACHE_FILE.exists():
-            print(f"ERROR: tax-unit cache not found at {CACHE_FILE}", flush=True)
-            print(f"Run forecast_sb3125.py --cd {CD} first to populate the cache.", flush=True)
-            sys.exit(1)
-
-        print(f"Loading cached units from {CACHE_FILE}...", flush=True)
-        from tax_modeler.artifacts import check_cache_sidecar, load_canonical_deduction_params
-        check_cache_sidecar(CACHE_FILE)
-        units = pd.read_parquet(CACHE_FILE)
-        print(f"  {len(units):,} units loaded", flush=True)
+        units = load_cached_units(CD)
 
         print("Enriching + base tax + calibrating (one-time)...", flush=True)
         # Calibrate and re-score on the canonical itemized-deduction basis —

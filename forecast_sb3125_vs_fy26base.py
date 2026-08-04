@@ -60,8 +60,7 @@ from tax_modeler.liability.hawaii import NO_ITEMIZING
 
 MID_ALPHA       = 1.5
 MID_TOP_PREMIUM = 0.010
-TARGET_YEARS    = [2027, 2028, 2029, 2030, 2031]
-CALIBRATED_PKL  = REPO / "data" / "artifacts" / "sb3125_calibrated_base.pkl"
+from _forecast_common import CALIBRATED_PKL, TARGET_YEARS  # noqa: E402
 
 INCOME_BINS = {
     "below_50K":   (0,          50_000),

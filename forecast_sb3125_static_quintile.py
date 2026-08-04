@@ -33,29 +33,18 @@ Output (--cd 2):
 """
 from __future__ import annotations
 
-import argparse
-import logging
-import os
 import sys
 import traceback
 from pathlib import Path
 
-DATA_DIR = Path(
-    os.environ.get("HAWAII_PUMS_DIR")
-    or Path.home() / "ctc-and-eitc" / "data" / "raw" / "pums"
+from _forecast_common import (
+    TARGET_YEARS, load_cached_units, parse_cd_args, silence_noise,
 )
-# Versioned artifacts live in-repo (gitignored) — /tmp caches had no
-# invalidation and silently served stale bases across code changes.
-CACHE_FILE = Path(__file__).parent / "data" / "artifacts" / "tax_units_cache.parquet"
-TARGET_YEARS = [2027, 2028, 2029, 2030, 2031]
 
 # MID scenario parameters (calibrated best-estimate)
 PARETO_ALPHA   = 1.5
 ITEMIZED_ADJ   = True
 TOP_PREMIUM    = 0.0   # no additional top-income growth premium for MID
-
-# Requires the workspace to be installed: `uv sync --all-packages`.
-REPO = Path(__file__).parent
 
 QUINTILE_LABELS = [
     "Q1 (Bottom 20%)",
@@ -64,15 +53,6 @@ QUINTILE_LABELS = [
     "Q4",
     "Q5 (Top 20%)",
 ]
-
-
-def _parse_args():
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument(
-        "--cd", choices=["1", "2"], default="1",
-        help="Conference draft to model: 1=CD1 (default), 2=CD2",
-    )
-    return p.parse_args()
 
 
 def _fmt_dollar(x: float) -> str:
@@ -197,185 +177,38 @@ def print_quintile_table(year: int, qt, *, cd: str = "1"):
 
 
 def _make_pdf(df: "pd.DataFrame", *, cd: str = "2") -> None:
-    """Generate distributional PDF report. Only called for --cd 2."""
+    """Generate distributional PDF report. Only called for --cd 2.
+
+    Table + three chart pages come from tax_modeler.reporting; the two
+    REEC pages (incidence by income group, savings trajectory) are
+    supplied as extra_pages.
+    """
     import matplotlib
     matplotlib.rcParams["text.parse_math"] = False
     matplotlib.rcParams["font.family"] = ["DejaVu Sans"]
     import matplotlib.pyplot as plt
     import numpy as np
-    import pandas as pd
-    from matplotlib.backends.backend_pdf import PdfPages
+
+    from tax_modeler.reporting import (
+        BLUE, NAVY, ORANGE, PILL_BG, PILL_FG, RULE, TEAL, TXT_GREY,
+        make_quintile_pdf,
+    )
+    from tax_modeler.scenarios.sb3125_cd1_credits import (
+        REEC_CORPORATE_TOTAL_M,
+        REEC_INDIVIDUAL_BY_AGI_BIN,
+        REEC_OTHER_TOTAL_M,
+    )
 
     cd_label     = f"CD{cd}"
     PDF_OUT      = Path(f"/tmp/sb3125_cd{cd}_quintile_distributional_report.pdf")
     ENHANCED_CSV = Path(f"/tmp/sb3125_cd{cd}_enhanced_2027_2031.csv")
 
-    HH_BREAKS = [28_336, 60_915, 100_510, 168_638]
-    Q_LABELS  = ["Q1 (Bottom 20%)", "Q2", "Q3", "Q4", "Q5 (Top 20%)"]
-    Q_NAMES   = ["Bottom 20%", "2nd 20%", "3rd 20%", "4th 20%", "Top 20%"]
-    Q_RANGES  = [
-        f"under ${HH_BREAKS[0]//1000}K",
-        f"${HH_BREAKS[0]//1000}K – ${HH_BREAKS[1]//1000}K",
-        f"${HH_BREAKS[1]//1000}K – ${HH_BREAKS[2]//1000}K",
-        f"${HH_BREAKS[2]//1000}K – ${HH_BREAKS[3]//1000}K",
-        f"${HH_BREAKS[3]//1000}K+",
-    ]
-
-    NAVY     = "#1e3a5f"
-    TEAL     = "#2c8c87"
-    ORANGE   = "#c05e2b"
-    PILL_BG  = "#e8eef7"
-    PILL_FG  = "#1e3a5f"
-    TXT_GREY = "#4a5568"
-    RULE     = "#cbd5e0"
-    BLUE     = "#2b6cb0"
-
-    years = sorted(df["tax_year"].unique())
-
-    def _fmt(val, fmt):
-        if fmt == "dollar":
-            return f"{'+' if val >= 0 else '-'}${abs(val):,.0f}"
-        if fmt == "pct":
-            return f"{val:.1f}%"
-        if fmt == "millions":
-            return f"{'+' if val >= 0 else '-'}${abs(val):,.1f}M"
-        return str(val)
-
-    # ---- Page 1: summary tables ----
-
-    def table_page(pdf):
-        fig = plt.figure(figsize=(11, 11))
-        fig.suptitle(
-            f"SB 3125 {cd_label} vs Act 46 — Distributional Impact (MID Scenario)",
-            fontsize=15, fontweight="bold", y=0.97, color=NAVY,
-        )
-        fig.text(
-            0.5, 0.935,
-            f"Per-filer bracket-change impact by income quintile, TY 2027–2031  "
-            f"·  §235-51 only  ·  REEC/CGEC/TCRA shown separately on pages 5–6",
-            ha="center", fontsize=10, style="italic", color=TXT_GREY,
-        )
-        specs = [
-            ("Avg Tax Change per Filer",          "avg_delta_per_filer_$",  "dollar"),
-            ("Share of Filers with Any Change",   "pct_filers_with_change", "pct"),
-            ("Total Tax Change for Quintile",     "delta_total_$M",         "millions"),
-        ]
-        n = len(specs)
-        top, bot, pad = 0.90, 0.06, 0.025
-        ph = (top - bot - (n - 1) * pad) / n
-        for i, (title, col, fmt) in enumerate(specs):
-            y0 = top - i * (ph + pad)
-            ax = fig.add_axes([0.05, y0 - ph, 0.90, ph])
-            ax.axis("off")
-            ax.text(0, 1.0, title, transform=ax.transAxes,
-                    fontsize=11.5, fontweight="bold", color=NAVY, va="top")
-            rows = []
-            for ql, qn, qr in zip(Q_LABELS, Q_NAMES, Q_RANGES):
-                row = [qn, qr]
-                for yr in years:
-                    sub = df[(df["tax_year"] == yr) & (df["quintile"] == ql)]
-                    row.append(_fmt(float(sub.iloc[0][col]), fmt) if not sub.empty else "—")
-                rows.append(row)
-            col_labels = ["Quintile", "Household income"] + [str(y) for y in years]
-            col_widths  = [0.16, 0.22] + [0.124] * len(years)
-            tbl = ax.table(cellText=rows, colLabels=col_labels,
-                           colWidths=col_widths, loc="upper left",
-                           bbox=[0, 0, 1, 0.85], cellLoc="center")
-            tbl.auto_set_font_size(False)
-            tbl.set_fontsize(9)
-            for j in range(len(col_labels)):
-                c = tbl[(0, j)]
-                c.set_facecolor(NAVY)
-                c.set_text_props(color="white", fontweight="bold")
-                c.set_edgecolor("white")
-            for r in range(1, len(rows) + 1):
-                for j in range(len(col_labels)):
-                    c = tbl[(r, j)]
-                    c.set_edgecolor(RULE)
-                    if j == 0:
-                        c.set_text_props(fontweight="bold", color=NAVY)
-                        c.set_facecolor(PILL_BG)
-                    elif j == 1:
-                        c.set_text_props(color=TXT_GREY)
-                        c.set_facecolor(PILL_BG)
-                    if r == len(rows) and j >= 2:
-                        c.set_facecolor("#fff5f5")
-        fig.text(
-            0.05, 0.025,
-            f"Positive = filer pays more under SB 3125 {cd_label} vs Act 46 (bracket change only). "
-            "Bottom quintiles see tax cuts from lower mid-bracket rates; top quintile sees "
-            "increases from the new 13% bracket. Credit-cap savings (REEC) shown on pages 5–6.",
-            ha="left", fontsize=7.5, style="italic", color=TXT_GREY,
-        )
-        pdf.savefig(fig, bbox_inches="tight")
-        plt.close(fig)
-
-    # ---- Pages 2–4: bar chart pages ----
-
-    def _panel(ax, yr, col, fmt, bar_color):
-        vals = []
-        for ql in Q_LABELS:
-            sub = df[(df["tax_year"] == yr) & (df["quintile"] == ql)]
-            vals.append(float(sub.iloc[0][col]) if not sub.empty else 0.0)
-        yp   = np.arange(len(Q_LABELS))[::-1]
-        ax.barh(yp, vals, height=0.55, color=bar_color, edgecolor="none")
-        vmax = max(abs(min(vals)), abs(max(vals))) or 1.0
-        pad  = vmax * 0.04
-        for y, v in zip(yp, vals):
-            lbl = _fmt(v, fmt)
-            if v >= 0:
-                ax.text(v + pad, y, lbl, va="center", ha="left",
-                        fontsize=10, fontweight="bold", color="#2d3748")
-            else:
-                ax.text(v - pad, y, lbl, va="center", ha="right",
-                        fontsize=10, fontweight="bold", color="#2d3748")
-        ax.set_yticks(yp)
-        ax.set_yticklabels([])
-        for y, name, rng in zip(yp, Q_NAMES, Q_RANGES):
-            ax.text(-0.01, y + 0.12, name, transform=ax.get_yaxis_transform(),
-                    ha="right", va="center", fontsize=9.5, fontweight="bold", color=PILL_FG,
-                    bbox=dict(boxstyle="round,pad=0.35", facecolor=PILL_BG, edgecolor="none"))
-            ax.text(-0.01, y - 0.22, rng, transform=ax.get_yaxis_transform(),
-                    ha="right", va="center", fontsize=8.5, color=TXT_GREY)
-        ax.set_title(f"Tax Year {yr}", loc="left", fontsize=12, fontweight="bold", color=NAVY)
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        ax.spines["left"].set_visible(False)
-        ax.spines["bottom"].set_color(RULE)
-        ax.tick_params(axis="y", length=0)
-        ax.tick_params(axis="x", colors=TXT_GREY, labelsize=8)
-        ax.grid(axis="x", linestyle=":", alpha=0.35, color=RULE)
-        ax.axvline(0, color=RULE, lw=0.7)
-        if min(vals) < 0:
-            ax.set_xlim(min(vals) - vmax * 0.30, max(vals) + vmax * 0.30)
-        else:
-            ax.set_xlim(0, max(vals) * 1.30)
-
-    def chart_page(pdf, title, subtitle, col, fmt, bar_color):
-        fig = plt.figure(figsize=(11, 10))
-        fig.suptitle(title, fontsize=14, fontweight="bold", y=0.965, color=NAVY)
-        fig.text(0.5, 0.93, subtitle, ha="center", fontsize=10, style="italic", color=TXT_GREY)
-        for i, yr in enumerate([2027, 2031]):
-            ax = fig.add_axes([0.22, 0.50 - i * 0.42, 0.72, 0.36])
-            _panel(ax, yr, col, fmt, bar_color)
-        fig.text(0.5, 0.02,
-                 "Source: Census-Forecaster microsim. Quintiles defined on 2026 household income.",
-                 ha="center", fontsize=8, style="italic", color=TXT_GREY)
-        pdf.savefig(fig, bbox_inches="tight")
-        plt.close(fig)
-
-    # ---- Page 5: REEC incidence by income group ----
-
-    # DOTAX TY2023 actuals: (label, individual_claim_$M, agi_eligible_share)
+    # DOTAX TY2023 actuals from the scenario library; en-dash for display.
     REEC_IND_BINS = [
-        ("<$10K",       4.731, 1.000),
-        ("$10K–$30K",   2.522, 1.000),
-        ("$30K–$60K",   3.121, 1.000),
-        ("$60K–$100K",  5.752, 1.000),
-        ("$100K–$200K", 16.150, 0.972),
-        ("$200K+",      26.018, 0.561),
+        (label.replace("-", "\u2013"), claim, elig)
+        for label, claim, elig in REEC_INDIVIDUAL_BY_AGI_BIN
     ]
-    REEC_CORP_M = 38.565 + 3.217  # corp + other TY2023
+    REEC_CORP_M = REEC_CORPORATE_TOTAL_M + REEC_OTHER_TOTAL_M  # corp + other TY2023
 
     def _reec_rows(pro_rata: float) -> list:
         rows = []
@@ -487,8 +320,6 @@ def _make_pdf(df: "pd.DataFrame", *, cd: str = "2") -> None:
         pdf.savefig(fig, bbox_inches="tight")
         plt.close(fig)
 
-    # ---- Page 6: REEC savings trajectory ----
-
     def reec_time_series_page(pdf, df_enh: "pd.DataFrame"):
         scenarios = ["LOW", "MID", "HIGH"]
         colors    = {"LOW": "#8fa8c8", "MID": TEAL, "HIGH": ORANGE}
@@ -593,8 +424,6 @@ def _make_pdf(df: "pd.DataFrame", *, cd: str = "2") -> None:
         pdf.savefig(fig, bbox_inches="tight")
         plt.close(fig)
 
-    # ---- Assemble PDF ----
-
     # Pull TY2027 MID pro-rata for incidence page; fall back to hardcoded if CSV missing
     pro_rata_mid = 0.7806
     df_enh       = None
@@ -605,40 +434,53 @@ def _make_pdf(df: "pd.DataFrame", *, cd: str = "2") -> None:
         if not mid_2027.empty and "reec_pro_rata_factor" in mid_2027.columns:
             pro_rata_mid = float(mid_2027["reec_pro_rata_factor"].iloc[0])
 
-    with PdfPages(PDF_OUT) as pdf:
-        table_page(pdf)
-        chart_page(pdf,
-                   "Average Tax Change per Filer by Quintile",
-                   f"SB 3125 {cd_label} vs Act 46 — MID Scenario  ·  §235-51 bracket changes only",
-                   "avg_delta_per_filer_$", "dollar", BLUE)
-        chart_page(pdf,
-                   "Share of Filers with Any Tax Change",
-                   f"SB 3125 {cd_label} vs Act 46 — MID Scenario  ·  §235-51 bracket changes only",
-                   "pct_filers_with_change", "pct", NAVY)
-        chart_page(pdf,
-                   "Total Tax Change by Quintile",
-                   f"SB 3125 {cd_label} vs Act 46 — MID Scenario  ·  §235-51 bracket changes only",
-                   "delta_total_$M", "millions", BLUE)
-        reec_incidence_page(pdf, pro_rata=pro_rata_mid)
-        if df_enh is not None:
-            reec_time_series_page(pdf, df_enh)
-        else:
-            print(f"  (skipping REEC time-series page — {ENHANCED_CSV} not found)", flush=True)
+    extra_pages = [lambda pdf: reec_incidence_page(pdf, pro_rata=pro_rata_mid)]
+    if df_enh is not None:
+        extra_pages.append(lambda pdf: reec_time_series_page(pdf, df_enh))
+    else:
+        print(f"  (skipping REEC time-series page — {ENHANCED_CSV} not found)", flush=True)
 
-        m = pdf.infodict()
-        m["Title"]   = f"SB 3125 {cd_label} Distributional Analysis"
-        m["Author"]  = "Census-Forecaster"
-        m["Subject"] = f"Per-quintile bracket impact + REEC credit incidence, TY 2027–2031, MID"
-
-    print(f"Saved: {PDF_OUT}", flush=True)
+    subtitle = f"SB 3125 {cd_label} vs Act 46 — MID Scenario  ·  §235-51 bracket changes only"
+    make_quintile_pdf(
+        df, PDF_OUT,
+        q_labels=QUINTILE_LABELS,
+        table_title=f"SB 3125 {cd_label} vs Act 46 — Distributional Impact (MID Scenario)",
+        table_subtitle=(
+            f"Per-filer bracket-change impact by income quintile, TY 2027–2031  "
+            f"·  §235-51 only  ·  REEC/CGEC/TCRA shown separately on pages 5–6"
+        ),
+        table_specs=[
+            ("Avg Tax Change per Filer",        "avg_delta_per_filer_$",  "dollar"),
+            ("Share of Filers with Any Change", "pct_filers_with_change", "pct"),
+            ("Total Tax Change for Quintile",   "delta_total_$M",         "millions"),
+        ],
+        chart_specs=[
+            ("Average Tax Change per Filer by Quintile", subtitle,
+             "avg_delta_per_filer_$", "dollar", BLUE),
+            ("Share of Filers with Any Tax Change", subtitle,
+             "pct_filers_with_change", "pct", NAVY),
+            ("Total Tax Change by Quintile", subtitle,
+             "delta_total_$M", "millions", BLUE),
+        ],
+        table_footnote=(
+            f"Positive = filer pays more under SB 3125 {cd_label} vs Act 46 (bracket change only). "
+            "Bottom quintiles see tax cuts from lower mid-bracket rates; top quintile sees "
+            "increases from the new 13% bracket. Credit-cap savings (REEC) shown on pages 5–6."
+        ),
+        table_bottom=0.06,
+        extra_pages=extra_pages,
+        pdf_meta={
+            "Title":   f"SB 3125 {cd_label} Distributional Analysis",
+            "Author":  "Census-Forecaster",
+            "Subject": f"Per-quintile bracket impact + REEC credit incidence, TY 2027–2031, MID",
+        },
+    )
 
 
 if __name__ == "__main__":
-    import warnings
-    warnings.filterwarnings("ignore")
-    logging.disable(logging.WARNING)
+    silence_noise()
 
-    args = _parse_args()
+    args = parse_cd_args(__doc__)
     CD       = args.cd
     OUT_CSV  = Path(f"/tmp/sb3125_cd{CD}_quintile_2027_2031.csv")
     cd_label = f"CD{CD}"
@@ -671,16 +513,8 @@ if __name__ == "__main__":
         wall_start = time.perf_counter()
 
         # ---- One-time setup -------------------------------------------------
-        if not CACHE_FILE.exists():
-            print(f"ERROR: cache not found at {CACHE_FILE}", flush=True)
-            print(f"Run forecast_sb3125.py --cd {CD} first to build the cache.", flush=True)
-            sys.exit(1)
-
-        print(f"Loading cached units from {CACHE_FILE}...", flush=True)
-        from tax_modeler.artifacts import check_cache_sidecar, load_canonical_deduction_params
-        check_cache_sidecar(CACHE_FILE)
-        units = pd.read_parquet(CACHE_FILE)
-        print(f"  {len(units):,} units loaded", flush=True)
+        from tax_modeler.artifacts import load_canonical_deduction_params
+        units = load_cached_units(CD)
 
         print("Enriching + base tax + calibrating...", flush=True)
         t0 = time.perf_counter()

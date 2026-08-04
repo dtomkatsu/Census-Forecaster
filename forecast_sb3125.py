@@ -18,42 +18,18 @@ Output (written to /tmp/):
 """
 from __future__ import annotations
 
-import argparse
-import logging
-import os
 import sys
 import traceback
 from pathlib import Path
 
-DATA_DIR = Path(
-    os.environ.get("HAWAII_PUMS_DIR")
-    or Path.home() / "ctc-and-eitc" / "data" / "raw" / "pums"
+from _forecast_common import (
+    CACHE_FILE, DATA_DIR, TARGET_YEARS, parse_cd_args, silence_noise,
 )
-# Versioned artifacts live in-repo (gitignored) — /tmp caches had no
-# invalidation and silently served stale bases across code changes.
-ARTIFACT_DIR = Path(__file__).parent / "data" / "artifacts"
-CACHE_FILE = ARTIFACT_DIR / "tax_units_cache.parquet"
-TARGET_YEARS = [2027, 2028, 2029, 2030, 2031]
-
-# Requires the workspace to be installed: `uv sync --all-packages`.
-REPO = Path(__file__).parent
-
-
-def _parse_args():
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument(
-        "--cd", choices=["1", "2"], default="1",
-        help="Conference draft to model: 1=CD1 (default), 2=CD2",
-    )
-    return p.parse_args()
-
 
 if __name__ == "__main__":
-    import warnings
-    warnings.filterwarnings("ignore")
-    logging.disable(logging.WARNING)
+    silence_noise()
 
-    args = _parse_args()
+    args = parse_cd_args(__doc__)
     CD = args.cd  # "1" or "2"
     OUT_CSV = Path(f"/tmp/sb3125_cd{CD}_fiscal_impact_2027_2031.csv")
 
