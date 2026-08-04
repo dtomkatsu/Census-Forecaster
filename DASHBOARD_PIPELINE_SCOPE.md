@@ -107,9 +107,32 @@ outputs (the golden-first recipe from REGISTRY_MIGRATION_SCOPE.md).
   breaks). Convert `by_state.csv` wide → long in
   `poverty_impact_report.py`, keeping the wide file during transition.
 
-### Phase 2 — scenario registry + runner
-- `SCENARIOS` spec dict; one `run_scenario(slug)` entry point; root
-  forecast scripts become thin wrappers, then deprecate.
+### Phase 2 — scenario registry + runner ✅ DONE (2026-08-04)
+- `tax_modeler.scenarios.registry`: one `ScenarioSpec` per slug (9
+  scenarios) carrying domain facts only — system getter, credit-overlay
+  mode (`none`/`standard`/`vintage`), baseline slug, year support.
+  `system_for(year)` hides the split between year-parameterized getters
+  and the TY2027-only ones that every runner used to hardcode.
+- `run_scenario.py --list` enumerates scenarios x runners; `--slug X
+  --runner Y` dispatches. Deliberately a **dispatcher, not a
+  re-implementation** — it shells out to the existing scripts, so
+  routing through it cannot move any number.
+- `forecast_bill_quintile.py` now takes systems/overlay/baseline from
+  the registry and keeps only presentation locally.
+
+**Deviation from the original plan:** root scripts were NOT collapsed
+into thin wrappers of a single `run_scenario(slug)` function. Each
+carries genuinely different machinery (dynamic vs static scoring,
+behavioral response, ProcessPool fan-out), and folding them into one
+entry point would have meant rewriting model code for cosmetic
+uniformity — exactly the risk REGISTRY_MIGRATION_SCOPE.md's "not
+candidates" section warns about. The registry + dispatcher delivers the
+enumerable surface Phase 4 needs without touching model math.
+
+**Not yet wired to any runner** (registry-defined, dispatcher reports
+them as such): `act46_rollback_targeted`, `millionaire_tax`,
+`sb3125_original`, `hb2306_orig`. These were modeled ad hoc before; they
+now at least appear in `--list` instead of being invisible.
 
 ### Phase 3 — reporting layer
 - Promote `scripts/brief/` (already a data/charts/html/pdf split) +

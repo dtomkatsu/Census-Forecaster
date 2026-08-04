@@ -44,7 +44,7 @@ import pandas as pd
 
 from tax_modeler.pipeline import _compute_base_tax, _enrich_for_credits
 from tax_modeler.calibration.cg_imputation import impute_capital_gains_from_soi
-from tax_modeler.config.tax_system_config import TaxCalculator, TaxSystemRegistry
+from tax_modeler.config.tax_system_config import TaxCalculator
 from tax_modeler.scenarios.top_income_synthesis import (
     synthesize_top_filers, rescale_synthetic_tail_to_tax_target,
     redistribute_mid_high_incomes,
@@ -56,6 +56,7 @@ from tax_modeler.scenarios.quintile_analysis import (
     cor_scale_factor_for_year, per_unit_tax,
 )
 from tax_modeler.reporting import BLUE, GREEN, NAVY, make_quintile_pdf
+from tax_modeler.scenarios.registry import baseline_for, get_scenario
 
 from _forecast_common import CALIBRATED_PKL, TARGET_YEARS
 
@@ -80,42 +81,34 @@ COR_FOOTNOTE_LONG = (
     "gaps (PTE filers, non-resident withholding, withholding-only filers)."
 )
 
-# Per-bill spec: tax system, credit overlay, output paths, report labels.
-BILLS = {
+# Presentation only — output paths, accent color, report copy. The domain
+# facts (tax system, credit-overlay mode, baseline) come from
+# tax_modeler.scenarios.registry, so adding a bill here is a presentation
+# entry rather than another copy of the system/overlay ladder.
+SB3125_SUBTITLE = (
+    "Per-household impact (bracket change + REEC/CGEC/TCRA credit overlay), "
+    "ITEP-anchored 2026 household-income quintiles, TY 2027 – 2031"
+)
+PRESENTATION = {
     "sb3125_cd1": {
-        "label": "SB 3125 CD1",
-        "system": TaxSystemRegistry.get_sb3125_cd1_system,
-        "credit_overlay": True,
         "accent": BLUE,
         "q_csv": "/tmp/sb3125_quintile_revised_2027_2031.csv",
         "b_csv": "/tmp/sb3125_bracket_revised_2027_2031.csv",
         "pdf": "/tmp/sb3125_quintile_distributional_report.pdf",
-        "table_subtitle": (
-            "Per-household impact (bracket change + REEC/CGEC/TCRA credit overlay), "
-            "ITEP-anchored 2026 household-income quintiles, TY 2027 – 2031"
-        ),
+        "table_subtitle": SB3125_SUBTITLE,
         "cor_footnote": COR_FOOTNOTE_SHORT,
         "pdf_title": "SB 3125 CD1 Distributional Analysis (Revised Pipeline)",
     },
     "sb3125_sd1": {
-        "label": "SB 3125 SD1",
-        "system": TaxSystemRegistry.get_sb3125_sd1_system,
-        "credit_overlay": True,
         "accent": BLUE,
         "q_csv": "/tmp/sb3125_sd1_quintile_revised_2027_2031.csv",
         "b_csv": "/tmp/sb3125_sd1_bracket_revised_2027_2031.csv",
         "pdf": "/tmp/sb3125_sd1_quintile_distributional_report.pdf",
-        "table_subtitle": (
-            "Per-household impact (bracket change + REEC/CGEC/TCRA credit overlay), "
-            "ITEP-anchored 2026 household-income quintiles, TY 2027 – 2031"
-        ),
+        "table_subtitle": SB3125_SUBTITLE,
         "cor_footnote": COR_FOOTNOTE_SHORT,
         "pdf_title": "SB 3125 SD1 Distributional Analysis (Revised Pipeline)",
     },
     "hb2306_hd1": {
-        "label": "HB 2306 HD1",
-        "system": TaxSystemRegistry.get_hb2306_hd1_system,
-        "credit_overlay": False,
         "accent": GREEN,
         "q_csv": "/tmp/hb2306_quintile_mid_2027_2031.csv",
         "b_csv": "/tmp/hb2306_bracket_mid_2027_2031.csv",
@@ -129,19 +122,24 @@ BILLS = {
     },
 }
 
+# Bills this script can render (registry slugs with presentation defined).
+BILLS = sorted(PRESENTATION)
+
 
 def _parse_args():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
-        "--bill", choices=sorted(BILLS), default="sb3125_cd1",
+        "--bill", choices=BILLS, default="sb3125_cd1",
         help="Bill variant to model vs the Act 46 baseline.",
     )
     return p.parse_args()
 
 
 def main(bill: str = "sb3125_cd1") -> None:
-    spec = BILLS[bill]
-    label = spec["label"]
+    scenario = get_scenario(bill)
+    baseline = baseline_for(scenario)
+    spec = PRESENTATION[bill]
+    label = scenario.label
 
     if not CALIBRATED_PKL.exists():
         print(f"ERROR: {CALIBRATED_PKL} not found. Run forecast_sb3125_enhanced.py first.")
@@ -198,7 +196,7 @@ def main(bill: str = "sb3125_cd1") -> None:
         "reec_eff_share": MID_REEC_EFF_SHARE,
         "cgec_growth":    MID_CGEC_GROWTH,
         "reec_cf_m":      MID_REEC_CF_M,
-    } if spec["credit_overlay"] else None
+    } if scenario.overlay != "none" else None
 
     for yr in TARGET_YEARS:
         print(f"  TY {yr}...", flush=True)
@@ -232,8 +230,8 @@ def main(bill: str = "sb3125_cd1") -> None:
             method="ensemble",
         )
 
-        baseline_cfg = TaxSystemRegistry.get_act46_system(yr)
-        scenario_cfg = spec["system"](yr)
+        baseline_cfg = baseline.system_for(yr)
+        scenario_cfg = scenario.system_for(yr)
 
         # COR scaling: ratio of official COR FY{yr} IIT projection to our
         # microsim Act 46 baseline. Brings totals into ITEP/COR comparable units.
@@ -243,7 +241,7 @@ def main(bill: str = "sb3125_cd1") -> None:
         )
         cor_factor = cor_scale_factor_for_year(yr, act46_M)
 
-        if spec["credit_overlay"]:
+        if scenario.overlay != "none":
             # REEC + CGEC + TCRA credit overlay for this year
             credit_overlay = compute_credit_overlay(
                 yr,
@@ -281,7 +279,7 @@ def main(bill: str = "sb3125_cd1") -> None:
     print(f"Saved: {Q_CSV}", flush=True)
     print(f"Saved: {B_CSV}", flush=True)
 
-    _print_summary(all_quintiles, label, with_credit=spec["credit_overlay"])
+    _print_summary(all_quintiles, label, with_credit=scenario.overlay != "none")
 
     # Generate PDF
     print("\nGenerating PDF...", flush=True)
