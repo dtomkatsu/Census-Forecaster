@@ -40,14 +40,12 @@ data/tax_modeler/processed/
 
 # Raw PUMS microdata (downloaded on demand from
 # https://www2.census.gov/programs-surveys/acs/data/pums/2022/5-Year/)
-# The zips only re-contain the CSV + README already in the same directory,
-# so they are pure duplication. The CSVs are NOT redundant: PUMSDataLoader
-# drops every row when it reads the parquet (ST is int64 there but the
-# filter compares to the string '15'), so the CSV is the only working
-# input for pums_2024_1yr/. Keep it tracked until that bug is fixed.
+# Applies to every vintage dir (pums/, pums_2024_1yr/, …). The zips just
+# re-contain the CSVs + README, and PUMSDataLoader prefers parquet for all
+# vintages, so only the parquet is worth versioning.
+packages/data/raw/**/*.csv
 packages/data/raw/**/*.zip
 packages/data/raw/**/*.pdf
-packages/data/raw/pums/*.csv
 packages/data/raw/pums/*.parquet
 
 # Versioned forecast artifacts (caches + calibrated bases; rebuilt locally)

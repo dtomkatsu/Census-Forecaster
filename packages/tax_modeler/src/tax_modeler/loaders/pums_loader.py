@@ -150,18 +150,16 @@ class PUMSDataLoader:
 
     def _hh_file_path(self, state: str, pums_type: str) -> Path:
         """Return the household PUMS file path (parquet preferred over CSV)."""
-        if pums_type == '5yr':
-            parquet = self.data_dir / f'psam_h{state}.parquet'
-            if parquet.exists():
-                return parquet
+        parquet = self.data_dir / f'psam_h{state}.parquet'
+        if parquet.exists():
+            return parquet
         return self.data_dir / f'psam_h{state}.csv'
 
     def _person_file_path(self, state: str, pums_type: str) -> Path:
         """Return the person PUMS file path (parquet preferred over CSV)."""
-        if pums_type == '5yr':
-            parquet = self.data_dir / f'psam_p{state}.parquet'
-            if parquet.exists():
-                return parquet
+        parquet = self.data_dir / f'psam_p{state}.parquet'
+        if parquet.exists():
+            return parquet
         return self.data_dir / f'psam_p{state}.csv'
 
     def get_total_households(
@@ -350,7 +348,13 @@ class PUMSDataLoader:
         return person_df, hh_df
 
     def _normalize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Rename columns for cross-vintage compatibility (e.g. STATE→ST in 2024 PUMS)."""
+        """Rename columns for cross-vintage compatibility (e.g. STATE→ST in 2024 PUMS).
+
+        Also normalizes ``ST`` to str: parquet files store it as int64
+        (the ``household_columns``/``person_columns`` dtype maps only apply
+        to CSV reads), and an int64 ``ST`` silently fails the
+        ``ST == state`` filter, dropping every row.
+        """
         rename_map = {
             old: new
             for old, new in self._column_renames.items()
@@ -358,6 +362,9 @@ class PUMSDataLoader:
         }
         if rename_map:
             df = df.rename(columns=rename_map)
+        if 'ST' in df.columns and df['ST'].dtype != object:
+            df = df.copy()
+            df['ST'] = df['ST'].astype(str)
         return self._coalesce_puma(df)
 
     def _coalesce_puma(self, df: pd.DataFrame) -> pd.DataFrame:
