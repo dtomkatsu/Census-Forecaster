@@ -54,6 +54,10 @@ data/artifacts/
 # Manifested run outputs (regenerable; manifest.json records provenance)
 runs/
 
+# Dashboard machine-readable index — regenerable intermediate whose payload
+# is already embedded in dashboard.html; would churn on every run.
+dashboard/dist/index.json
+
 # Run outputs written by forecast_rxkids_2028.py — regenerable, not inputs
 reports/**/spm_units.parquet
 

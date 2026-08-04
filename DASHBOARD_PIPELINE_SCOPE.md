@@ -163,11 +163,37 @@ move made that point inside the package; it is now `parents[6]` and
 pinned by `tests/tax_modeler/test_brief_paths.py`, so a future move
 fails loudly rather than silently resolving to the wrong directory.
 
-### Phase 4 — dashboard
-- `build_dashboard.py` scans manifests, builds the multi-family static
-  site. The existing poverty dashboard becomes one tab; SB3125 fiscal,
-  quintile, RxKids, EITC-revert join as tabs fed by the same tidy
-  schema.
+### Phase 4 — dashboard ✅ DONE (2026-08-04)
+- `scripts/build_dashboard.py` scans `runs/` manifests + poverty tier
+  reports, writes `dashboard/dist/index.json`, and renders
+  `dashboard/dist/dashboard.html` — four tabs (Fiscal, Distribution,
+  Poverty, Catalog), vanilla HTML + Chart.js, brand palette from
+  `reporting.palette`.
+- **The builder contains no scenario knowledge.** It reads manifests and
+  tidy long tables, resolving run → registry slug → label. Proven in
+  practice: the Distribution tab was an empty state until
+  `run_scenario.py --slug sb3125_cd2 --runner fy26base` was run, then
+  populated on the next build with zero code change.
+- The Catalog tab lists all 9 registry scenarios and marks which have a
+  run, so unmodeled scenarios are visible rather than absent.
+
+**Deviation:** the existing `build_poverty_dashboard.py` was left intact
+rather than folded in as a tab. It is a polished, purpose-built
+deliverable (`dist/index.html`); the new builder writes alongside it
+(`dist/dashboard.html`) and was verified not to change its output. Merging
+them is a presentation decision for later, not a pipeline requirement.
+
+**Still wide, not tidy:** RxKids and EITC-revert reports write per-file
+tables without a tidy long form, so they do not yet appear. Adding them
+is now a matter of emitting `*_tidy.csv` in those scripts — no dashboard
+change needed.
+
+## Status
+
+Phases 0-4 complete. The pipeline the scope set out to build exists:
+scenario registry → dispatcher → manifested runs → tidy tables → shared
+reporting → dashboard. What remains is incremental: tidy-ify the
+remaining report families, and decide whether the two dashboards merge.
 
 ## Not in scope
 
