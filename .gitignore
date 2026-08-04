@@ -51,6 +51,9 @@ packages/data/raw/pums/*.parquet
 # Versioned forecast artifacts (caches + calibrated bases; rebuilt locally)
 data/artifacts/
 
+# Manifested run outputs (regenerable; manifest.json records provenance)
+runs/
+
 # Run outputs written by forecast_rxkids_2028.py — regenerable, not inputs
 reports/**/spm_units.parquet
 

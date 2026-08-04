@@ -510,6 +510,23 @@ if __name__ == "__main__":
         df = pd.DataFrame(all_rows)
         df.to_csv(OUT_CSV, index=False)
 
+        # ---- Manifested run output (canonical; /tmp copy kept above) --------
+        from tax_modeler.runs import tidy_long, write_run_manifest
+        from _forecast_common import RUNS_DIR, cache_provenance
+        RUN_DIR = RUNS_DIR / f"sb3125_cd{CD}_enhanced"
+        RUN_DIR.mkdir(parents=True, exist_ok=True)
+        df.to_csv(RUN_DIR / "enhanced.csv", index=False)
+        tidy_long(df, ["scenario", "tax_year"]).to_csv(
+            RUN_DIR / "fiscal_tidy.csv", index=False,
+        )
+        write_run_manifest(
+            RUN_DIR,
+            script=f"forecast_sb3125_enhanced.py --cd {CD}",
+            params={"cd": CD, "target_years": TARGET_YEARS, "scenarios": SCENARIOS},
+            inputs={"tax_units_cache": cache_provenance()},
+        )
+        print(f"Saved run: {RUN_DIR}", flush=True)
+
         # ---- Distributional quintile analysis (MID scenario, all years) -----
         print("\nRunning distributional quintile analysis (MID scenario)...", flush=True)
         import warnings; warnings.filterwarnings("ignore")

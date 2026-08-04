@@ -19,10 +19,24 @@ from pathlib import Path
 import pandas as pd
 
 # ---------------------------------------------------------------------------
-# Input / output paths
+# Input / output paths — canonical location is the manifested runs/ store;
+# fall back to the legacy /tmp mirrors during the transition.
 # ---------------------------------------------------------------------------
-QUINTILE_CSV = Path("/tmp/cd2_vs_fy26base_quintile_mid_2027_2031.csv")
-ENHANCED_CSV = Path("/tmp/sb3125_cd2_enhanced_2027_2031.csv")
+_REPO = Path(__file__).parent
+
+
+def _prefer_runs(runs_path: Path, tmp_path: Path) -> Path:
+    return runs_path if runs_path.exists() else tmp_path
+
+
+QUINTILE_CSV = _prefer_runs(
+    _REPO / "runs" / "sb3125_cd2_fy26base" / "quintile.csv",
+    Path("/tmp/cd2_vs_fy26base_quintile_mid_2027_2031.csv"),
+)
+ENHANCED_CSV = _prefer_runs(
+    _REPO / "runs" / "sb3125_cd2_enhanced" / "enhanced.csv",
+    Path("/tmp/sb3125_cd2_enhanced_2027_2031.csv"),
+)
 DEFAULT_OUT  = Path("/tmp/SB3125_CD_analysis_charts.html")
 
 # ---------------------------------------------------------------------------

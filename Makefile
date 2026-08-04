@@ -8,8 +8,11 @@
 PYTHON      := .venv/bin/python3
 PYTHON_PLAIN := python3
 
-ENHANCED_CSV := /tmp/sb3125_cd2_enhanced_2027_2031.csv
-QUINTILE_CSV := /tmp/cd2_vs_fy26base_quintile_mid_2027_2031.csv
+# Canonical outputs live in the manifested runs/ store (Phase 1,
+# DASHBOARD_PIPELINE_SCOPE.md); scripts still mirror to /tmp during the
+# transition.
+ENHANCED_CSV := runs/sb3125_cd2_enhanced/enhanced.csv
+QUINTILE_CSV := runs/sb3125_cd2_fy26base/quintile.csv
 HTML_REPORT  := /tmp/SB3125_CD_analysis_charts.html
 
 .PHONY: all sb3125_cd2 enhanced distributional report clean help

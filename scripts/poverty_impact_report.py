@@ -754,6 +754,54 @@ def _narrative_for_scenario(
     return ""
 
 
+def tidy_by_state(
+    by_state: pd.DataFrame,
+    scenarios: tuple[str, ...],
+    *,
+    tax_year: int,
+) -> pd.DataFrame:
+    """Melt the single-row wide ``by_state`` frame into tidy long form.
+
+    Wide columns encode scenario (``poverty_rate_no_eitc``), population
+    (``..._hoh``) and units (``..._$``) in their names, which makes every
+    new scenario a schema change. The long form is one row per
+    (tax_year, scenario, population, metric) — new scenarios become rows.
+    Emitted ADDITIVELY next to by_state.csv (Phase 1,
+    DASHBOARD_PIPELINE_SCOPE.md); the wide file stays during transition.
+    """
+    row = by_state.iloc[0]
+    # Longest-first so e.g. `_no_hi_eitc` wins over any shorter overlap.
+    scen_tokens = sorted(scenarios, key=len, reverse=True)
+
+    records = []
+    for col in by_state.columns:
+        base = col
+        population = "all"
+        if "_hoh" in base:
+            population = "head_of_household"
+            base = base.replace("_hoh", "")
+        if "_baseline" in base:
+            scenario = "baseline"
+            metric = base.replace("_baseline", "")
+        else:
+            for scn in scen_tokens:
+                if f"_{scn}" in base:
+                    scenario = scn
+                    metric = base.replace(f"_{scn}", "")
+                    break
+            else:
+                scenario = "baseline"   # weighted_persons, weighted_filers, …
+                metric = base
+        records.append({
+            "tax_year": tax_year,
+            "scenario": scenario,
+            "population": population,
+            "metric": metric,
+            "value": float(row[col]),
+        })
+    return pd.DataFrame(records)
+
+
 def _print_summary(
     *,
     tax_year: int,
@@ -1125,7 +1173,10 @@ def main(argv: Optional[list] = None) -> int:
     by_hd_out.to_csv(args.out / "by_house_district.csv", index=False)
     by_sd_out.to_csv(args.out / "by_senate_district.csv", index=False)
     by_ht_out.to_csv(args.out / "by_household_type.csv", index=False)
-    LOG.info("Wrote 5 poverty-impact CSVs to %s", args.out)
+    tidy_by_state(by_state_out, result.scenarios, tax_year=args.tax_year).to_csv(
+        args.out / "by_state_long.csv", index=False,
+    )
+    LOG.info("Wrote 6 poverty-impact CSVs to %s", args.out)
 
     # 9b. SDR sampling standard errors + 90% CIs (ACS replicate weights).
     #     State + county only — district point estimates already carry the

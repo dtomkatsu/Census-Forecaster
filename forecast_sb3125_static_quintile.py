@@ -201,7 +201,9 @@ def _make_pdf(df: "pd.DataFrame", *, cd: str = "2") -> None:
 
     cd_label     = f"CD{cd}"
     PDF_OUT      = Path(f"/tmp/sb3125_cd{cd}_quintile_distributional_report.pdf")
-    ENHANCED_CSV = Path(f"/tmp/sb3125_cd{cd}_enhanced_2027_2031.csv")
+    # Prefer the manifested runs/ copy; fall back to the legacy /tmp mirror.
+    _runs_enh    = Path(__file__).parent / "runs" / f"sb3125_cd{cd}_enhanced" / "enhanced.csv"
+    ENHANCED_CSV = _runs_enh if _runs_enh.exists() else Path(f"/tmp/sb3125_cd{cd}_enhanced_2027_2031.csv")
 
     # DOTAX TY2023 actuals from the scenario library; en-dash for display.
     REEC_IND_BINS = [

@@ -16,15 +16,14 @@ REPO = Path(__file__).parent
 
 # Raw PUMS location (only needed when rebuilding the tax-unit cache).
 #
-# CAUTION: the default deliberately points OUTSIDE the repo. The
-# 2020-24 5yr vintage the cache is built from lives in
-# ~/ctc-and-eitc/data/raw/pums; the in-repo packages/data/raw/pums holds
-# the OLDER 2018-2022 vintage (verified 2026-08-03: the files differ).
-# Vendoring the current vintage in-repo is scoped for Phase 1 of
-# DASHBOARD_PIPELINE_SCOPE.md — until then, do not "fix" this default.
+# pums_2020_2024/ is the 2020-24 5yr vintage the cache is built from,
+# vendored 2026-08-03 from ~/ctc-and-eitc/data/raw/pums (byte-identical
+# copies; gitignored, disk-only). The sibling pums/ dir holds the OLDER
+# 2018-2022 vintage and is kept for the census_forecaster loaders that
+# still read it — do not point this default there.
 DATA_DIR = Path(
     os.environ.get("HAWAII_PUMS_DIR")
-    or Path.home() / "ctc-and-eitc" / "data" / "raw" / "pums"
+    or REPO / "packages" / "data" / "raw" / "pums_2020_2024"
 )
 
 # Versioned artifacts live in-repo (gitignored) — /tmp caches had no
@@ -33,7 +32,23 @@ ARTIFACT_DIR = REPO / "data" / "artifacts"
 CACHE_FILE = ARTIFACT_DIR / "tax_units_cache.parquet"
 CALIBRATED_PKL = ARTIFACT_DIR / "sb3125_calibrated_base.pkl"
 
+# Manifested run outputs (Phase 1, DASHBOARD_PIPELINE_SCOPE.md).
+# One directory per script invocation family, each with a manifest.json
+# written via tax_modeler.runs.write_run_manifest.
+RUNS_DIR = REPO / "runs"
+
 TARGET_YEARS = [2027, 2028, 2029, 2030, 2031]
+
+
+def cache_provenance() -> dict | None:
+    """Contents of the tax-unit cache sidecar, for run-manifest inputs."""
+    import json
+
+    sidecar = CACHE_FILE.with_suffix("").with_suffix(".meta.json")
+    if not sidecar.exists():
+        return None
+    with open(sidecar) as f:
+        return json.load(f)
 
 
 def silence_noise() -> None:

@@ -220,6 +220,27 @@ def main(cd: str) -> None:
     all_quintiles.to_csv(Q_CSV, index=False)
     all_brackets.to_csv(B_CSV, index=False)
 
+    # ---- Manifested run output (canonical; /tmp copies kept above) ---------
+    from tax_modeler.runs import tidy_long, write_run_manifest
+    from _forecast_common import RUNS_DIR, cache_provenance
+    run_dir = RUNS_DIR / f"sb3125_cd{cd}_fy26base"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    all_quintiles.to_csv(run_dir / "quintile.csv", index=False)
+    all_brackets.to_csv(run_dir / "bracket.csv", index=False)
+    tidy_long(all_quintiles, ["tax_year", "quintile"]).to_csv(
+        run_dir / "distribution_tidy.csv", index=False,
+    )
+    write_run_manifest(
+        run_dir,
+        script=f"forecast_sb3125_vs_fy26base.py --cd {cd}",
+        params={"cd": cd, "target_years": TARGET_YEARS},
+        inputs={
+            "calibrated_base": str(CALIBRATED_PKL),
+            "tax_units_cache": cache_provenance(),
+        },
+    )
+    print(f"Saved run: {run_dir}", flush=True)
+
     # ── Print summary ─────────────────────────────────────────────────────────
     print("\n" + "=" * 90, flush=True)
     print(f"SB 3125 CD{cd} vs TY2026-FROZEN BASELINE — MID Scenario", flush=True)
