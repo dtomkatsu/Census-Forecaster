@@ -1,4 +1,4 @@
-"""scripts/brief — modular poverty-impact brief generation.
+"""Poverty-impact brief generation (data → charts → PDF/HTML).
 
 Modules:
     data          — BriefData, constants, formatting utilities, data loading
@@ -8,10 +8,9 @@ Modules:
 
 Typical usage::
 
-    from brief.data import load_brief_data
-    from brief.charts import make_figures
-    from brief.pdf_renderer import build_pdf
-    from brief.html_renderer import build_html
+    from tax_modeler.reporting.brief import (
+        load_brief_data, make_figures, build_pdf, build_html,
+    )
 """
 
 from .data import BriefData, load_brief_data

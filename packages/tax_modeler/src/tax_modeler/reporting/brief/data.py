@@ -8,17 +8,18 @@ from pathlib import Path
 
 import pandas as pd
 
-# Repo root resolved relative to this file's location (scripts/brief/ → scripts/ → repo)
-REPO_ROOT = Path(__file__).resolve().parents[2]
+# Repo root, for locating reports/ and packages/data/raw/ in a checkout.
+# This file lives at
+#   packages/tax_modeler/src/tax_modeler/reporting/brief/data.py
+# so the repo root is 6 levels up (brief → reporting → tax_modeler → src →
+# tax_modeler → packages). test_brief_paths.py pins this, so a future move
+# fails loudly instead of silently resolving to the wrong directory.
+REPO_ROOT = Path(__file__).resolve().parents[6]
 
-# Brand palette (Hawaii Appleseed)
-TEAL = "#005F73"
-GOLD = "#E9B949"
-SLATE = "#4A4E69"
-LIGHT_TEAL = "#E8F4F6"
-CHARCOAL = "#2D2D2D"
-LIGHT_GRAY = "#F5F5F5"
-WHITE = "#FFFFFF"
+# Brand palette (Hawaii Appleseed) — single-sourced in reporting.palette.
+from tax_modeler.reporting.palette import (  # noqa: E402
+    CHARCOAL, GOLD, LIGHT_GRAY, LIGHT_TEAL, SLATE, TEAL, WHITE,
+)
 
 TIER_PREFERENCE = [
     "poverty_impact_2024_tier4_spm",

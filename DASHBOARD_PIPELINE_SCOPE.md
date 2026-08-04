@@ -134,10 +134,34 @@ them as such): `act46_rollback_targeted`, `millionaire_tax`,
 `sb3125_original`, `hb2306_orig`. These were modeled ad hoc before; they
 now at least appear in `--list` instead of being invisible.
 
-### Phase 3 — reporting layer
-- Promote `scripts/brief/` (already a data/charts/html/pdf split) +
-  the Phase-0 quintile module into one shared reporting package;
-  port `generate_itep_report.py` chart blocks onto it.
+### Phase 3 — reporting layer ✅ DONE (2026-08-04)
+- `scripts/brief/` promoted to `tax_modeler.reporting.brief`. It was
+  already a clean data/charts/pdf/html split but lived in `scripts/`,
+  reachable only via a `sys.path.insert` hack — nothing else could
+  import it. Now installed alongside `reporting.quintile_pdf`, so
+  Phase 4 can reuse its chart helpers.
+- `tax_modeler.reporting.palette`: the Appleseed brand hexes were
+  duplicated verbatim (under two naming conventions) in
+  `brief/data.py` and `build_poverty_dashboard.py`. Both now import
+  one module, so a brand-guide change is a one-line edit.
+
+**Deviation — `generate_itep_report.py` was NOT ported.** The scope
+above assumed its chart blocks should move onto the shared layer. They
+can't: it runs on **system python3** by design (`make report` uses
+`PYTHON_PLAIN`, and the Makefile documents it as "only needs pandas"),
+and it imports nothing from the workspace. Making it import
+`tax_modeler.reporting` would force a venv on the one deliverable
+deliberately built to run without one. Its palette also differs from the
+brand palette on purpose (ITEP-comparable design language). Left alone.
+
+`generate_reec_report.py` likewise keeps its own blue-tinted design
+language — a separate deliverable, not drift.
+
+**Gotcha fixed en route:** `brief/data.py` resolved `REPO_ROOT` by
+counting parents (`parents[2]`, correct under `scripts/brief/`). The
+move made that point inside the package; it is now `parents[6]` and
+pinned by `tests/tax_modeler/test_brief_paths.py`, so a future move
+fails loudly rather than silently resolving to the wrong directory.
 
 ### Phase 4 — dashboard
 - `build_dashboard.py` scans manifests, builds the multi-family static

@@ -1,10 +1,10 @@
 """Generate Hawaii Appleseed-styled policy brief PDF from poverty-impact CSVs.
 
-The heavy lifting lives in scripts/brief/:
-    brief/data.py          — BriefData, constants, data loading
-    brief/charts.py        — matplotlib figure generation
-    brief/pdf_renderer.py  — fpdf2 PDF assembly
-    brief/html_renderer.py — self-contained HTML fallback
+The heavy lifting lives in tax_modeler.reporting.brief:
+    data.py          — BriefData, constants, data loading
+    charts.py        — matplotlib figure generation
+    pdf_renderer.py  — fpdf2 PDF assembly
+    html_renderer.py — self-contained HTML fallback
 """
 
 from __future__ import annotations
@@ -16,14 +16,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Ensure the scripts/ directory is on the path so `brief` resolves as a package.
-if str(Path(__file__).parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).parent))
-
-from brief.data import _resolve_data_dir, _resolve_rxkids_dir, load_brief_data
-from brief.charts import make_figures
-from brief.pdf_renderer import build_pdf
-from brief.html_renderer import build_html
+from tax_modeler.reporting.brief import build_html, build_pdf, make_figures
+from tax_modeler.reporting.brief.data import (
+    _resolve_data_dir, _resolve_rxkids_dir, load_brief_data,
+)
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:

@@ -22,13 +22,16 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT = REPO_ROOT / "dashboard" / "dist"
 
 
-# Hawaiʻi Appleseed brand palette
-COLOR_TEAL = "#005F73"
-COLOR_GOLD = "#E9B949"
-COLOR_SLATE = "#4A4E69"
-COLOR_CHARCOAL = "#2D2D2D"
-COLOR_LIGHT = "#F5F5F5"
-COLOR_CALLOUT = "#E8F4F6"
+# Hawaiʻi Appleseed brand palette — single-sourced so the dashboard and
+# the poverty brief cannot drift apart.
+from tax_modeler.reporting.palette import (  # noqa: E402
+    CHARCOAL as COLOR_CHARCOAL,
+    GOLD as COLOR_GOLD,
+    LIGHT_GRAY as COLOR_LIGHT,
+    LIGHT_TEAL as COLOR_CALLOUT,
+    SLATE as COLOR_SLATE,
+    TEAL as COLOR_TEAL,
+)
 
 
 def _autodetect_tier_dir() -> Path:
