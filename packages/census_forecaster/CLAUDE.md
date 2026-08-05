@@ -8,6 +8,10 @@
 
 ACS and BLS time-series forecasting for Hawaiʻi demographic/economic indicators. Outputs feed into tax_modeler calibration anchors and the Housing-Affordability-Tracker.
 
+## Plain-language methodology doc — keep it in sync
+
+**`METHODOLOGY_SIMPLE.md`** (this directory) explains the ensemble design, the lag/change feature scheme, the BLS anchor mechanism, and the tax_modeler hand-off in plain language, no formulas. **Whenever you change the ensemble members, the feature set (`ml_features.py`), the lag/change policy, or the anchor logic (`acs/anchors.py`, `acs/sources/`), update `METHODOLOGY_SIMPLE.md` in the same commit.** It should never describe a mechanism the code has moved away from. The precise technical version (formulas, parameters, backtest numbers) stays in the root `METHODOLOGY.md` §2.3.1 — `METHODOLOGY_SIMPLE.md` is the companion explanation, not a replacement.
+
 ## Key entry points
 
 | File | Purpose |
