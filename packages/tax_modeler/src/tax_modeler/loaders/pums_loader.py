@@ -27,6 +27,8 @@ from pathlib import Path
 from typing import Optional, Tuple, Dict, List
 import numpy as np
 
+from tax_modeler.errors import MissingDataError
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_PUMS_YEAR = 2022  # Most recent 5-year data available (2018-2022)
@@ -162,6 +164,25 @@ class PUMSDataLoader:
             return parquet
         return self.data_dir / f'psam_p{state}.csv'
 
+    def _missing(self, kind: str, path: Path, state: str) -> MissingDataError:
+        """Build an actionable error for an absent PUMS file.
+
+        Raw PUMS is gitignored, so a fresh clone reaches here with nothing
+        to load. Say where the files go and how to redirect the search,
+        rather than a bare path — this is the same guidance
+        ``pipeline._load_pums`` gives, made available to the direct
+        callers of this loader (forecast_sb3125.py, poverty_impact_report,
+        eitc_ctc_geo_report) that bypass the pipeline wrapper.
+        """
+        return MissingDataError(
+            f"PUMS {kind} file not found.\n"
+            f"Download the ACS PUMS files for state FIPS {state} and place them at:\n"
+            f"  {self.data_dir}/psam_h{state}.parquet  (or .csv)\n"
+            f"  {self.data_dir}/psam_p{state}.parquet  (or .csv)",
+            path=path,
+            env_var="HAWAII_PUMS_DIR",
+        )
+
     def get_total_households(
         self,
         state: str = DEFAULT_STATE,
@@ -170,7 +191,7 @@ class PUMSDataLoader:
         """Return the total number of household records in the PUMS file."""
         hh_file = self._hh_file_path(state, pums_type)
         if not hh_file.exists():
-            raise FileNotFoundError(f"Household PUMS file not found: {hh_file}")
+            raise self._missing("household", hh_file, state)
 
         if hh_file.suffix == '.parquet':
             import pyarrow.parquet as pq
@@ -196,7 +217,7 @@ class PUMSDataLoader:
         """
         hh_file = self._hh_file_path(state, pums_type)
         if not hh_file.exists():
-            raise FileNotFoundError(f"Household PUMS file not found: {hh_file}")
+            raise self._missing("household", hh_file, state)
 
         if self._total_households is None:
             self._total_households = self.get_total_households(state, pums_type)
@@ -271,7 +292,7 @@ class PUMSDataLoader:
 
         person_file = self._person_file_path(state, pums_type)
         if not person_file.exists():
-            raise FileNotFoundError(f"Person PUMS file not found: {person_file}")
+            raise self._missing("person", person_file, state)
 
         if hasattr(serialnos, 'tolist'):
             serialnos = serialnos.tolist()
