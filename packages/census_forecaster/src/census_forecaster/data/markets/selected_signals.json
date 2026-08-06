@@ -1,5 +1,5 @@
 {
-  "candidates_tested": 68,
+  "candidates_tested": 73,
   "generated": "2026-08-05",
   "limitations": "Granger != causation; selection is FDR-controlled predictive precedence on monthly data. Only signals passing the Phase-3 forecaster ablation may influence forecasts.",
   "q_fdr": 0.1,
@@ -171,6 +171,66 @@
       "robust_to_2020_exclusion": false,
       "target": "US_UNEMPLOYMENT",
       "ticker": "JETS",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 1,
+      "best_xcorr_r": 0.4921257678355176,
+      "granger_lags": 3,
+      "granger_p": 1.0238526877060139e-08,
+      "n_obs": 113,
+      "name": "jets_log_return_hi_visitors_lag3",
+      "robust_to_2020_exclusion": false,
+      "target": "HI_VISITORS",
+      "ticker": "JETS",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 1,
+      "best_xcorr_r": 0.4921257678355176,
+      "granger_lags": 6,
+      "granger_p": 4.667956517813956e-08,
+      "n_obs": 110,
+      "name": "jets_log_return_hi_visitors_lag6",
+      "robust_to_2020_exclusion": false,
+      "target": "HI_VISITORS",
+      "ticker": "JETS",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 0,
+      "best_xcorr_r": -0.8831106634647611,
+      "granger_lags": 3,
+      "granger_p": 0.00011669291990034955,
+      "n_obs": 237,
+      "name": "hi_visitors_arrivals_log_return_hi_unemployment_lag3",
+      "robust_to_2020_exclusion": true,
+      "target": "HI_UNEMPLOYMENT",
+      "ticker": "HI_VISITORS_ARRIVALS",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 0,
+      "best_xcorr_r": -0.8831106634647611,
+      "granger_lags": 6,
+      "granger_p": 0.00017046764267726773,
+      "n_obs": 234,
+      "name": "hi_visitors_arrivals_log_return_hi_unemployment_lag6",
+      "robust_to_2020_exclusion": false,
+      "target": "HI_UNEMPLOYMENT",
+      "ticker": "HI_VISITORS_ARRIVALS",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 0,
+      "best_xcorr_r": -0.8831106634647611,
+      "granger_lags": 12,
+      "granger_p": 2.3573325863290815e-08,
+      "n_obs": 228,
+      "name": "hi_visitors_arrivals_log_return_hi_unemployment_lag12",
+      "robust_to_2020_exclusion": false,
+      "target": "HI_UNEMPLOYMENT",
+      "ticker": "HI_VISITORS_ARRIVALS",
       "transform": "log_return"
     },
     {

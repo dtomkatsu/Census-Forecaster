@@ -63,6 +63,19 @@ MONTHLY_TARGETS: dict[str, tuple[str, str]] = {
     # energy, so this measures the imported-energy → local-price channel
     # directly instead of inferring it from an energy-equity proxy.
     "HI_ELECTRICITY":       ("EIA_HI_ELEC_ALL",         "log_diff"),
+    # HTA monthly visitor arrivals, statewide (1990-2024, 420 months).
+    # The middle link of the JETS hypothesis, which previously had to be
+    # assumed: "airline prices embed forward bookings → arrivals →
+    # tourism employment". With this the first leg is directly testable.
+    "HI_VISITORS":          ("HTA_VISITORS_STATEWIDE",  "log_diff"),
+}
+
+#: Hawaii monthly PREDICTORS (screen name → macro_monthly.json series id).
+#: Same merge path as NATIONAL_PREDICTORS, but Hawaii-specific rather
+#: than national. Visitor arrivals are the tourism-demand channel that
+#: plausibly leads local labour-market slack.
+HAWAII_PREDICTORS: dict[str, str] = {
+    "HI_VISITORS_ARRIVALS": "HTA_VISITORS_STATEWIDE",
 }
 
 # National-macro monthly PREDICTORS (predictor_name → macro_monthly.json
@@ -92,6 +105,12 @@ HYPOTHESIS_PAIRS: tuple[tuple[str, str], ...] = (
     ("XLF", "HI_UNEMPLOYMENT"),
     ("JETS", "HI_UNEMPLOYMENT"),
     ("JETS", "US_UNEMPLOYMENT"),
+    # Leg 1 of the JETS hypothesis, now testable directly rather than
+    # inferred: do airline equity prices lead actual Hawaii arrivals?
+    ("JETS", "HI_VISITORS"),
+    # Leg 2: do arrivals lead local labour-market slack? Together these
+    # test the mechanism the JETS→HI_UNEMPLOYMENT pair only assumed.
+    ("HI_VISITORS_ARRIVALS", "HI_UNEMPLOYMENT"),
     ("XLRE", "HONOLULU_ZHVI"),
     ("XLRE", "HONOLULU_ZORI"),
     ("VNQ", "HONOLULU_ZHVI"),

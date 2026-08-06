@@ -26,6 +26,7 @@ from typing import Optional, Sequence
 from ..markets.panel import load_prices_panel
 from ..markets.screen import (
     HYPOTHESIS_PAIRS,
+    HAWAII_PREDICTORS,
     MONTHLY_TARGETS,
     NATIONAL_PREDICTORS,
     ScreenReport,
@@ -85,7 +86,7 @@ def load_national_monthly_predictors() -> dict[str, dict[int, float]]:
     out: dict[str, dict[int, float]] = {}
     macro_path = _MARKETS_DIR / "macro_monthly.json"
     macro = _load_json(macro_path)["series"] if macro_path.exists() else {}
-    for name, source_id in NATIONAL_PREDICTORS.items():
+    for name, source_id in {**NATIONAL_PREDICTORS, **HAWAII_PREDICTORS}.items():
         rows = macro.get(source_id)
         if rows:
             out[name] = series_to_monthly_dict(rows)

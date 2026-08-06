@@ -1170,6 +1170,51 @@ crash) while its tariff is PUC-set from fuel costs — different drivers,
 so the miss is economically coherent and does *not* impugn the target.
 The channel's evidence rests on XLE.
 
+### HTA visitor arrivals — testing the JETS mechanism (2026-08-05)
+
+The `JETS` hypothesis was *"airline equity prices embed forward bookings
+→ Hawaii tourism employment follows visitor arrivals"*, but arrivals
+themselves were never in the panel, so only the endpoints could be
+tested and the mechanism had to be assumed. HTA's historical workbook
+(Table 6, *Visitor Arrivals by Island and Month*) supplies **420 months,
+1990-2024**, and its island rows map onto counties — `O'AHU`→15003,
+`MAUI CTY`→15009, `KAUA'I`→15007, `HAWAI'I ISLAND`→15001 — so these are
+genuinely county-level monthly indicators, unlike the geoid-constant
+market/national channels. `scripts/refresh_hta_visitors.py`.
+
+Both legs were pre-registered and run. **The chain splits:**
+
+| leg | pair | result |
+|---|---|---|
+| 1 | JETS → HI_VISITORS | p=1.0e-08, r=+0.492, **not 2020-robust** |
+| 2 | HI_VISITORS_ARRIVALS → HI_UNEMPLOYMENT (lag 3) | p=1.2e-04, r=−0.883, **robust** |
+
+So the *second* leg is real — arrivals carry predictive content for
+local slack beyond unemployment's own past, at a strikingly strong
+correlation — while the *first* leg is another COVID coincidence:
+airline equities and Hawaii arrivals both collapsed in 2020, and
+excluding it kills the relationship. JETS therefore earns **no new
+feature channel**, and the `mkt_*` channels are unchanged. Robust
+survivors 11 → 12 (the arrivals→unemployment pair).
+
+Read leg 2 carefully before promoting it: `best_xcorr_lead = 0` months,
+i.e. arrivals and unemployment move *contemporaneously* — tourism is the
+Hawaii labour market rather than a precursor to it — so the lag-3
+Granger pass is predictive content, not a long runway. LAUS is also
+itself partly modelled and annually benchmarked, so some of the
+correlation is definitional. Ablation-gate before it touches a forecast.
+
+**Source limitations.** No API (UHERO's warehouse has one but needs a
+Bearer token, breaking keyless discipline); files sit behind rotating
+`/media/<id>/` URLs, so the fetcher scrapes the listing page rather than
+hardcoding a link. The workbook ends at 2024 — the current-year file is
+a differently-shaped workbook whose 2026 sheet had genuine mid-year gaps
+when checked (Jan/Feb/May present, Mar/Apr absent), so it is
+deliberately not merged; a clean backbone beats a ragged edge. Revised
+vintages publish as strings (`'2006*'`, `'2010R'`, `'2014R'`, `'2017R'`)
+and a naive numeric header check silently drops those four years — the
+parser handles both forms and a test pins it.
+
 ### Experimental: search-attention terms (`markets/attention.py`, July 2026)
 
 Google Trends terms as *demand-side* screen candidates — search embeds
