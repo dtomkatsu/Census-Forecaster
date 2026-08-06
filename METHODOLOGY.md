@@ -1267,6 +1267,53 @@ Granger p on 480+ aligned months are still the best nowcasting evidence
 in the panel — but ablation-gate before any forecast use, per standing
 rule.
 
+### Ablation re-verified against corrected data (2026-08-05)
+
+`mkt_energy_mom`'s bundled values are byte-identical before and after
+the CPI-target fix (it is XLE's own price momentum; what changed was
+the target it validates against, not the momentum series itself), so
+the prior ship gate was numerically still valid. Re-ran anyway
+(`compare_market_ablation.py --skip-anchor`,
+`backtests/results/market_ml_ablation_2026-08-05.md`) for a second
+reason: the 2026-07-14 report's permutation importances were flagged
+mislabelled by a column-ordering bug fixed the *next day*, so its
+RMSE/coverage table was trustworthy but its importances never were.
+
+**Verdict: GATE PASSED again** — no RMSE regression >2% on any of the
+16 indicators (ensemble-level wash, as before), CI90 coverage stays in
+[85%, 95%] throughout.
+
+**The corrected importances change the internal story, though.**
+Comparing 07-14 (buggy) → 08-05 (corrected) is not noise — it is
+systematic and indicator-specific:
+
+| indicator | direction | typical shrink/growth |
+|---|---|---|
+| B19013 (income) | **shrank** | to 8-43% of the old value |
+| B25077 (home value) | **shrank** | to 11-18% of the old value |
+| S2301 (unemployment) | **grew** | to 124-252% of the old value |
+
+The July disposition note's headline claim — *"mkt_reit_mom_lag1 on
+B25077: +0.073, the VNQ 12-month Granger lead reproduced as a tree
+feature"* — is retracted: the corrected value is **+0.0118**, a real
+6x overstatement. The actual strongest signal in the corrected table is
+**`mkt_shipping_mom` on S2301 (unemployment): +0.0352** — MATX shipping
+costs, not VNQ real estate, and unemployment, not home value. This is
+the mechanistically coherent story: shipping/energy costs bite an
+import-dependent, tourism-exposed labour market (matching the
+JETS/MATX/XLE causal-screen hypotheses above), not median home price.
+
+Disposition stands: **mkt_\* ML features remain SHIPPED**, opt-in
+(`use_ml=False` default unchanged), now on both a verified-current data
+basis and a verified-correct importance reading.
+
+**HI_UI_CLAIMS is not part of this gate and cannot be**: it exists only
+in the causal screen and `macro_monthly.json`, absent from
+`NATIONAL_SERIES`, `COUNTY_SERIES`, and market `CHANNELS` — the three
+registries `ml_features.py` actually reads. It has passed statistical
+discovery but was never wired to a feature. No ablation is possible
+until that promotion happens; this is intentional, not an oversight.
+
 ### Experimental: search-attention terms (`markets/attention.py`, July 2026)
 
 Google Trends terms as *demand-side* screen candidates — search embeds

@@ -2,13 +2,13 @@
   "as_of_month": 6,
   "frequency": "annual",
   "geography": "national",
-  "last_refresh": "2026-07",
+  "last_refresh": "2026-08",
   "limitations": [
     "Values for year Y use only prices through month 6 of year Y (no-peeking, ACS mid-year alignment).",
     "Channels are gated on Granger-screen survivors robust to 2020 exclusion; Granger != causation \u2014 the forecaster ablation is the final gate.",
     "Geoid-constant (national/sector prices): acts as a year-effect in the pooled ML panel."
   ],
-  "screen_generated": "2026-07-14",
+  "screen_generated": "2026-08-05",
   "series_id": "MARKET_SIGNALS_ANNUAL",
   "signals": {
     "mkt_energy_mom": {
