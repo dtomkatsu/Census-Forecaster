@@ -203,7 +203,16 @@ jobs:
         # drift into a hard block. Golden value tests still run in the regular
         # `tests` workflow against committed data (where they catch real code
         # regressions). This gate confirms the pipeline still runs end-to-end.
-        run: uv run pytest tests/ -m smoke -v --tb=short
+        #
+        # Scoped to tests/census_forecaster/, not the whole tests/ tree:
+        # this job only installs `--package census-forecaster`, so a
+        # collection-time import anywhere under tests/tax_modeler/ that
+        # needs a tax_modeler-only dependency (e.g. matplotlib, pulled in
+        # eagerly by tax_modeler.reporting.brief) fails the whole pytest
+        # session before marker filtering ever runs — a real 2026-08-05
+        # failure, not hypothetical. The full cross-package suite already
+        # runs in the `tests` workflow, which installs the full workspace.
+        run: uv run pytest tests/census_forecaster -m smoke -v --tb=short
 
       - name: Commit + push if data changed
         run: |
