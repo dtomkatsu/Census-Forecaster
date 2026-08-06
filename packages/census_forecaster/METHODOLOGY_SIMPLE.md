@@ -197,6 +197,20 @@ prices lead Hawaii electricity prices by about 3 months). Worth noting
 as the pattern: the honest fix temporarily *removed* evidence, and only
 new data restored it.
 
+**A second worked example (August 2026): the fastest signals aren't
+stocks at all.** A survey of free government data added three
+higher-frequency Hawaii series: weekly unemployment-insurance claims
+(administrative filing counts, about 11 days behind real time), the
+state's own monthly economic-indicator workbooks (visitor arrivals,
+building permits, and more per county, about 5 weeks behind), and
+monthly payroll job counts. Weekly claims turned out to be the
+strongest early-warning signal in the entire system — new UI filings
+genuinely move about a month before the measured unemployment rate
+does, and the relationship survives every honesty check. Meanwhile the
+payroll series failed the same tests (it moves *with* unemployment,
+not ahead of it) and was kept on the books as a documented negative
+result.
+
 **Survivors get compressed into three simple, national numbers, updated
 once a year:** an energy signal, a shipping signal, and a real-estate
 signal — each just "how much did the relevant stock(s) move over the

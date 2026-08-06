@@ -133,13 +133,17 @@ def test_merge_is_additive(tmp_path):
     assert "keep me" in merged["limitations"]
 
 
-def test_screen_wiring_matches_emitted_series():
-    """Screen ids must be series this fetcher actually writes."""
-    assert MONTHLY_TARGETS["HI_VISITORS"][0] == "HTA_VISITORS_STATEWIDE"
-    assert HAWAII_PREDICTORS["HI_VISITORS_ARRIVALS"] == "HTA_VISITORS_STATEWIDE"
+def test_screen_uses_dbedt_but_hta_stays_as_cross_check():
+    """The screen's arrivals series moved to DBEDT MEI (current through
+    the present month) after the two sources were verified identical to
+    within rounding on all 420 overlap months. HTA remains bundled as
+    the archival cross-check, so this fetcher's series ids must still be
+    emitted — but the screen must NOT point at them anymore."""
+    assert MONTHLY_TARGETS["HI_VISITORS"][0] == "DBEDT_ARRIVALS_STATEWIDE"
+    assert HAWAII_PREDICTORS["HI_VISITORS_ARRIVALS"] == "DBEDT_ARRIVALS_STATEWIDE"
     emitted = set(hta.SECTIONS.values())
-    assert MONTHLY_TARGETS["HI_VISITORS"][0] in emitted
-    assert set(HAWAII_PREDICTORS.values()) <= emitted
+    assert "HTA_VISITORS_STATEWIDE" in emitted
+    assert not any(v in emitted for v in HAWAII_PREDICTORS.values())
 
 
 def test_jets_mechanism_pairs_registered():

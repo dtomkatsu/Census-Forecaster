@@ -63,19 +63,38 @@ MONTHLY_TARGETS: dict[str, tuple[str, str]] = {
     # energy, so this measures the imported-energy → local-price channel
     # directly instead of inferring it from an energy-equity proxy.
     "HI_ELECTRICITY":       ("EIA_HI_ELEC_ALL",         "log_diff"),
-    # HTA monthly visitor arrivals, statewide (1990-2024, 420 months).
-    # The middle link of the JETS hypothesis, which previously had to be
-    # assumed: "airline prices embed forward bookings → arrivals →
-    # tourism employment". With this the first leg is directly testable.
-    "HI_VISITORS":          ("HTA_VISITORS_STATEWIDE",  "log_diff"),
+    # Monthly visitor arrivals, statewide. The middle link of the JETS
+    # hypothesis, which previously had to be assumed: "airline prices
+    # embed forward bookings → arrivals → tourism employment".
+    #
+    # Source is the DBEDT MEI series (1990-01 → current month, ~5-week
+    # lag) rather than the HTA historical workbook (ends at its final
+    # year, 2024): the two agree to within rounding on all 420 overlap
+    # months (max rel diff 0.0004%, verified 2026-08-05), so
+    # HTA_VISITORS_* stays bundled as the archival cross-check while
+    # this target gets the current-through-today series.
+    "HI_VISITORS":          ("DBEDT_ARRIVALS_STATEWIDE", "log_diff"),
 }
 
 #: Hawaii monthly PREDICTORS (screen name → macro_monthly.json series id).
 #: Same merge path as NATIONAL_PREDICTORS, but Hawaii-specific rather
-#: than national. Visitor arrivals are the tourism-demand channel that
-#: plausibly leads local labour-market slack.
+#: than national.
 HAWAII_PREDICTORS: dict[str, str] = {
-    "HI_VISITORS_ARRIVALS": "HTA_VISITORS_STATEWIDE",
+    # Tourism-demand channel that plausibly leads local labour-market
+    # slack. DBEDT MEI series — see the HI_VISITORS note above.
+    "HI_VISITORS_ARRIVALS": "DBEDT_ARRIVALS_STATEWIDE",
+    # DOL ETA-539 weekly initial claims, aggregated to monthly means.
+    # Administrative head-counts of new UI filings — they precede the
+    # household-survey unemployment measurement mechanically (a filing
+    # happens at separation; LAUS measures the stock of unemployed
+    # later), and are the fastest labour signal in the panel (~11-day
+    # lag at the weekly grain).
+    "HI_UI_CLAIMS": "DOL_HI_INITIAL_CLAIMS",
+    # BLS CES total nonfarm payrolls, Hawaii (SMS15000000000000001).
+    # Establishment survey — the hiring-side complement to LAUS's
+    # household survey; payroll changes plausibly lead measured
+    # unemployment.
+    "HI_PAYROLLS": "SMS15000000000000001",
 }
 
 # National-macro monthly PREDICTORS (predictor_name → macro_monthly.json
@@ -111,6 +130,11 @@ HYPOTHESIS_PAIRS: tuple[tuple[str, str], ...] = (
     # Leg 2: do arrivals lead local labour-market slack? Together these
     # test the mechanism the JETS→HI_UNEMPLOYMENT pair only assumed.
     ("HI_VISITORS_ARRIVALS", "HI_UNEMPLOYMENT"),
+    # Administrative UI filings → measured unemployment (see
+    # HAWAII_PREDICTORS notes for the mechanisms).
+    ("HI_UI_CLAIMS", "HI_UNEMPLOYMENT"),
+    # Establishment hiring → household-survey unemployment.
+    ("HI_PAYROLLS", "HI_UNEMPLOYMENT"),
     ("XLRE", "HONOLULU_ZHVI"),
     ("XLRE", "HONOLULU_ZORI"),
     ("VNQ", "HONOLULU_ZHVI"),

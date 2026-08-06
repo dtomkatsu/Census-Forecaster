@@ -1215,6 +1215,58 @@ vintages publish as strings (`'2006*'`, `'2010R'`, `'2014R'`, `'2017R'`)
 and a naive numeric header check silently drops those four years — the
 parser handles both forms and a test pins it.
 
+### Current-indicator intake batch (2026-08-05, round 2)
+
+Three sources added after a fetchability survey (every candidate
+curl-verified before integration; ruled out this round: Census HPS
+(discontinued), state JOLTS (~7-month effective lag), Indeed Hiring Lab
+(starts 2020-02 — the 2020-exclusion gate would gut it), Redfin county
+tracker (241 MB, deferred), BFS/PEP/IRS-SOI (slower than what's wired).
+
+**1. DBEDT MEI county workbooks** (`refresh_dbedt_mei.py`, keyless,
+dated links discovered from the listing page). ~52 monthly series per
+county, 1990-01 → current month at ~5-week lag. Taken now:
+`DBEDT_ARRIVALS_*` and `DBEDT_PERMITS_*` (monthly county building
+permits — the BPS ML channel is annual; bundled for a future cadence
+upgrade, not screen-wired: "permits → prices" has no single clean
+directional hypothesis). **DBEDT arrivals agree with HTA to within
+rounding on all 420 overlap months (max rel diff 0.0004%)**, so the
+screen's `HI_VISITORS` target and `HI_VISITORS_ARRIVALS` predictor were
+repointed to the DBEDT series (current through 2026-06 vs HTA's 2024
+wall); `HTA_VISITORS_*` stays bundled as the archival cross-check.
+Maui arrivals genuinely stop at 2026-01 in the source (publication
+gap); blanks are skipped, not zeroed.
+
+**2. DOL ETA-539 weekly UI initial claims**
+(`refresh_ui_claims.py`, keyless all-states CSV, ~13 MB).
+`DOL_HI_INITIAL_CLAIMS` = calendar-month **mean** of weekly initial
+claims (mean, not sum, so 4- and 5-week months compare), 1985-03 →
+current at ~11-day weekly lag — the fastest-moving labour series in the
+panel, and administrative counts rather than survey estimates. Sanity
+signatures verified: 2020-04 mean 24,745 (COVID), 2023-08 3,613 (Maui
+fires), normal ≈1,000-1,300.
+
+**3. BLS CES Hawaii payrolls** (`SMS15000000000000001`), added to
+`refresh_market_panel`'s existing keyless BLS fetch alongside LAUS.
+Establishment survey — the hiring-side complement to LAUS's household
+survey. 1990-01 → 2026-06.
+
+**Screen effect** (73 → 79 candidates; robust survivors 12 → 12, one
+swap):
+
+| | pair | evidence |
+|---|---|---|
+| **gained** | HI_UI_CLAIMS → HI_UNEMPLOYMENT (lag 6) | **p=3.2e-64, r=+0.821, 1-month lead**, robust — the strongest predictive relationship in the screen, with a genuine lead (unlike arrivals' 0-month) |
+| **lost** | HI_VISITORS_ARRIVALS → HI_UNEMPLOYMENT (lag 3) | extending the predictor 18 months (HTA→DBEDT) dropped its 2020-exclusion pass — the borderline robustness the same-day caveat anticipated; still BH-passes, no longer robust |
+| **null** | HI_PAYROLLS → HI_UNEMPLOYMENT | zero BH passes at any lag. Coherent: CES and LAUS measure the same labour market from two sides in the same month — co-movement, not precedence. Kept registered. |
+
+Claims' r=+0.821 deserves the same caution as arrivals: initial claims
+are mechanically upstream of the unemployment *stock*, so part of the
+relationship is definitional. The 1-month xcorr lead and the e-64
+Granger p on 480+ aligned months are still the best nowcasting evidence
+in the panel — but ablation-gate before any forecast use, per standing
+rule.
+
 ### Experimental: search-attention terms (`markets/attention.py`, July 2026)
 
 Google Trends terms as *demand-side* screen candidates — search embeds

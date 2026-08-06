@@ -61,6 +61,10 @@ NATIONAL_UNEMPLOYMENT_ANCHOR = _ANCHORS_DIR / "bls_national_unemployment.json"
 # statewide unemployment rate (SA), both monthly.
 NATIONAL_UNEMP_SID = "LNS14000000"
 HAWAII_UNEMP_SID = "LASST150000000000003"
+# CES total nonfarm payrolls, Hawaii (establishment survey) — the
+# hiring-side complement to LAUS's household survey. Added 2026-08-05;
+# fetched in the same keyless BLS call as the unemployment series.
+HAWAII_PAYROLLS_SID = "SMS15000000000000001"
 
 HONOLULU_GEOID = "15003"
 
@@ -190,7 +194,8 @@ def fetch_unemployment_monthly(
     merged: dict[str, list[dict]] = {}
     for ys, ye in chunks:
         raw = fetch_cpi_data(
-            series_ids=[NATIONAL_UNEMP_SID, HAWAII_UNEMP_SID],
+            series_ids=[NATIONAL_UNEMP_SID, HAWAII_UNEMP_SID,
+                        HAWAII_PAYROLLS_SID],
             start_year=ys,
             end_year=ye,
             api_key=api_key,
@@ -376,7 +381,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                   "set the key if other BLS refreshes run the same day)",
                   file=sys.stderr)
         print(f"[macro] fetching {NATIONAL_UNEMP_SID} + "
-              f"{HAWAII_UNEMP_SID} from BLS …", file=sys.stderr)
+              f"{HAWAII_UNEMP_SID} + {HAWAII_PAYROLLS_SID} from BLS …",
+              file=sys.stderr)
         try:
             unemp = fetch_unemployment_monthly(
                 api_key, start_year=args.start_year, end_year=args.end_year,

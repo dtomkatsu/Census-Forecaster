@@ -1,6 +1,6 @@
 # Market-signal screen — 2026-08-05
 
-Pre-registered ticker→target hypotheses (29 pairs), Granger F-tests on monthly log-returns at lags 3/6/12, BH-FDR q=0.1. 73 tests run.
+Pre-registered ticker→target hypotheses (31 pairs), Granger F-tests on monthly log-returns at lags 3/6/12, BH-FDR q=0.1. 79 tests run.
 
 **Granger ≠ causation.** A pass means the ticker's past adds predictive content beyond the target's own past. Confounders survive this screen; the Phase-3 forecaster ablation is the final arbiter. mom12 rows are descriptive cross-correlations only (overlapping windows invalidate the F-test).
 
@@ -32,14 +32,22 @@ Pre-registered ticker→target hypotheses (29 pairs), Granger F-tests on monthly
 | JETS | log_return | US_UNEMPLOYMENT | 6 | 7.79 | 0.0000 | 121 | -0.447@1m | **YES** |  |
 | JETS | log_return | US_UNEMPLOYMENT | 12 | — | — | — | -0.447@1m | no | insufficient aligned months |
 | JETS | mom12 | US_UNEMPLOYMENT | — | — | — | — | +0.132@4m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
-| JETS | log_return | HI_VISITORS | 3 | 16.15 | 0.0000 | 113 | +0.492@1m | **YES** |  |
-| JETS | log_return | HI_VISITORS | 6 | 9.32 | 0.0000 | 110 | +0.492@1m | **YES** |  |
-| JETS | log_return | HI_VISITORS | 12 | — | — | — | +0.492@1m | no | insufficient aligned months |
-| JETS | mom12 | HI_VISITORS | — | — | — | — | -0.208@4m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
-| HI_VISITORS_ARRIVALS | log_return | HI_UNEMPLOYMENT | 3 | 7.23 | 0.0001 | 237 | -0.883@0m | **YES** |  |
-| HI_VISITORS_ARRIVALS | log_return | HI_UNEMPLOYMENT | 6 | 4.67 | 0.0002 | 234 | -0.883@0m | **YES** |  |
-| HI_VISITORS_ARRIVALS | log_return | HI_UNEMPLOYMENT | 12 | 5.65 | 0.0000 | 228 | -0.883@0m | **YES** |  |
+| JETS | log_return | HI_VISITORS | 3 | 15.80 | 0.0000 | 131 | +0.467@1m | **YES** |  |
+| JETS | log_return | HI_VISITORS | 6 | 9.46 | 0.0000 | 128 | +0.467@1m | **YES** |  |
+| JETS | log_return | HI_VISITORS | 12 | — | — | — | +0.467@1m | no | insufficient aligned months |
+| JETS | mom12 | HI_VISITORS | — | — | — | — | -0.191@4m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
+| HI_VISITORS_ARRIVALS | log_return | HI_UNEMPLOYMENT | 3 | 7.45 | 0.0001 | 249 | -0.880@0m | **YES** |  |
+| HI_VISITORS_ARRIVALS | log_return | HI_UNEMPLOYMENT | 6 | 4.79 | 0.0001 | 243 | -0.880@0m | **YES** |  |
+| HI_VISITORS_ARRIVALS | log_return | HI_UNEMPLOYMENT | 12 | 5.73 | 0.0000 | 236 | -0.880@0m | **YES** |  |
 | HI_VISITORS_ARRIVALS | mom12 | HI_UNEMPLOYMENT | — | — | — | — | -0.253@0m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
+| HI_UI_CLAIMS | log_return | HI_UNEMPLOYMENT | 3 | 204.27 | 0.0000 | 249 | +0.821@1m | **YES** |  |
+| HI_UI_CLAIMS | log_return | HI_UNEMPLOYMENT | 6 | 108.49 | 0.0000 | 243 | +0.821@1m | **YES** |  |
+| HI_UI_CLAIMS | log_return | HI_UNEMPLOYMENT | 12 | 56.32 | 0.0000 | 236 | +0.821@1m | **YES** |  |
+| HI_UI_CLAIMS | mom12 | HI_UNEMPLOYMENT | — | — | — | — | +0.267@0m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
+| HI_PAYROLLS | log_return | HI_UNEMPLOYMENT | 3 | 2.21 | 0.0876 | 249 | -0.948@0m | no |  |
+| HI_PAYROLLS | log_return | HI_UNEMPLOYMENT | 6 | 1.19 | 0.3122 | 243 | -0.948@0m | no |  |
+| HI_PAYROLLS | log_return | HI_UNEMPLOYMENT | 12 | 1.07 | 0.3878 | 236 | -0.948@0m | no |  |
+| HI_PAYROLLS | mom12 | HI_UNEMPLOYMENT | — | — | — | — | -0.161@0m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
 | XLRE | log_return | HONOLULU_ZHVI | 3 | 3.73 | 0.0133 | 124 | +0.196@5m | **YES** |  |
 | XLRE | log_return | HONOLULU_ZHVI | 6 | 3.46 | 0.0036 | 121 | +0.196@5m | **YES** |  |
 | XLRE | log_return | HONOLULU_ZHVI | 12 | — | — | — | +0.196@5m | no | insufficient aligned months |
@@ -125,7 +133,7 @@ Pre-registered ticker→target hypotheses (29 pairs), Granger F-tests on monthly
 | US_EMPPOP | log_return | HI_UNEMPLOYMENT | 12 | 8.85 | 0.0000 | 236 | -0.961@0m | **YES** |  |
 | US_EMPPOP | mom12 | HI_UNEMPLOYMENT | — | — | — | — | -0.288@0m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
 
-## 2020 excluded (COVID sensitivity) — 66 tests
+## 2020 excluded (COVID sensitivity) — 73 tests
 
 A signal that only exists because of the 2020 crash is a one-event artifact, not a relationship.
 
@@ -155,14 +163,22 @@ A signal that only exists because of the 2020 crash is a one-event artifact, not
 | JETS | log_return | US_UNEMPLOYMENT | 6 | — | — | — | +0.144@4m | no | insufficient aligned months |
 | JETS | log_return | US_UNEMPLOYMENT | 12 | — | — | — | +0.144@4m | no | insufficient aligned months |
 | JETS | mom12 | US_UNEMPLOYMENT | — | — | — | — | -0.196@15m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
-| JETS | log_return | HI_VISITORS | 3 | 0.71 | 0.5471 | 97 | +0.191@17m | no |  |
-| JETS | log_return | HI_VISITORS | 6 | — | — | — | +0.191@17m | no | insufficient aligned months |
-| JETS | log_return | HI_VISITORS | 12 | — | — | — | +0.191@17m | no | insufficient aligned months |
-| JETS | mom12 | HI_VISITORS | — | — | — | — | +0.130@11m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
-| HI_VISITORS_ARRIVALS | log_return | HI_UNEMPLOYMENT | 3 | 3.50 | 0.0163 | 221 | -0.313@4m | **YES** |  |
-| HI_VISITORS_ARRIVALS | log_return | HI_UNEMPLOYMENT | 6 | 1.69 | 0.1259 | 215 | -0.313@4m | no |  |
-| HI_VISITORS_ARRIVALS | log_return | HI_UNEMPLOYMENT | 12 | 1.56 | 0.1086 | 203 | -0.313@4m | no |  |
-| HI_VISITORS_ARRIVALS | mom12 | HI_UNEMPLOYMENT | — | — | — | — | -0.251@2m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
+| JETS | log_return | HI_VISITORS | 3 | 0.44 | 0.7273 | 115 | +0.181@13m | no |  |
+| JETS | log_return | HI_VISITORS | 6 | 0.55 | 0.7687 | 109 | +0.181@13m | no |  |
+| JETS | log_return | HI_VISITORS | 12 | — | — | — | +0.181@13m | no | insufficient aligned months |
+| JETS | mom12 | HI_VISITORS | — | — | — | — | +0.087@11m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
+| HI_VISITORS_ARRIVALS | log_return | HI_UNEMPLOYMENT | 3 | 3.06 | 0.0290 | 233 | -0.301@4m | no |  |
+| HI_VISITORS_ARRIVALS | log_return | HI_UNEMPLOYMENT | 6 | 1.58 | 0.1557 | 224 | -0.301@4m | no |  |
+| HI_VISITORS_ARRIVALS | log_return | HI_UNEMPLOYMENT | 12 | 1.63 | 0.0869 | 211 | -0.301@4m | no |  |
+| HI_VISITORS_ARRIVALS | mom12 | HI_UNEMPLOYMENT | — | — | — | — | -0.248@2m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
+| HI_UI_CLAIMS | log_return | HI_UNEMPLOYMENT | 3 | 2.87 | 0.0374 | 233 | +0.179@3m | no |  |
+| HI_UI_CLAIMS | log_return | HI_UNEMPLOYMENT | 6 | 4.38 | 0.0003 | 224 | +0.179@3m | **YES** |  |
+| HI_UI_CLAIMS | log_return | HI_UNEMPLOYMENT | 12 | 2.01 | 0.0256 | 211 | +0.179@3m | no |  |
+| HI_UI_CLAIMS | mom12 | HI_UNEMPLOYMENT | — | — | — | — | +0.437@2m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
+| HI_PAYROLLS | log_return | HI_UNEMPLOYMENT | 3 | 8.62 | 0.0000 | 233 | -0.452@3m | **YES** |  |
+| HI_PAYROLLS | log_return | HI_UNEMPLOYMENT | 6 | 4.27 | 0.0004 | 224 | -0.452@3m | **YES** |  |
+| HI_PAYROLLS | log_return | HI_UNEMPLOYMENT | 12 | 1.23 | 0.2625 | 211 | -0.452@3m | no |  |
+| HI_PAYROLLS | mom12 | HI_UNEMPLOYMENT | — | — | — | — | -0.390@0m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
 | XLRE | log_return | HONOLULU_ZHVI | 3 | 3.01 | 0.0336 | 108 | +0.193@5m | no |  |
 | XLRE | log_return | HONOLULU_ZHVI | 6 | — | — | — | +0.193@5m | no | insufficient aligned months |
 | XLRE | log_return | HONOLULU_ZHVI | 12 | — | — | — | +0.193@5m | no | insufficient aligned months |
