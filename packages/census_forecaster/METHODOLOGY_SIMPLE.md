@@ -144,6 +144,91 @@ those releases land about six weeks after the reference month ends. The
 code explicitly tracks this so it never assumes data exists before BLS has
 actually released it.
 
+### A fourth role: forecasting BLS data itself, at true monthly resolution
+
+Everything above is about BLS data feeding *into* the annual county
+forecasts. Separately, there's a dedicated module
+(`bls/projection.py`) that does the reverse: it forecasts a BLS CPI
+series forward in time, month by month, using the same damped-trend idea
+but tuned for monthly (and Honolulu's actual bimonthly) cadence, with its
+own calibrated confidence band. In production this is used to convert a
+dollar figure from one month's price basis to another's, feeding directly
+into `tax_modeler`'s income projection. It is specifically built and
+validated for CPI — nothing in this repo uses it to forecast, say, future
+unemployment or wages the same way; those series only ever appear as
+*inputs* to other forecasts, never as something this module predicts
+forward on its own.
+
+## Where stock-market data fits in
+
+A separate part of this package tracks a small, deliberately
+**pre-registered** list of stocks and ETFs — broad market funds (SPY,
+QQQ), sector funds whose industry maps onto something Hawaii-specific
+(airlines for tourism employment, REIT funds for home values and rent,
+energy for imported fuel costs), and a few Hawaii-listed companies
+directly (Bank of Hawaii, Hawaiian Electric, Matson shipping). Each one
+is registered up front with a specific, written-down economic reason it
+might lead a Hawaii number — e.g., "airline stock prices embed forward
+bookings, and Hawaii's tourism jobs follow visitor arrivals, so airline
+prices should move before the unemployment rate does."
+
+**Getting from "might lead" to "actually used" requires passing a real
+statistical test, not just a plausible story.** Every pre-registered
+pair gets a lead-lag (Granger) test — does this ticker's past genuinely
+add predictive information beyond the target's own history? — corrected
+for the fact that many pairs are being tested at once (so a few "hits" by
+pure chance don't get treated as real), and re-checked with 2020 removed
+entirely, so a signal that only looks real because of the one-time
+COVID shock doesn't get to count. Only pairs that survive both checks
+become real candidates.
+
+**A worked example of that screening actually biting (August 2026).**
+The energy and shipping hypotheses were being tested against a price
+series labelled "Honolulu" that turned out to be **Los Angeles** — a
+mislabelling caught elsewhere in the repo but missed in this one file.
+Pointed at the real Hawaii price series, those tests could no longer run
+at all, because the genuine Hawaii inflation number is only published
+every *other* month and the test needs consecutive months. The fix was
+to bring in a new data source — the US Energy Information
+Administration's Hawaii electricity price, which *is* monthly and goes
+back to 2001 — and test against that instead. The relationship came back
+much stronger than the mislabelled version had shown (energy stock
+prices lead Hawaii electricity prices by about 3 months). Worth noting
+as the pattern: the honest fix temporarily *removed* evidence, and only
+new data restored it.
+
+**Survivors get compressed into three simple, national numbers, updated
+once a year:** an energy signal, a shipping signal, and a real-estate
+signal — each just "how much did the relevant stock(s) move over the
+past 12 months, as of last June." June specifically, so the signal only
+ever reflects information that was actually available while that year's
+Census survey was still being conducted — never anything from later in
+the year peeking backward. These three numbers are what actually reach
+the tree-based forecasting model discussed earlier, as three more
+national, same-for-every-county features.
+
+**The reverse direction — does BLS/Census data help forecast *stock*
+prices — was also tested directly, and it failed.** The reasoning going
+in: by the time government economic data gets published, financial
+markets have typically already priced in the news, so feeding that data
+into a stock forecast shouldn't help (this is the standard
+efficient-markets expectation). The repo actually ran this experiment —
+using census, BLS, and Zillow data to try to improve return forecasts for
+the tracked stocks — and confirmed the expected result: it made the
+forecasts *worse*, not better. So no economic data of any kind is used to
+predict where a stock's price is headed in this codebase.
+
+**What the stock-price forecaster (a separate "tracker" report, not
+connected to the county forecasts) *does* borrow from BLS is the
+forecasting technique, not any data.** It reuses the exact same
+damped-trend math built for CPI, applied only to a stock's own price
+history — no economic series enters that calculation at all. And its
+output — "where does the trend put this stock in 6 months" — is
+explicitly never fed back into the county forecasts either; only
+*already-realized*, historical stock-price movement (the June-to-June
+momentum numbers above) ever reaches the forecasting model. A predicted
+future stock price is never used as if it were a known fact.
+
 ## How this connects to the tax-forecasting side of the repo
 
 Census-Forecaster's county-level forecasts aren't just an academic

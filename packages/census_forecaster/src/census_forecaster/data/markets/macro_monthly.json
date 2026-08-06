@@ -1,10 +1,11 @@
 {
-  "fetch_date": "2026-07-16",
+  "fetch_date": "2026-08-05",
   "limitations": [
     "Monthly cadence throughout; BLS unemployment is seasonally adjusted, Zillow indexes are smoothed + seasonally adjusted (ZHVI) / smoothed (ZORI).",
     "Zillow monthly values are subject to revision; final value settles ~1 year after first print.",
     "ZORI history starts 2015.",
-    "National macro predictors (BLS AHE/LFPR/emp-pop/JOLTS monthly; FRED mortgage & 10yr resampled to monthly means) added for the causal screen; rate-series log-returns are pp-change proxies."
+    "National macro predictors (BLS AHE/LFPR/emp-pop/JOLTS monthly; FRED mortgage & 10yr resampled to monthly means) added for the causal screen; rate-series log-returns are pp-change proxies.",
+    "EIA_HI_ELEC_* are Hawaii monthly retail electricity prices (cents/kWh, nominal). Genuine monthly Hawaii-specific price series \u2014 added as the monthly price proxy the causal screen needed (the genuine Urban Hawaii CPI is bimonthly). Published with roughly a 3-month lag and revised."
   ],
   "series": {
     "CES0500000003": [
@@ -5103,6 +5104,3060 @@
       {
         "period": "M07",
         "value": 4.541,
+        "year": 2026
+      }
+    ],
+    "EIA_HI_ELEC_ALL": [
+      {
+        "period": "M01",
+        "value": 14.56,
+        "year": 2001
+      },
+      {
+        "period": "M02",
+        "value": 14.42,
+        "year": 2001
+      },
+      {
+        "period": "M03",
+        "value": 14.23,
+        "year": 2001
+      },
+      {
+        "period": "M04",
+        "value": 13.91,
+        "year": 2001
+      },
+      {
+        "period": "M05",
+        "value": 13.88,
+        "year": 2001
+      },
+      {
+        "period": "M06",
+        "value": 14.0,
+        "year": 2001
+      },
+      {
+        "period": "M07",
+        "value": 14.27,
+        "year": 2001
+      },
+      {
+        "period": "M08",
+        "value": 14.28,
+        "year": 2001
+      },
+      {
+        "period": "M09",
+        "value": 14.12,
+        "year": 2001
+      },
+      {
+        "period": "M10",
+        "value": 13.9,
+        "year": 2001
+      },
+      {
+        "period": "M11",
+        "value": 13.63,
+        "year": 2001
+      },
+      {
+        "period": "M12",
+        "value": 13.36,
+        "year": 2001
+      },
+      {
+        "period": "M01",
+        "value": 12.8,
+        "year": 2002
+      },
+      {
+        "period": "M02",
+        "value": 12.76,
+        "year": 2002
+      },
+      {
+        "period": "M03",
+        "value": 12.5,
+        "year": 2002
+      },
+      {
+        "period": "M04",
+        "value": 12.75,
+        "year": 2002
+      },
+      {
+        "period": "M05",
+        "value": 13.1,
+        "year": 2002
+      },
+      {
+        "period": "M06",
+        "value": 13.5,
+        "year": 2002
+      },
+      {
+        "period": "M07",
+        "value": 13.34,
+        "year": 2002
+      },
+      {
+        "period": "M08",
+        "value": 13.55,
+        "year": 2002
+      },
+      {
+        "period": "M09",
+        "value": 13.46,
+        "year": 2002
+      },
+      {
+        "period": "M10",
+        "value": 13.8,
+        "year": 2002
+      },
+      {
+        "period": "M11",
+        "value": 14.37,
+        "year": 2002
+      },
+      {
+        "period": "M12",
+        "value": 14.52,
+        "year": 2002
+      },
+      {
+        "period": "M01",
+        "value": 14.39,
+        "year": 2003
+      },
+      {
+        "period": "M02",
+        "value": 14.64,
+        "year": 2003
+      },
+      {
+        "period": "M03",
+        "value": 14.73,
+        "year": 2003
+      },
+      {
+        "period": "M04",
+        "value": 15.02,
+        "year": 2003
+      },
+      {
+        "period": "M05",
+        "value": 15.17,
+        "year": 2003
+      },
+      {
+        "period": "M06",
+        "value": 14.47,
+        "year": 2003
+      },
+      {
+        "period": "M07",
+        "value": 14.27,
+        "year": 2003
+      },
+      {
+        "period": "M08",
+        "value": 14.22,
+        "year": 2003
+      },
+      {
+        "period": "M09",
+        "value": 14.09,
+        "year": 2003
+      },
+      {
+        "period": "M10",
+        "value": 14.33,
+        "year": 2003
+      },
+      {
+        "period": "M11",
+        "value": 14.06,
+        "year": 2003
+      },
+      {
+        "period": "M12",
+        "value": 14.4,
+        "year": 2003
+      },
+      {
+        "period": "M01",
+        "value": 14.77,
+        "year": 2004
+      },
+      {
+        "period": "M02",
+        "value": 14.8,
+        "year": 2004
+      },
+      {
+        "period": "M03",
+        "value": 15.04,
+        "year": 2004
+      },
+      {
+        "period": "M04",
+        "value": 15.14,
+        "year": 2004
+      },
+      {
+        "period": "M05",
+        "value": 15.26,
+        "year": 2004
+      },
+      {
+        "period": "M06",
+        "value": 15.4,
+        "year": 2004
+      },
+      {
+        "period": "M07",
+        "value": 15.42,
+        "year": 2004
+      },
+      {
+        "period": "M08",
+        "value": 15.6,
+        "year": 2004
+      },
+      {
+        "period": "M09",
+        "value": 15.81,
+        "year": 2004
+      },
+      {
+        "period": "M10",
+        "value": 16.38,
+        "year": 2004
+      },
+      {
+        "period": "M11",
+        "value": 17.0,
+        "year": 2004
+      },
+      {
+        "period": "M12",
+        "value": 17.63,
+        "year": 2004
+      },
+      {
+        "period": "M01",
+        "value": 16.61,
+        "year": 2005
+      },
+      {
+        "period": "M02",
+        "value": 16.41,
+        "year": 2005
+      },
+      {
+        "period": "M03",
+        "value": 16.07,
+        "year": 2005
+      },
+      {
+        "period": "M04",
+        "value": 16.84,
+        "year": 2005
+      },
+      {
+        "period": "M05",
+        "value": 17.49,
+        "year": 2005
+      },
+      {
+        "period": "M06",
+        "value": 18.21,
+        "year": 2005
+      },
+      {
+        "period": "M07",
+        "value": 18.65,
+        "year": 2005
+      },
+      {
+        "period": "M08",
+        "value": 18.58,
+        "year": 2005
+      },
+      {
+        "period": "M09",
+        "value": 19.27,
+        "year": 2005
+      },
+      {
+        "period": "M10",
+        "value": 20.32,
+        "year": 2005
+      },
+      {
+        "period": "M11",
+        "value": 20.62,
+        "year": 2005
+      },
+      {
+        "period": "M12",
+        "value": 20.31,
+        "year": 2005
+      },
+      {
+        "period": "M01",
+        "value": 20.25,
+        "year": 2006
+      },
+      {
+        "period": "M02",
+        "value": 20.5,
+        "year": 2006
+      },
+      {
+        "period": "M03",
+        "value": 20.0,
+        "year": 2006
+      },
+      {
+        "period": "M04",
+        "value": 20.8,
+        "year": 2006
+      },
+      {
+        "period": "M05",
+        "value": 20.56,
+        "year": 2006
+      },
+      {
+        "period": "M06",
+        "value": 21.45,
+        "year": 2006
+      },
+      {
+        "period": "M07",
+        "value": 21.89,
+        "year": 2006
+      },
+      {
+        "period": "M08",
+        "value": 21.72,
+        "year": 2006
+      },
+      {
+        "period": "M09",
+        "value": 21.5,
+        "year": 2006
+      },
+      {
+        "period": "M10",
+        "value": 20.54,
+        "year": 2006
+      },
+      {
+        "period": "M11",
+        "value": 20.01,
+        "year": 2006
+      },
+      {
+        "period": "M12",
+        "value": 19.28,
+        "year": 2006
+      },
+      {
+        "period": "M01",
+        "value": 19.04,
+        "year": 2007
+      },
+      {
+        "period": "M02",
+        "value": 19.68,
+        "year": 2007
+      },
+      {
+        "period": "M03",
+        "value": 18.72,
+        "year": 2007
+      },
+      {
+        "period": "M04",
+        "value": 19.65,
+        "year": 2007
+      },
+      {
+        "period": "M05",
+        "value": 20.17,
+        "year": 2007
+      },
+      {
+        "period": "M06",
+        "value": 20.8,
+        "year": 2007
+      },
+      {
+        "period": "M07",
+        "value": 21.72,
+        "year": 2007
+      },
+      {
+        "period": "M08",
+        "value": 22.39,
+        "year": 2007
+      },
+      {
+        "period": "M09",
+        "value": 20.86,
+        "year": 2007
+      },
+      {
+        "period": "M10",
+        "value": 23.11,
+        "year": 2007
+      },
+      {
+        "period": "M11",
+        "value": 23.67,
+        "year": 2007
+      },
+      {
+        "period": "M12",
+        "value": 25.2,
+        "year": 2007
+      },
+      {
+        "period": "M01",
+        "value": 25.36,
+        "year": 2008
+      },
+      {
+        "period": "M02",
+        "value": 26.79,
+        "year": 2008
+      },
+      {
+        "period": "M03",
+        "value": 26.92,
+        "year": 2008
+      },
+      {
+        "period": "M04",
+        "value": 26.96,
+        "year": 2008
+      },
+      {
+        "period": "M05",
+        "value": 28.0,
+        "year": 2008
+      },
+      {
+        "period": "M06",
+        "value": 29.96,
+        "year": 2008
+      },
+      {
+        "period": "M07",
+        "value": 31.56,
+        "year": 2008
+      },
+      {
+        "period": "M08",
+        "value": 32.65,
+        "year": 2008
+      },
+      {
+        "period": "M09",
+        "value": 33.32,
+        "year": 2008
+      },
+      {
+        "period": "M10",
+        "value": 32.28,
+        "year": 2008
+      },
+      {
+        "period": "M11",
+        "value": 29.94,
+        "year": 2008
+      },
+      {
+        "period": "M12",
+        "value": 25.78,
+        "year": 2008
+      },
+      {
+        "period": "M01",
+        "value": 22.76,
+        "year": 2009
+      },
+      {
+        "period": "M02",
+        "value": 20.54,
+        "year": 2009
+      },
+      {
+        "period": "M03",
+        "value": 18.88,
+        "year": 2009
+      },
+      {
+        "period": "M04",
+        "value": 18.97,
+        "year": 2009
+      },
+      {
+        "period": "M05",
+        "value": 18.92,
+        "year": 2009
+      },
+      {
+        "period": "M06",
+        "value": 19.06,
+        "year": 2009
+      },
+      {
+        "period": "M07",
+        "value": 20.06,
+        "year": 2009
+      },
+      {
+        "period": "M08",
+        "value": 22.19,
+        "year": 2009
+      },
+      {
+        "period": "M09",
+        "value": 22.58,
+        "year": 2009
+      },
+      {
+        "period": "M10",
+        "value": 23.57,
+        "year": 2009
+      },
+      {
+        "period": "M11",
+        "value": 23.24,
+        "year": 2009
+      },
+      {
+        "period": "M12",
+        "value": 23.28,
+        "year": 2009
+      },
+      {
+        "period": "M01",
+        "value": 23.77,
+        "year": 2010
+      },
+      {
+        "period": "M02",
+        "value": 24.57,
+        "year": 2010
+      },
+      {
+        "period": "M03",
+        "value": 25.08,
+        "year": 2010
+      },
+      {
+        "period": "M04",
+        "value": 24.23,
+        "year": 2010
+      },
+      {
+        "period": "M05",
+        "value": 25.25,
+        "year": 2010
+      },
+      {
+        "period": "M06",
+        "value": 25.32,
+        "year": 2010
+      },
+      {
+        "period": "M07",
+        "value": 25.29,
+        "year": 2010
+      },
+      {
+        "period": "M08",
+        "value": 25.51,
+        "year": 2010
+      },
+      {
+        "period": "M09",
+        "value": 25.05,
+        "year": 2010
+      },
+      {
+        "period": "M10",
+        "value": 25.33,
+        "year": 2010
+      },
+      {
+        "period": "M11",
+        "value": 25.81,
+        "year": 2010
+      },
+      {
+        "period": "M12",
+        "value": 26.02,
+        "year": 2010
+      },
+      {
+        "period": "M01",
+        "value": 27.19,
+        "year": 2011
+      },
+      {
+        "period": "M02",
+        "value": 27.86,
+        "year": 2011
+      },
+      {
+        "period": "M03",
+        "value": 28.51,
+        "year": 2011
+      },
+      {
+        "period": "M04",
+        "value": 29.73,
+        "year": 2011
+      },
+      {
+        "period": "M05",
+        "value": 31.29,
+        "year": 2011
+      },
+      {
+        "period": "M06",
+        "value": 32.87,
+        "year": 2011
+      },
+      {
+        "period": "M07",
+        "value": 33.05,
+        "year": 2011
+      },
+      {
+        "period": "M08",
+        "value": 33.91,
+        "year": 2011
+      },
+      {
+        "period": "M09",
+        "value": 34.33,
+        "year": 2011
+      },
+      {
+        "period": "M10",
+        "value": 33.67,
+        "year": 2011
+      },
+      {
+        "period": "M11",
+        "value": 33.43,
+        "year": 2011
+      },
+      {
+        "period": "M12",
+        "value": 32.96,
+        "year": 2011
+      },
+      {
+        "period": "M01",
+        "value": 33.1,
+        "year": 2012
+      },
+      {
+        "period": "M02",
+        "value": 33.61,
+        "year": 2012
+      },
+      {
+        "period": "M03",
+        "value": 33.96,
+        "year": 2012
+      },
+      {
+        "period": "M04",
+        "value": 34.42,
+        "year": 2012
+      },
+      {
+        "period": "M05",
+        "value": 35.01,
+        "year": 2012
+      },
+      {
+        "period": "M06",
+        "value": 36.37,
+        "year": 2012
+      },
+      {
+        "period": "M07",
+        "value": 34.61,
+        "year": 2012
+      },
+      {
+        "period": "M08",
+        "value": 33.59,
+        "year": 2012
+      },
+      {
+        "period": "M09",
+        "value": 33.94,
+        "year": 2012
+      },
+      {
+        "period": "M10",
+        "value": 33.56,
+        "year": 2012
+      },
+      {
+        "period": "M11",
+        "value": 33.41,
+        "year": 2012
+      },
+      {
+        "period": "M12",
+        "value": 32.97,
+        "year": 2012
+      },
+      {
+        "period": "M01",
+        "value": 34.87,
+        "year": 2013
+      },
+      {
+        "period": "M02",
+        "value": 33.27,
+        "year": 2013
+      },
+      {
+        "period": "M03",
+        "value": 33.89,
+        "year": 2013
+      },
+      {
+        "period": "M04",
+        "value": 33.22,
+        "year": 2013
+      },
+      {
+        "period": "M05",
+        "value": 33.14,
+        "year": 2013
+      },
+      {
+        "period": "M06",
+        "value": 32.98,
+        "year": 2013
+      },
+      {
+        "period": "M07",
+        "value": 32.49,
+        "year": 2013
+      },
+      {
+        "period": "M08",
+        "value": 32.86,
+        "year": 2013
+      },
+      {
+        "period": "M09",
+        "value": 32.24,
+        "year": 2013
+      },
+      {
+        "period": "M10",
+        "value": 33.48,
+        "year": 2013
+      },
+      {
+        "period": "M11",
+        "value": 33.76,
+        "year": 2013
+      },
+      {
+        "period": "M12",
+        "value": 33.1,
+        "year": 2013
+      },
+      {
+        "period": "M01",
+        "value": 33.96,
+        "year": 2014
+      },
+      {
+        "period": "M02",
+        "value": 33.54,
+        "year": 2014
+      },
+      {
+        "period": "M03",
+        "value": 34.7,
+        "year": 2014
+      },
+      {
+        "period": "M04",
+        "value": 33.53,
+        "year": 2014
+      },
+      {
+        "period": "M05",
+        "value": 33.88,
+        "year": 2014
+      },
+      {
+        "period": "M06",
+        "value": 34.33,
+        "year": 2014
+      },
+      {
+        "period": "M07",
+        "value": 33.95,
+        "year": 2014
+      },
+      {
+        "period": "M08",
+        "value": 33.68,
+        "year": 2014
+      },
+      {
+        "period": "M09",
+        "value": 33.91,
+        "year": 2014
+      },
+      {
+        "period": "M10",
+        "value": 32.92,
+        "year": 2014
+      },
+      {
+        "period": "M11",
+        "value": 31.58,
+        "year": 2014
+      },
+      {
+        "period": "M12",
+        "value": 31.13,
+        "year": 2014
+      },
+      {
+        "period": "M01",
+        "value": 29.92,
+        "year": 2015
+      },
+      {
+        "period": "M02",
+        "value": 26.94,
+        "year": 2015
+      },
+      {
+        "period": "M03",
+        "value": 27.11,
+        "year": 2015
+      },
+      {
+        "period": "M04",
+        "value": 26.24,
+        "year": 2015
+      },
+      {
+        "period": "M05",
+        "value": 25.9,
+        "year": 2015
+      },
+      {
+        "period": "M06",
+        "value": 26.46,
+        "year": 2015
+      },
+      {
+        "period": "M07",
+        "value": 26.6,
+        "year": 2015
+      },
+      {
+        "period": "M08",
+        "value": 26.72,
+        "year": 2015
+      },
+      {
+        "period": "M09",
+        "value": 25.67,
+        "year": 2015
+      },
+      {
+        "period": "M10",
+        "value": 25.1,
+        "year": 2015
+      },
+      {
+        "period": "M11",
+        "value": 23.83,
+        "year": 2015
+      },
+      {
+        "period": "M12",
+        "value": 24.0,
+        "year": 2015
+      },
+      {
+        "period": "M01",
+        "value": 23.85,
+        "year": 2016
+      },
+      {
+        "period": "M02",
+        "value": 22.92,
+        "year": 2016
+      },
+      {
+        "period": "M03",
+        "value": 23.24,
+        "year": 2016
+      },
+      {
+        "period": "M04",
+        "value": 22.68,
+        "year": 2016
+      },
+      {
+        "period": "M05",
+        "value": 22.94,
+        "year": 2016
+      },
+      {
+        "period": "M06",
+        "value": 23.9,
+        "year": 2016
+      },
+      {
+        "period": "M07",
+        "value": 24.2,
+        "year": 2016
+      },
+      {
+        "period": "M08",
+        "value": 24.2,
+        "year": 2016
+      },
+      {
+        "period": "M09",
+        "value": 24.47,
+        "year": 2016
+      },
+      {
+        "period": "M10",
+        "value": 23.99,
+        "year": 2016
+      },
+      {
+        "period": "M11",
+        "value": 25.03,
+        "year": 2016
+      },
+      {
+        "period": "M12",
+        "value": 24.75,
+        "year": 2016
+      },
+      {
+        "period": "M01",
+        "value": 25.34,
+        "year": 2017
+      },
+      {
+        "period": "M02",
+        "value": 25.87,
+        "year": 2017
+      },
+      {
+        "period": "M03",
+        "value": 25.57,
+        "year": 2017
+      },
+      {
+        "period": "M04",
+        "value": 25.91,
+        "year": 2017
+      },
+      {
+        "period": "M05",
+        "value": 25.54,
+        "year": 2017
+      },
+      {
+        "period": "M06",
+        "value": 26.35,
+        "year": 2017
+      },
+      {
+        "period": "M07",
+        "value": 25.77,
+        "year": 2017
+      },
+      {
+        "period": "M08",
+        "value": 25.47,
+        "year": 2017
+      },
+      {
+        "period": "M09",
+        "value": 25.62,
+        "year": 2017
+      },
+      {
+        "period": "M10",
+        "value": 25.93,
+        "year": 2017
+      },
+      {
+        "period": "M11",
+        "value": 27.47,
+        "year": 2017
+      },
+      {
+        "period": "M12",
+        "value": 27.96,
+        "year": 2017
+      },
+      {
+        "period": "M01",
+        "value": 28.03,
+        "year": 2018
+      },
+      {
+        "period": "M02",
+        "value": 28.1,
+        "year": 2018
+      },
+      {
+        "period": "M03",
+        "value": 29.01,
+        "year": 2018
+      },
+      {
+        "period": "M04",
+        "value": 28.03,
+        "year": 2018
+      },
+      {
+        "period": "M05",
+        "value": 28.65,
+        "year": 2018
+      },
+      {
+        "period": "M06",
+        "value": 28.84,
+        "year": 2018
+      },
+      {
+        "period": "M07",
+        "value": 29.78,
+        "year": 2018
+      },
+      {
+        "period": "M08",
+        "value": 29.27,
+        "year": 2018
+      },
+      {
+        "period": "M09",
+        "value": 29.23,
+        "year": 2018
+      },
+      {
+        "period": "M10",
+        "value": 28.97,
+        "year": 2018
+      },
+      {
+        "period": "M11",
+        "value": 30.68,
+        "year": 2018
+      },
+      {
+        "period": "M12",
+        "value": 31.43,
+        "year": 2018
+      },
+      {
+        "period": "M01",
+        "value": 29.47,
+        "year": 2019
+      },
+      {
+        "period": "M02",
+        "value": 29.55,
+        "year": 2019
+      },
+      {
+        "period": "M03",
+        "value": 30.05,
+        "year": 2019
+      },
+      {
+        "period": "M04",
+        "value": 29.8,
+        "year": 2019
+      },
+      {
+        "period": "M05",
+        "value": 29.6,
+        "year": 2019
+      },
+      {
+        "period": "M06",
+        "value": 28.93,
+        "year": 2019
+      },
+      {
+        "period": "M07",
+        "value": 28.32,
+        "year": 2019
+      },
+      {
+        "period": "M08",
+        "value": 28.07,
+        "year": 2019
+      },
+      {
+        "period": "M09",
+        "value": 28.06,
+        "year": 2019
+      },
+      {
+        "period": "M10",
+        "value": 27.79,
+        "year": 2019
+      },
+      {
+        "period": "M11",
+        "value": 27.81,
+        "year": 2019
+      },
+      {
+        "period": "M12",
+        "value": 27.95,
+        "year": 2019
+      },
+      {
+        "period": "M01",
+        "value": 28.91,
+        "year": 2020
+      },
+      {
+        "period": "M02",
+        "value": 29.93,
+        "year": 2020
+      },
+      {
+        "period": "M03",
+        "value": 29.38,
+        "year": 2020
+      },
+      {
+        "period": "M04",
+        "value": 30.35,
+        "year": 2020
+      },
+      {
+        "period": "M05",
+        "value": 28.0,
+        "year": 2020
+      },
+      {
+        "period": "M06",
+        "value": 25.92,
+        "year": 2020
+      },
+      {
+        "period": "M07",
+        "value": 25.98,
+        "year": 2020
+      },
+      {
+        "period": "M08",
+        "value": 26.17,
+        "year": 2020
+      },
+      {
+        "period": "M09",
+        "value": 27.31,
+        "year": 2020
+      },
+      {
+        "period": "M10",
+        "value": 26.41,
+        "year": 2020
+      },
+      {
+        "period": "M11",
+        "value": 26.52,
+        "year": 2020
+      },
+      {
+        "period": "M12",
+        "value": 26.58,
+        "year": 2020
+      },
+      {
+        "period": "M01",
+        "value": 28.23,
+        "year": 2021
+      },
+      {
+        "period": "M02",
+        "value": 29.67,
+        "year": 2021
+      },
+      {
+        "period": "M03",
+        "value": 29.87,
+        "year": 2021
+      },
+      {
+        "period": "M04",
+        "value": 29.09,
+        "year": 2021
+      },
+      {
+        "period": "M05",
+        "value": 29.21,
+        "year": 2021
+      },
+      {
+        "period": "M06",
+        "value": 29.56,
+        "year": 2021
+      },
+      {
+        "period": "M07",
+        "value": 30.19,
+        "year": 2021
+      },
+      {
+        "period": "M08",
+        "value": 30.17,
+        "year": 2021
+      },
+      {
+        "period": "M09",
+        "value": 31.25,
+        "year": 2021
+      },
+      {
+        "period": "M10",
+        "value": 31.11,
+        "year": 2021
+      },
+      {
+        "period": "M11",
+        "value": 31.51,
+        "year": 2021
+      },
+      {
+        "period": "M12",
+        "value": 33.44,
+        "year": 2021
+      },
+      {
+        "period": "M01",
+        "value": 35.09,
+        "year": 2022
+      },
+      {
+        "period": "M02",
+        "value": 34.77,
+        "year": 2022
+      },
+      {
+        "period": "M03",
+        "value": 36.25,
+        "year": 2022
+      },
+      {
+        "period": "M04",
+        "value": 37.9,
+        "year": 2022
+      },
+      {
+        "period": "M05",
+        "value": 39.53,
+        "year": 2022
+      },
+      {
+        "period": "M06",
+        "value": 40.44,
+        "year": 2022
+      },
+      {
+        "period": "M07",
+        "value": 41.41,
+        "year": 2022
+      },
+      {
+        "period": "M08",
+        "value": 41.93,
+        "year": 2022
+      },
+      {
+        "period": "M09",
+        "value": 42.39,
+        "year": 2022
+      },
+      {
+        "period": "M10",
+        "value": 41.99,
+        "year": 2022
+      },
+      {
+        "period": "M11",
+        "value": 41.14,
+        "year": 2022
+      },
+      {
+        "period": "M12",
+        "value": 42.24,
+        "year": 2022
+      },
+      {
+        "period": "M01",
+        "value": 42.64,
+        "year": 2023
+      },
+      {
+        "period": "M02",
+        "value": 41.12,
+        "year": 2023
+      },
+      {
+        "period": "M03",
+        "value": 40.94,
+        "year": 2023
+      },
+      {
+        "period": "M04",
+        "value": 39.7,
+        "year": 2023
+      },
+      {
+        "period": "M05",
+        "value": 38.49,
+        "year": 2023
+      },
+      {
+        "period": "M06",
+        "value": 37.19,
+        "year": 2023
+      },
+      {
+        "period": "M07",
+        "value": 35.15,
+        "year": 2023
+      },
+      {
+        "period": "M08",
+        "value": 35.43,
+        "year": 2023
+      },
+      {
+        "period": "M09",
+        "value": 36.65,
+        "year": 2023
+      },
+      {
+        "period": "M10",
+        "value": 38.6,
+        "year": 2023
+      },
+      {
+        "period": "M11",
+        "value": 39.75,
+        "year": 2023
+      },
+      {
+        "period": "M12",
+        "value": 38.47,
+        "year": 2023
+      },
+      {
+        "period": "M01",
+        "value": 40.96,
+        "year": 2024
+      },
+      {
+        "period": "M02",
+        "value": 39.83,
+        "year": 2024
+      },
+      {
+        "period": "M03",
+        "value": 39.94,
+        "year": 2024
+      },
+      {
+        "period": "M04",
+        "value": 40.02,
+        "year": 2024
+      },
+      {
+        "period": "M05",
+        "value": 39.21,
+        "year": 2024
+      },
+      {
+        "period": "M06",
+        "value": 37.73,
+        "year": 2024
+      },
+      {
+        "period": "M07",
+        "value": 37.24,
+        "year": 2024
+      },
+      {
+        "period": "M08",
+        "value": 37.29,
+        "year": 2024
+      },
+      {
+        "period": "M09",
+        "value": 36.3,
+        "year": 2024
+      },
+      {
+        "period": "M10",
+        "value": 36.11,
+        "year": 2024
+      },
+      {
+        "period": "M11",
+        "value": 35.27,
+        "year": 2024
+      },
+      {
+        "period": "M12",
+        "value": 37.22,
+        "year": 2024
+      },
+      {
+        "period": "M01",
+        "value": 36.55,
+        "year": 2025
+      },
+      {
+        "period": "M02",
+        "value": 37.99,
+        "year": 2025
+      },
+      {
+        "period": "M03",
+        "value": 35.93,
+        "year": 2025
+      },
+      {
+        "period": "M04",
+        "value": 36.83,
+        "year": 2025
+      },
+      {
+        "period": "M05",
+        "value": 35.34,
+        "year": 2025
+      },
+      {
+        "period": "M06",
+        "value": 35.1,
+        "year": 2025
+      },
+      {
+        "period": "M07",
+        "value": 34.51,
+        "year": 2025
+      },
+      {
+        "period": "M08",
+        "value": 34.4,
+        "year": 2025
+      },
+      {
+        "period": "M09",
+        "value": 34.66,
+        "year": 2025
+      },
+      {
+        "period": "M10",
+        "value": 35.1,
+        "year": 2025
+      },
+      {
+        "period": "M11",
+        "value": 35.82,
+        "year": 2025
+      },
+      {
+        "period": "M12",
+        "value": 37.12,
+        "year": 2025
+      },
+      {
+        "period": "M01",
+        "value": 36.44,
+        "year": 2026
+      },
+      {
+        "period": "M02",
+        "value": 37.78,
+        "year": 2026
+      },
+      {
+        "period": "M03",
+        "value": 37.33,
+        "year": 2026
+      },
+      {
+        "period": "M04",
+        "value": 42.25,
+        "year": 2026
+      },
+      {
+        "period": "M05",
+        "value": 46.14,
+        "year": 2026
+      }
+    ],
+    "EIA_HI_ELEC_RES": [
+      {
+        "period": "M01",
+        "value": 16.94,
+        "year": 2001
+      },
+      {
+        "period": "M02",
+        "value": 16.73,
+        "year": 2001
+      },
+      {
+        "period": "M03",
+        "value": 16.58,
+        "year": 2001
+      },
+      {
+        "period": "M04",
+        "value": 16.19,
+        "year": 2001
+      },
+      {
+        "period": "M05",
+        "value": 16.3,
+        "year": 2001
+      },
+      {
+        "period": "M06",
+        "value": 16.38,
+        "year": 2001
+      },
+      {
+        "period": "M07",
+        "value": 16.62,
+        "year": 2001
+      },
+      {
+        "period": "M08",
+        "value": 16.48,
+        "year": 2001
+      },
+      {
+        "period": "M09",
+        "value": 16.37,
+        "year": 2001
+      },
+      {
+        "period": "M10",
+        "value": 16.31,
+        "year": 2001
+      },
+      {
+        "period": "M11",
+        "value": 15.89,
+        "year": 2001
+      },
+      {
+        "period": "M12",
+        "value": 15.24,
+        "year": 2001
+      },
+      {
+        "period": "M01",
+        "value": 14.9,
+        "year": 2002
+      },
+      {
+        "period": "M02",
+        "value": 14.89,
+        "year": 2002
+      },
+      {
+        "period": "M03",
+        "value": 14.73,
+        "year": 2002
+      },
+      {
+        "period": "M04",
+        "value": 14.93,
+        "year": 2002
+      },
+      {
+        "period": "M05",
+        "value": 15.39,
+        "year": 2002
+      },
+      {
+        "period": "M06",
+        "value": 15.7,
+        "year": 2002
+      },
+      {
+        "period": "M07",
+        "value": 15.73,
+        "year": 2002
+      },
+      {
+        "period": "M08",
+        "value": 15.75,
+        "year": 2002
+      },
+      {
+        "period": "M09",
+        "value": 15.73,
+        "year": 2002
+      },
+      {
+        "period": "M10",
+        "value": 16.13,
+        "year": 2002
+      },
+      {
+        "period": "M11",
+        "value": 16.67,
+        "year": 2002
+      },
+      {
+        "period": "M12",
+        "value": 16.8,
+        "year": 2002
+      },
+      {
+        "period": "M01",
+        "value": 16.54,
+        "year": 2003
+      },
+      {
+        "period": "M02",
+        "value": 16.82,
+        "year": 2003
+      },
+      {
+        "period": "M03",
+        "value": 17.08,
+        "year": 2003
+      },
+      {
+        "period": "M04",
+        "value": 17.29,
+        "year": 2003
+      },
+      {
+        "period": "M05",
+        "value": 17.48,
+        "year": 2003
+      },
+      {
+        "period": "M06",
+        "value": 16.76,
+        "year": 2003
+      },
+      {
+        "period": "M07",
+        "value": 16.51,
+        "year": 2003
+      },
+      {
+        "period": "M08",
+        "value": 16.49,
+        "year": 2003
+      },
+      {
+        "period": "M09",
+        "value": 16.47,
+        "year": 2003
+      },
+      {
+        "period": "M10",
+        "value": 16.55,
+        "year": 2003
+      },
+      {
+        "period": "M11",
+        "value": 16.28,
+        "year": 2003
+      },
+      {
+        "period": "M12",
+        "value": 16.64,
+        "year": 2003
+      },
+      {
+        "period": "M01",
+        "value": 16.89,
+        "year": 2004
+      },
+      {
+        "period": "M02",
+        "value": 17.13,
+        "year": 2004
+      },
+      {
+        "period": "M03",
+        "value": 17.3,
+        "year": 2004
+      },
+      {
+        "period": "M04",
+        "value": 17.5,
+        "year": 2004
+      },
+      {
+        "period": "M05",
+        "value": 17.65,
+        "year": 2004
+      },
+      {
+        "period": "M06",
+        "value": 17.91,
+        "year": 2004
+      },
+      {
+        "period": "M07",
+        "value": 17.87,
+        "year": 2004
+      },
+      {
+        "period": "M08",
+        "value": 18.01,
+        "year": 2004
+      },
+      {
+        "period": "M09",
+        "value": 18.18,
+        "year": 2004
+      },
+      {
+        "period": "M10",
+        "value": 18.76,
+        "year": 2004
+      },
+      {
+        "period": "M11",
+        "value": 19.39,
+        "year": 2004
+      },
+      {
+        "period": "M12",
+        "value": 20.01,
+        "year": 2004
+      },
+      {
+        "period": "M01",
+        "value": 19.05,
+        "year": 2005
+      },
+      {
+        "period": "M02",
+        "value": 18.6,
+        "year": 2005
+      },
+      {
+        "period": "M03",
+        "value": 18.47,
+        "year": 2005
+      },
+      {
+        "period": "M04",
+        "value": 19.23,
+        "year": 2005
+      },
+      {
+        "period": "M05",
+        "value": 19.91,
+        "year": 2005
+      },
+      {
+        "period": "M06",
+        "value": 20.3,
+        "year": 2005
+      },
+      {
+        "period": "M07",
+        "value": 20.92,
+        "year": 2005
+      },
+      {
+        "period": "M08",
+        "value": 21.02,
+        "year": 2005
+      },
+      {
+        "period": "M09",
+        "value": 21.57,
+        "year": 2005
+      },
+      {
+        "period": "M10",
+        "value": 22.88,
+        "year": 2005
+      },
+      {
+        "period": "M11",
+        "value": 23.29,
+        "year": 2005
+      },
+      {
+        "period": "M12",
+        "value": 22.7,
+        "year": 2005
+      },
+      {
+        "period": "M01",
+        "value": 22.74,
+        "year": 2006
+      },
+      {
+        "period": "M02",
+        "value": 22.93,
+        "year": 2006
+      },
+      {
+        "period": "M03",
+        "value": 22.53,
+        "year": 2006
+      },
+      {
+        "period": "M04",
+        "value": 23.3,
+        "year": 2006
+      },
+      {
+        "period": "M05",
+        "value": 23.25,
+        "year": 2006
+      },
+      {
+        "period": "M06",
+        "value": 24.09,
+        "year": 2006
+      },
+      {
+        "period": "M07",
+        "value": 24.61,
+        "year": 2006
+      },
+      {
+        "period": "M08",
+        "value": 24.48,
+        "year": 2006
+      },
+      {
+        "period": "M09",
+        "value": 24.22,
+        "year": 2006
+      },
+      {
+        "period": "M10",
+        "value": 23.25,
+        "year": 2006
+      },
+      {
+        "period": "M11",
+        "value": 22.66,
+        "year": 2006
+      },
+      {
+        "period": "M12",
+        "value": 21.93,
+        "year": 2006
+      },
+      {
+        "period": "M01",
+        "value": 21.76,
+        "year": 2007
+      },
+      {
+        "period": "M02",
+        "value": 22.41,
+        "year": 2007
+      },
+      {
+        "period": "M03",
+        "value": 21.48,
+        "year": 2007
+      },
+      {
+        "period": "M04",
+        "value": 22.47,
+        "year": 2007
+      },
+      {
+        "period": "M05",
+        "value": 23.17,
+        "year": 2007
+      },
+      {
+        "period": "M06",
+        "value": 23.53,
+        "year": 2007
+      },
+      {
+        "period": "M07",
+        "value": 24.58,
+        "year": 2007
+      },
+      {
+        "period": "M08",
+        "value": 25.19,
+        "year": 2007
+      },
+      {
+        "period": "M09",
+        "value": 23.5,
+        "year": 2007
+      },
+      {
+        "period": "M10",
+        "value": 26.1,
+        "year": 2007
+      },
+      {
+        "period": "M11",
+        "value": 26.59,
+        "year": 2007
+      },
+      {
+        "period": "M12",
+        "value": 28.26,
+        "year": 2007
+      },
+      {
+        "period": "M01",
+        "value": 28.53,
+        "year": 2008
+      },
+      {
+        "period": "M02",
+        "value": 29.98,
+        "year": 2008
+      },
+      {
+        "period": "M03",
+        "value": 29.92,
+        "year": 2008
+      },
+      {
+        "period": "M04",
+        "value": 30.31,
+        "year": 2008
+      },
+      {
+        "period": "M05",
+        "value": 31.4,
+        "year": 2008
+      },
+      {
+        "period": "M06",
+        "value": 33.27,
+        "year": 2008
+      },
+      {
+        "period": "M07",
+        "value": 34.99,
+        "year": 2008
+      },
+      {
+        "period": "M08",
+        "value": 36.02,
+        "year": 2008
+      },
+      {
+        "period": "M09",
+        "value": 36.94,
+        "year": 2008
+      },
+      {
+        "period": "M10",
+        "value": 35.74,
+        "year": 2008
+      },
+      {
+        "period": "M11",
+        "value": 33.41,
+        "year": 2008
+      },
+      {
+        "period": "M12",
+        "value": 29.28,
+        "year": 2008
+      },
+      {
+        "period": "M01",
+        "value": 25.76,
+        "year": 2009
+      },
+      {
+        "period": "M02",
+        "value": 23.49,
+        "year": 2009
+      },
+      {
+        "period": "M03",
+        "value": 21.59,
+        "year": 2009
+      },
+      {
+        "period": "M04",
+        "value": 22.19,
+        "year": 2009
+      },
+      {
+        "period": "M05",
+        "value": 22.04,
+        "year": 2009
+      },
+      {
+        "period": "M06",
+        "value": 22.2,
+        "year": 2009
+      },
+      {
+        "period": "M07",
+        "value": 22.99,
+        "year": 2009
+      },
+      {
+        "period": "M08",
+        "value": 25.13,
+        "year": 2009
+      },
+      {
+        "period": "M09",
+        "value": 25.49,
+        "year": 2009
+      },
+      {
+        "period": "M10",
+        "value": 26.45,
+        "year": 2009
+      },
+      {
+        "period": "M11",
+        "value": 26.23,
+        "year": 2009
+      },
+      {
+        "period": "M12",
+        "value": 26.26,
+        "year": 2009
+      },
+      {
+        "period": "M01",
+        "value": 26.71,
+        "year": 2010
+      },
+      {
+        "period": "M02",
+        "value": 27.46,
+        "year": 2010
+      },
+      {
+        "period": "M03",
+        "value": 27.79,
+        "year": 2010
+      },
+      {
+        "period": "M04",
+        "value": 27.14,
+        "year": 2010
+      },
+      {
+        "period": "M05",
+        "value": 28.25,
+        "year": 2010
+      },
+      {
+        "period": "M06",
+        "value": 28.36,
+        "year": 2010
+      },
+      {
+        "period": "M07",
+        "value": 28.3,
+        "year": 2010
+      },
+      {
+        "period": "M08",
+        "value": 28.58,
+        "year": 2010
+      },
+      {
+        "period": "M09",
+        "value": 28.02,
+        "year": 2010
+      },
+      {
+        "period": "M10",
+        "value": 28.45,
+        "year": 2010
+      },
+      {
+        "period": "M11",
+        "value": 28.91,
+        "year": 2010
+      },
+      {
+        "period": "M12",
+        "value": 29.15,
+        "year": 2010
+      },
+      {
+        "period": "M01",
+        "value": 30.13,
+        "year": 2011
+      },
+      {
+        "period": "M02",
+        "value": 31.04,
+        "year": 2011
+      },
+      {
+        "period": "M03",
+        "value": 31.7,
+        "year": 2011
+      },
+      {
+        "period": "M04",
+        "value": 32.89,
+        "year": 2011
+      },
+      {
+        "period": "M05",
+        "value": 34.58,
+        "year": 2011
+      },
+      {
+        "period": "M06",
+        "value": 35.84,
+        "year": 2011
+      },
+      {
+        "period": "M07",
+        "value": 36.23,
+        "year": 2011
+      },
+      {
+        "period": "M08",
+        "value": 36.98,
+        "year": 2011
+      },
+      {
+        "period": "M09",
+        "value": 37.53,
+        "year": 2011
+      },
+      {
+        "period": "M10",
+        "value": 36.71,
+        "year": 2011
+      },
+      {
+        "period": "M11",
+        "value": 36.56,
+        "year": 2011
+      },
+      {
+        "period": "M12",
+        "value": 36.2,
+        "year": 2011
+      },
+      {
+        "period": "M01",
+        "value": 36.25,
+        "year": 2012
+      },
+      {
+        "period": "M02",
+        "value": 36.8,
+        "year": 2012
+      },
+      {
+        "period": "M03",
+        "value": 37.05,
+        "year": 2012
+      },
+      {
+        "period": "M04",
+        "value": 37.51,
+        "year": 2012
+      },
+      {
+        "period": "M05",
+        "value": 38.21,
+        "year": 2012
+      },
+      {
+        "period": "M06",
+        "value": 40.16,
+        "year": 2012
+      },
+      {
+        "period": "M07",
+        "value": 37.84,
+        "year": 2012
+      },
+      {
+        "period": "M08",
+        "value": 37.18,
+        "year": 2012
+      },
+      {
+        "period": "M09",
+        "value": 37.21,
+        "year": 2012
+      },
+      {
+        "period": "M10",
+        "value": 36.96,
+        "year": 2012
+      },
+      {
+        "period": "M11",
+        "value": 36.81,
+        "year": 2012
+      },
+      {
+        "period": "M12",
+        "value": 36.33,
+        "year": 2012
+      },
+      {
+        "period": "M01",
+        "value": 37.86,
+        "year": 2013
+      },
+      {
+        "period": "M02",
+        "value": 36.58,
+        "year": 2013
+      },
+      {
+        "period": "M03",
+        "value": 37.43,
+        "year": 2013
+      },
+      {
+        "period": "M04",
+        "value": 36.96,
+        "year": 2013
+      },
+      {
+        "period": "M05",
+        "value": 37.11,
+        "year": 2013
+      },
+      {
+        "period": "M06",
+        "value": 37.03,
+        "year": 2013
+      },
+      {
+        "period": "M07",
+        "value": 36.61,
+        "year": 2013
+      },
+      {
+        "period": "M08",
+        "value": 36.79,
+        "year": 2013
+      },
+      {
+        "period": "M09",
+        "value": 36.28,
+        "year": 2013
+      },
+      {
+        "period": "M10",
+        "value": 37.27,
+        "year": 2013
+      },
+      {
+        "period": "M11",
+        "value": 37.24,
+        "year": 2013
+      },
+      {
+        "period": "M12",
+        "value": 36.58,
+        "year": 2013
+      },
+      {
+        "period": "M01",
+        "value": 37.1,
+        "year": 2014
+      },
+      {
+        "period": "M02",
+        "value": 36.84,
+        "year": 2014
+      },
+      {
+        "period": "M03",
+        "value": 38.25,
+        "year": 2014
+      },
+      {
+        "period": "M04",
+        "value": 37.8,
+        "year": 2014
+      },
+      {
+        "period": "M05",
+        "value": 37.76,
+        "year": 2014
+      },
+      {
+        "period": "M06",
+        "value": 38.27,
+        "year": 2014
+      },
+      {
+        "period": "M07",
+        "value": 38.01,
+        "year": 2014
+      },
+      {
+        "period": "M08",
+        "value": 37.45,
+        "year": 2014
+      },
+      {
+        "period": "M09",
+        "value": 37.76,
+        "year": 2014
+      },
+      {
+        "period": "M10",
+        "value": 36.17,
+        "year": 2014
+      },
+      {
+        "period": "M11",
+        "value": 34.84,
+        "year": 2014
+      },
+      {
+        "period": "M12",
+        "value": 34.35,
+        "year": 2014
+      },
+      {
+        "period": "M01",
+        "value": 33.06,
+        "year": 2015
+      },
+      {
+        "period": "M02",
+        "value": 30.59,
+        "year": 2015
+      },
+      {
+        "period": "M03",
+        "value": 30.84,
+        "year": 2015
+      },
+      {
+        "period": "M04",
+        "value": 30.44,
+        "year": 2015
+      },
+      {
+        "period": "M05",
+        "value": 30.11,
+        "year": 2015
+      },
+      {
+        "period": "M06",
+        "value": 30.41,
+        "year": 2015
+      },
+      {
+        "period": "M07",
+        "value": 30.04,
+        "year": 2015
+      },
+      {
+        "period": "M08",
+        "value": 29.86,
+        "year": 2015
+      },
+      {
+        "period": "M09",
+        "value": 28.51,
+        "year": 2015
+      },
+      {
+        "period": "M10",
+        "value": 28.2,
+        "year": 2015
+      },
+      {
+        "period": "M11",
+        "value": 27.15,
+        "year": 2015
+      },
+      {
+        "period": "M12",
+        "value": 26.85,
+        "year": 2015
+      },
+      {
+        "period": "M01",
+        "value": 26.92,
+        "year": 2016
+      },
+      {
+        "period": "M02",
+        "value": 26.78,
+        "year": 2016
+      },
+      {
+        "period": "M03",
+        "value": 27.35,
+        "year": 2016
+      },
+      {
+        "period": "M04",
+        "value": 26.93,
+        "year": 2016
+      },
+      {
+        "period": "M05",
+        "value": 26.88,
+        "year": 2016
+      },
+      {
+        "period": "M06",
+        "value": 27.5,
+        "year": 2016
+      },
+      {
+        "period": "M07",
+        "value": 28.04,
+        "year": 2016
+      },
+      {
+        "period": "M08",
+        "value": 27.45,
+        "year": 2016
+      },
+      {
+        "period": "M09",
+        "value": 27.84,
+        "year": 2016
+      },
+      {
+        "period": "M10",
+        "value": 27.54,
+        "year": 2016
+      },
+      {
+        "period": "M11",
+        "value": 28.48,
+        "year": 2016
+      },
+      {
+        "period": "M12",
+        "value": 27.69,
+        "year": 2016
+      },
+      {
+        "period": "M01",
+        "value": 28.32,
+        "year": 2017
+      },
+      {
+        "period": "M02",
+        "value": 29.4,
+        "year": 2017
+      },
+      {
+        "period": "M03",
+        "value": 29.05,
+        "year": 2017
+      },
+      {
+        "period": "M04",
+        "value": 30.34,
+        "year": 2017
+      },
+      {
+        "period": "M05",
+        "value": 29.07,
+        "year": 2017
+      },
+      {
+        "period": "M06",
+        "value": 30.45,
+        "year": 2017
+      },
+      {
+        "period": "M07",
+        "value": 29.25,
+        "year": 2017
+      },
+      {
+        "period": "M08",
+        "value": 28.76,
+        "year": 2017
+      },
+      {
+        "period": "M09",
+        "value": 29.03,
+        "year": 2017
+      },
+      {
+        "period": "M10",
+        "value": 29.3,
+        "year": 2017
+      },
+      {
+        "period": "M11",
+        "value": 30.58,
+        "year": 2017
+      },
+      {
+        "period": "M12",
+        "value": 30.76,
+        "year": 2017
+      },
+      {
+        "period": "M01",
+        "value": 31.15,
+        "year": 2018
+      },
+      {
+        "period": "M02",
+        "value": 31.52,
+        "year": 2018
+      },
+      {
+        "period": "M03",
+        "value": 32.05,
+        "year": 2018
+      },
+      {
+        "period": "M04",
+        "value": 31.21,
+        "year": 2018
+      },
+      {
+        "period": "M05",
+        "value": 32.02,
+        "year": 2018
+      },
+      {
+        "period": "M06",
+        "value": 32.75,
+        "year": 2018
+      },
+      {
+        "period": "M07",
+        "value": 33.45,
+        "year": 2018
+      },
+      {
+        "period": "M08",
+        "value": 32.39,
+        "year": 2018
+      },
+      {
+        "period": "M09",
+        "value": 32.28,
+        "year": 2018
+      },
+      {
+        "period": "M10",
+        "value": 32.44,
+        "year": 2018
+      },
+      {
+        "period": "M11",
+        "value": 33.83,
+        "year": 2018
+      },
+      {
+        "period": "M12",
+        "value": 34.37,
+        "year": 2018
+      },
+      {
+        "period": "M01",
+        "value": 32.08,
+        "year": 2019
+      },
+      {
+        "period": "M02",
+        "value": 33.53,
+        "year": 2019
+      },
+      {
+        "period": "M03",
+        "value": 33.94,
+        "year": 2019
+      },
+      {
+        "period": "M04",
+        "value": 34.45,
+        "year": 2019
+      },
+      {
+        "period": "M05",
+        "value": 33.44,
+        "year": 2019
+      },
+      {
+        "period": "M06",
+        "value": 32.45,
+        "year": 2019
+      },
+      {
+        "period": "M07",
+        "value": 31.42,
+        "year": 2019
+      },
+      {
+        "period": "M08",
+        "value": 31.16,
+        "year": 2019
+      },
+      {
+        "period": "M09",
+        "value": 31.17,
+        "year": 2019
+      },
+      {
+        "period": "M10",
+        "value": 30.78,
+        "year": 2019
+      },
+      {
+        "period": "M11",
+        "value": 30.98,
+        "year": 2019
+      },
+      {
+        "period": "M12",
+        "value": 30.99,
+        "year": 2019
+      },
+      {
+        "period": "M01",
+        "value": 31.69,
+        "year": 2020
+      },
+      {
+        "period": "M02",
+        "value": 33.37,
+        "year": 2020
+      },
+      {
+        "period": "M03",
+        "value": 33.08,
+        "year": 2020
+      },
+      {
+        "period": "M04",
+        "value": 32.75,
+        "year": 2020
+      },
+      {
+        "period": "M05",
+        "value": 30.93,
+        "year": 2020
+      },
+      {
+        "period": "M06",
+        "value": 29.02,
+        "year": 2020
+      },
+      {
+        "period": "M07",
+        "value": 28.86,
+        "year": 2020
+      },
+      {
+        "period": "M08",
+        "value": 28.85,
+        "year": 2020
+      },
+      {
+        "period": "M09",
+        "value": 29.98,
+        "year": 2020
+      },
+      {
+        "period": "M10",
+        "value": 28.9,
+        "year": 2020
+      },
+      {
+        "period": "M11",
+        "value": 28.78,
+        "year": 2020
+      },
+      {
+        "period": "M12",
+        "value": 29.08,
+        "year": 2020
+      },
+      {
+        "period": "M01",
+        "value": 30.67,
+        "year": 2021
+      },
+      {
+        "period": "M02",
+        "value": 32.49,
+        "year": 2021
+      },
+      {
+        "period": "M03",
+        "value": 33.07,
+        "year": 2021
+      },
+      {
+        "period": "M04",
+        "value": 32.92,
+        "year": 2021
+      },
+      {
+        "period": "M05",
+        "value": 32.99,
+        "year": 2021
+      },
+      {
+        "period": "M06",
+        "value": 32.97,
+        "year": 2021
+      },
+      {
+        "period": "M07",
+        "value": 33.48,
+        "year": 2021
+      },
+      {
+        "period": "M08",
+        "value": 33.36,
+        "year": 2021
+      },
+      {
+        "period": "M09",
+        "value": 34.57,
+        "year": 2021
+      },
+      {
+        "period": "M10",
+        "value": 34.48,
+        "year": 2021
+      },
+      {
+        "period": "M11",
+        "value": 34.74,
+        "year": 2021
+      },
+      {
+        "period": "M12",
+        "value": 35.85,
+        "year": 2021
+      },
+      {
+        "period": "M01",
+        "value": 37.62,
+        "year": 2022
+      },
+      {
+        "period": "M02",
+        "value": 38.36,
+        "year": 2022
+      },
+      {
+        "period": "M03",
+        "value": 40.19,
+        "year": 2022
+      },
+      {
+        "period": "M04",
+        "value": 41.81,
+        "year": 2022
+      },
+      {
+        "period": "M05",
+        "value": 43.31,
+        "year": 2022
+      },
+      {
+        "period": "M06",
+        "value": 44.31,
+        "year": 2022
+      },
+      {
+        "period": "M07",
+        "value": 45.11,
+        "year": 2022
+      },
+      {
+        "period": "M08",
+        "value": 45.56,
+        "year": 2022
+      },
+      {
+        "period": "M09",
+        "value": 45.59,
+        "year": 2022
+      },
+      {
+        "period": "M10",
+        "value": 44.72,
+        "year": 2022
+      },
+      {
+        "period": "M11",
+        "value": 43.8,
+        "year": 2022
+      },
+      {
+        "period": "M12",
+        "value": 44.79,
+        "year": 2022
+      },
+      {
+        "period": "M01",
+        "value": 44.96,
+        "year": 2023
+      },
+      {
+        "period": "M02",
+        "value": 44.24,
+        "year": 2023
+      },
+      {
+        "period": "M03",
+        "value": 44.06,
+        "year": 2023
+      },
+      {
+        "period": "M04",
+        "value": 43.18,
+        "year": 2023
+      },
+      {
+        "period": "M05",
+        "value": 42.26,
+        "year": 2023
+      },
+      {
+        "period": "M06",
+        "value": 41.74,
+        "year": 2023
+      },
+      {
+        "period": "M07",
+        "value": 39.7,
+        "year": 2023
+      },
+      {
+        "period": "M08",
+        "value": 39.77,
+        "year": 2023
+      },
+      {
+        "period": "M09",
+        "value": 41.52,
+        "year": 2023
+      },
+      {
+        "period": "M10",
+        "value": 42.68,
+        "year": 2023
+      },
+      {
+        "period": "M11",
+        "value": 43.53,
+        "year": 2023
+      },
+      {
+        "period": "M12",
+        "value": 41.6,
+        "year": 2023
+      },
+      {
+        "period": "M01",
+        "value": 44.45,
+        "year": 2024
+      },
+      {
+        "period": "M02",
+        "value": 44.09,
+        "year": 2024
+      },
+      {
+        "period": "M03",
+        "value": 45.39,
+        "year": 2024
+      },
+      {
+        "period": "M04",
+        "value": 45.36,
+        "year": 2024
+      },
+      {
+        "period": "M05",
+        "value": 44.28,
+        "year": 2024
+      },
+      {
+        "period": "M06",
+        "value": 42.65,
+        "year": 2024
+      },
+      {
+        "period": "M07",
+        "value": 42.93,
+        "year": 2024
+      },
+      {
+        "period": "M08",
+        "value": 42.26,
+        "year": 2024
+      },
+      {
+        "period": "M09",
+        "value": 40.88,
+        "year": 2024
+      },
+      {
+        "period": "M10",
+        "value": 41.42,
+        "year": 2024
+      },
+      {
+        "period": "M11",
+        "value": 39.66,
+        "year": 2024
+      },
+      {
+        "period": "M12",
+        "value": 42.39,
+        "year": 2024
+      },
+      {
+        "period": "M01",
+        "value": 40.51,
+        "year": 2025
+      },
+      {
+        "period": "M02",
+        "value": 42.69,
+        "year": 2025
+      },
+      {
+        "period": "M03",
+        "value": 41.11,
+        "year": 2025
+      },
+      {
+        "period": "M04",
+        "value": 42.44,
+        "year": 2025
+      },
+      {
+        "period": "M05",
+        "value": 41.03,
+        "year": 2025
+      },
+      {
+        "period": "M06",
+        "value": 40.96,
+        "year": 2025
+      },
+      {
+        "period": "M07",
+        "value": 39.36,
+        "year": 2025
+      },
+      {
+        "period": "M08",
+        "value": 38.9,
+        "year": 2025
+      },
+      {
+        "period": "M09",
+        "value": 39.54,
+        "year": 2025
+      },
+      {
+        "period": "M10",
+        "value": 39.74,
+        "year": 2025
+      },
+      {
+        "period": "M11",
+        "value": 40.2,
+        "year": 2025
+      },
+      {
+        "period": "M12",
+        "value": 41.62,
+        "year": 2025
+      },
+      {
+        "period": "M01",
+        "value": 39.79,
+        "year": 2026
+      },
+      {
+        "period": "M02",
+        "value": 43.0,
+        "year": 2026
+      },
+      {
+        "period": "M03",
+        "value": 42.23,
+        "year": 2026
+      },
+      {
+        "period": "M04",
+        "value": 46.62,
+        "year": 2026
+      },
+      {
+        "period": "M05",
+        "value": 52.0,
         "year": 2026
       }
     ],
@@ -17136,6 +20191,7 @@
   "sources": {
     "CES0500000003": "national-macro refresh",
     "DGS10": "national-macro refresh",
+    "EIA": "https://api.eia.gov/v2/electricity/retail-sales \u2014 state monthly retail electricity price (cents/kWh), Hawaii",
     "JTS000000000000000JOR": "national-macro refresh",
     "LASST150000000000003": "BLS API",
     "LNS11300000": "national-macro refresh",

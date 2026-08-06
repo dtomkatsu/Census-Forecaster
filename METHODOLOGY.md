@@ -1118,8 +1118,57 @@ pricing) — which is what a screen behaving honestly should find.
   target** — the all-lags-present rule needs monthly cadence. The old
   XLE→CPI screen passes existed only because the mislabelled target was
   secretly monthly Los Angeles (see the July 2026 correction). CPI-
-  directed hypotheses are xcorr-descriptive until a monthly Hawaii
-  price proxy exists.
+  directed hypotheses are xcorr-descriptive. **Resolved for the energy
+  channel 2026-08-05** — see "EIA Hawaii electricity" below.
+
+### EIA Hawaii electricity — screen target correction (2026-08-05)
+
+Two defects, one fix.
+
+**1. The screen was still on the Los Angeles series.** The 2026-07-27
+identity audit corrected `_HONOLULU_BLS_SERIES_ID` on the tax_modeler
+income path, but `markets/screen.py`'s `MONTHLY_TARGETS["HONOLULU_CPI"]`
+was missed and still read `CUURS49ASA0`. Every historical
+`XLE → HONOLULU_CPI` / `MATX → HONOLULU_CPI` pass therefore described
+**LA** inflation, not Hawaii's. Now `CUURS49FSA0` (genuine Urban
+Hawaii). Being bimonthly it yields `None` from `granger_f_test` rather
+than a p-value — the honest outcome the limitation above predicted, and
+the reason those four passes disappear.
+
+**2. The missing monthly Hawaii price proxy now exists.** EIA's
+state-level retail electricity price is genuinely monthly, genuinely
+Hawaii, 2001-01 → present at ~3-month lag
+(`scripts/refresh_eia_hawaii.py`; free key via `$EIA_API_KEY` or
+`~/.eia_api_key`, never committed; merged additively into
+`macro_monthly.json`). Hawaii generates most of its power from imported
+oil, so this measures the imported-energy → local-price channel
+**directly** instead of inferring it from an energy-sector equity price.
+EIA's gasoline product (`petroleum/pri/gnd`) covers 29 metro/PADD areas
+and excludes Hawaii, so electricity is the only Hawaii-specific monthly
+price this source offers.
+
+**Net screen effect** (63 → 68 candidates; robust survivors 11 → 11):
+
+| | pair | evidence |
+|---|---|---|
+| **dropped** | XLE / MATX → HONOLULU_CPI (lags 3, 6) | were LA-based |
+| **gained** | XLE → HI_ELECTRICITY (lags 3, 6, 12) | p≈6e-14, 3-mo lead, r=+0.402 |
+| **gained** | MATX → HI_ELECTRICITY (lag 3) | p=1.0e-03, 4-mo lead, r=+0.190 |
+| **unchanged** | the 7 rate / REIT / JOLTS survivors | untouched |
+
+The replacement evidence is *stronger* than what it replaced (XLE's
+xcorr r rose from +0.209 against LA-CPI to +0.402 against Hawaii
+electricity), and all three `mkt_*` feature channels still emit — but
+they now rest on Hawaii data. Downstream feature values change, so the
+ML ablation should be re-run before leaning on the energy channel's
+permutation-importance numbers.
+
+**Registered null: `HE → HI_ELECTRICITY` gets zero BH passes.** Kept
+registered because the null is informative. Hawaiian Electric's equity
+price tracks regulatory and wildfire-liability risk (the 2023 Maui-fire
+crash) while its tariff is PUC-set from fuel costs — different drivers,
+so the miss is economically coherent and does *not* impugn the target.
+The channel's evidence rests on XLE.
 
 ### Experimental: search-attention terms (`markets/attention.py`, July 2026)
 

@@ -44,7 +44,25 @@ MONTHLY_TARGETS: dict[str, tuple[str, str]] = {
     "HI_UNEMPLOYMENT":      ("LASST150000000000003",    "diff"),
     "HONOLULU_ZHVI":        ("ZHVI_HONOLULU_MONTHLY",   "log_diff"),
     "HONOLULU_ZORI":        ("ZORI_HONOLULU_MONTHLY",   "log_diff"),
-    "HONOLULU_CPI":         ("CUURS49ASA0",             "log_diff"),  # bimonthly
+    # Urban Hawaii CPI, the GENUINE Hawaii series (bimonthly, 2017+).
+    # Was CUURS49ASA0 until 2026-08-05 — which the 2026-07-27 identity
+    # audit proved is Los Angeles, not Honolulu (METHODOLOGY §5). The
+    # production tax_modeler path was corrected then; this screen was
+    # missed, so every historical XLE/MATX → "HONOLULU_CPI" pass
+    # actually described LA inflation. Corrected here.
+    #
+    # Consequence, and it is the honest one: this series is bimonthly,
+    # so granger_f_test's all-lags-present rule finds too few aligned
+    # rows and returns None rather than a p-value. CPI-directed
+    # hypotheses are therefore xcorr-descriptive only — exactly what
+    # METHODOLOGY's "Known limitations" already stated. HI_ELECTRICITY
+    # below is the monthly Hawaii price proxy that restores testability.
+    "HONOLULU_CPI":         ("CUURS49FSA0",             "log_diff"),  # bimonthly
+    # EIA state retail electricity price — genuine MONTHLY Hawaii-specific
+    # price series (2001+, ~3-month lag). Hawaii imports ~80% of its
+    # energy, so this measures the imported-energy → local-price channel
+    # directly instead of inferring it from an energy-equity proxy.
+    "HI_ELECTRICITY":       ("EIA_HI_ELEC_ALL",         "log_diff"),
 }
 
 # National-macro monthly PREDICTORS (predictor_name → macro_monthly.json
@@ -79,11 +97,27 @@ HYPOTHESIS_PAIRS: tuple[tuple[str, str], ...] = (
     ("VNQ", "HONOLULU_ZHVI"),
     ("VNQ", "HONOLULU_ZORI"),
     ("XLE", "HONOLULU_CPI"),
+    # Same imported-energy hypothesis as XLE→HONOLULU_CPI, but against a
+    # genuine MONTHLY Hawaii price. The CPI pair stays registered for the
+    # descriptive xcorr; this is the one that can actually be Granger-tested.
+    ("XLE", "HI_ELECTRICITY"),
     ("BOH", "HI_UNEMPLOYMENT"),
     ("FHB", "HI_UNEMPLOYMENT"),
     ("HE", "HI_UNEMPLOYMENT"),
     ("MATX", "HONOLULU_CPI"),
+    # Ocean-freight costs feed imported fuel + delivered goods; the
+    # electricity price is the monthly-cadence expression of that channel.
+    ("MATX", "HI_ELECTRICITY"),
     ("MATX", "HONOLULU_ZHVI"),
+    # Hawaiian Electric — registered as a same-channel check and it does
+    # NOT pass (zero BH passes, 2026-08-05). Kept registered because the
+    # null is informative, not because it was expected to work: HE's
+    # equity price tracks regulatory and wildfire-liability risk (the
+    # 2023 Maui fire crash), while its tariff is PUC-set from fuel costs
+    # — so stock and tariff are driven by different things and the miss
+    # is economically coherent. The channel's evidence rests on XLE
+    # (p≈6e-14, 3-month lead), not on this pair.
+    ("HE", "HI_ELECTRICITY"),
     # --- national-macro predictors (Phase 2) ---
     ("US_MORTGAGE30", "HONOLULU_ZHVI"),   # rates → home values (inverse, lagged)
     ("US_MORTGAGE30", "HONOLULU_ZORI"),   # rates → rents

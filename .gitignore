@@ -64,3 +64,7 @@ reports/**/spm_units.parquet
 # Editor/backup leftovers and stray run logs
 *.bak
 *.log
+
+# API keys — never commit (keys live in ~/.eia_api_key, ~/.census_api_key)
+*_api_key
+.*_api_key
