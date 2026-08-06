@@ -9,8 +9,15 @@ name: refresh-data
 # API keys are stored as GitHub Secrets:
 #   BLS_API_KEY  — https://www.bls.gov/developers/api_signature_v2.htm
 #   BEA_API_KEY  — https://apps.bea.gov/api/signup/
+#   EIA_API_KEY  — https://www.eia.gov/opendata/register.php
 #
 # The workflow is idempotent: running it twice in a row produces no diff.
+#
+# Ordering constraint: refresh_market_panel.py's macro write is a FULL
+# REPLACE of macro_monthly.json (it has no existing-file merge step), so
+# it must run before every step below that merges additively into that
+# same file (national-macro, EIA, HTA, DBEDT, UI-claims) — reversing the
+# order would silently drop whatever those steps last wrote.
 
 on:
   schedule:
@@ -125,6 +132,47 @@ jobs:
           # aborts only if nothing fetched.
           uv run python -m census_forecaster.scripts.refresh_national_macro
 
+      - name: Refresh EIA Hawaii electricity price
+        env:
+          EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
+        run: |
+          # Monthly Hawaii retail electricity price (2001+, ~3-month lag)
+          # — the genuine monthly Hawaii price proxy the causal screen's
+          # CPI-directed hypotheses needed. Merges additively into
+          # macro_monthly.json.
+          if [ -z "${EIA_API_KEY}" ]; then
+            echo "::warning::EIA_API_KEY not set; skipping EIA electricity refresh"
+          else
+            uv run python -m census_forecaster.scripts.refresh_eia_hawaii
+          fi
+
+      - name: Refresh DBEDT monthly economic indicators
+        run: |
+          # No API key required — DBEDT publishes keyless per-county
+          # workbooks. Visitor arrivals (current month) + county building
+          # permits, 1990- -> today at ~5-week lag. The listing page is
+          # scraped for the current dated link, so this survives URL
+          # rotation; a page-layout change would need the fetcher updated.
+          uv run python -m census_forecaster.scripts.refresh_dbedt_mei
+
+      - name: Refresh HTA historical visitor arrivals
+        run: |
+          # No API key required. Archival cross-check for DBEDT arrivals
+          # above (1990-2024 backbone; the two agreed to within 0.0004%
+          # on all 420 overlap months at integration time). The HTA
+          # workbook only republishes yearly, so this step is normally a
+          # no-op between annual updates — kept in the monthly job so a
+          # new "through-<year>" workbook is picked up automatically
+          # rather than requiring someone to remember to check.
+          uv run python -m census_forecaster.scripts.refresh_hta_visitors
+
+      - name: Refresh DOL weekly UI initial claims
+        run: |
+          # No API key required — keyless all-states CSV (~13 MB). The
+          # fastest-moving labour signal in the panel (~11-day lag at the
+          # weekly grain); aggregated here to calendar-month means.
+          uv run python -m census_forecaster.scripts.refresh_ui_claims
+
       - name: Regenerate BLS v3 calibration
         run: |
           # Only regenerate if the BLS panel exists. If neither key is
@@ -189,6 +237,11 @@ jobs:
           - Census BPS county permit counts re-fetched
           - Census SAIPE county poverty rates re-fetched
           - Market prices panel + macro monthly series re-fetched
+          - National-macro predictor series re-fetched
+          - EIA Hawaii electricity price re-fetched (if EIA_API_KEY set)
+          - DBEDT monthly economic indicators re-fetched
+          - HTA historical visitor arrivals re-fetched
+          - DOL weekly UI initial claims re-fetched
           - BLS v3 calibration regenerated against the new panel
           - ACS v3 calibration regenerated against the bundled panel
 
