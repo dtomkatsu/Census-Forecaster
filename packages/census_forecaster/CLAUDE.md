@@ -1,12 +1,16 @@
 # census_forecaster — Claude rules
 
-## ⚠️ Cherry-pick warning
+## ⚠️ Downstream consumer (not a cherry-pick)
 
-**Housing-Affordability-Tracker** cherry-picks `acs/projection.py` and `kalman/` from this package. Any methodology change must be re-harmonized in that repo (last sync commit `d7cbdf4`, Apr 2026). Queue a follow-up task when touching these modules.
+**Cost-of-Living-Tracker** (`~/Cost-of-Living-Tracker`, formerly Housing-Affordability-Tracker — renamed 2026-08) consumes this package as a **pinned git dependency**, not a cherry-pick. It vendors nothing: its `census_forecasting/` directory is scripts + data + docs that `import census_forecaster.*` from the installed package, and both hashes in its `requirements.txt` pin one Census-Forecaster commit.
+
+So there is **no copy of `acs/projection.py` or `kalman/` to re-harmonize** — verified 2026-08-07, no `kalman` file or reference exists in that repo. A change here reaches it only when someone bumps the pin (both hashes together, then `pip install -r requirements.txt` + pytest there). Do not queue "re-harmonize the cherry-pick" follow-ups; queue "bump the pin" ones, and only when the change actually affects something that repo uses.
+
+*(It genuinely did vendor the projection module until 2026-04-25, when `547b3bb` migrated it to the package. The `d7cbdf4` "last sync commit" this file cited is a commit in that repo, not this one.)*
 
 ## Package purpose
 
-ACS and BLS time-series forecasting for Hawaiʻi demographic/economic indicators. Outputs feed into tax_modeler calibration anchors and the Housing-Affordability-Tracker.
+ACS and BLS time-series forecasting for Hawaiʻi demographic/economic indicators. Outputs feed into tax_modeler calibration anchors and Cost-of-Living-Tracker.
 
 ## Plain-language methodology doc — keep it in sync
 
@@ -39,8 +43,8 @@ Never copy a φ from one cadence to another. Never switch to analytical PIs with
 
 ## Test baseline
 
-185/185 tests must pass. Honolulu County MAPE ≤ 6.76% on backtest.
+The full suite must pass — no regressions, no new skips. (The literal count drifts; 1,955 passed / 3 skipped on 2026-08-07. The "185/185" that stood here was years stale — compare against a run on current HEAD.) Honolulu County MAPE ≤ 6.76% on backtest.
 
 ## Market signals
 
-`src/census_forecaster/markets/` (tracker, causal screen, signal derivation) is **NOT part of the Housing-Affordability-Tracker cherry-pick** — only `acs/projection.py` and `kalman/` sync there. Market-signal methodology lives in `METHODOLOGY.md` §Market signals; signals are screen-gated (BH-FDR + 2020-robustness) and ablation-gated before touching any forecast path.
+`src/census_forecaster/markets/` (tracker, causal screen, signal derivation) ships in the package like everything else; downstream repos get it or not according to their pinned commit (see the cherry-pick note above — there is no per-module sync). Market-signal methodology lives in `METHODOLOGY.md` §Market signals; signals are screen-gated (BH-FDR + 2020-robustness) and ablation-gated before touching any forecast path.

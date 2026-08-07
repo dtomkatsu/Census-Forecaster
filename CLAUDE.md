@@ -6,11 +6,27 @@
 - **Cadence-aware damping is non-negotiable**: φ=0.92/month for monthly series (CPI), φ=0.85/yr for annual (ACS). Half-lives explicitly documented in `METHODOLOGY.md` §2.3.1. Never copy a φ from one cadence to another.
 - **Recency-weighted geometric mean** for trend initialization. Empirically calibrated 90% PIs via backtest, not analytical.
 - **Repo-relative paths only** in commits/prompts. Madison's workdir is `~/repos/Census-Forecaster/`.
-- **185/185 tests must pass** before committing. Honolulu County backtest baseline MAPE: 6.76%.
+- **The full suite must pass before committing** — no regressions, no new skips. (The literal count drifts as tests are added; it was 1,955 passed / 3 skipped on 2026-08-07, having been written here as "185/185" long after that stopped being true. Compare against a run on the current HEAD, not a number in this file.) Honolulu County backtest baseline MAPE: 6.76%.
 
 ## Companion sync
 
-- Housing-Affordability-Tracker cherry-picks the projection module via `census_forecasting/` subpackage. **Any change here must keep the cherry-pick coherent** — last sync commit `d7cbdf4` (Apr 2026). If you make a methodology change that affects the cherry-pick, queue a follow-up task to re-harmonize Housing's copy.
+- **Cost-of-Living-Tracker** (`~/Cost-of-Living-Tracker`, formerly
+  Housing-Affordability-Tracker — renamed 2026-08) consumes this package as a
+  **pinned git dependency**, not a cherry-pick. Both hashes in its
+  `requirements.txt` point at one Census-Forecaster commit
+  (`census-common` and `census-forecaster`, each `#subdirectory=packages/...`).
+  There is **no vendored copy to re-harmonize**: its `census_forecasting/`
+  directory holds only scripts, data, backtests and docs, which `import
+  census_forecaster.*` from the installed package.
+- So a change here reaches that repo only when someone **bumps the pin**. Per
+  its own instruction: update both hashes to the same upstream commit, then
+  re-run `pip install -r requirements.txt` and pytest there. Nothing is
+  automatic, and an un-bumped pin is not a bug — it is the isolation the pin
+  exists to provide.
+- *(History: it did vendor the projection module until 2026-04-25, when
+  `547b3bb` migrated to the package. The old "last sync commit `d7cbdf4`" noted
+  here for years is a commit in **that** repo, not this one — it never resolved
+  against Census-Forecaster.)*
 
 ## Stack
 
