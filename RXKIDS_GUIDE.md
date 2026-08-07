@@ -14,7 +14,7 @@ the State's Medicaid program, OR (2) has family income ≤ 300% of the federal
 poverty level**, including the expected unborn child.
 
 **Headline (TY2028, statutory design — the default):** ~**$32M/yr** in benefit
-dollars (~$35M with 8% admin), reaching ~**14,000 recipients** across ~7,340
+dollars (~$35M with 8% admin), reaching ~**14,100 recipients** across ~7,340
 eligible families. Assumption band ~**$19M–$41M**. A Flint-equivalent scenario
 (98% take-up, +10% fertility) is ~**$38M**. The estimate is dominated by
 *specification* uncertainty, not sampling — see §6.
@@ -26,19 +26,20 @@ income or Medicaid test), which cost substantially more:
 
 | Design | Benefit cost | With 8% admin | Recipients/yr | Flint-equivalent |
 |---|---|---|---|---|
-| **`statutory_6mo` (default)** | **~$32M** | ~$35M | ~14,000 | ~$38M |
-| `universal_6mo` | ~$53M | ~$58M | ~23,300 | ~$64M |
-| `universal_12mo` | ~$90M | ~$97M | ~23,300 | ~$108M |
+| **`statutory_6mo` (default)** | **~$32M** | ~$35M | ~14,100 | ~$38M |
+| `universal_6mo` | ~$53M | ~$57M | ~23,300 | ~$64M |
+| `universal_12mo` | ~$90M | ~$97M | ~23,300 | ~$107M |
 
-*Figures re-derived from live runs on 2026-08-07 (post county-split fix, see
-RXKIDS_METHODOLOGY.md §3 "County split"); they match
+*Figures re-derived from live runs on 2026-08-07, after the county-split fix,
+the NVSR series correction, and the switch to the Kalman projector (all in
+RXKIDS_METHODOLOGY.md §3); they match
 [`RXKIDS_METHODOLOGY.md`](RXKIDS_METHODOLOGY.md) §0 and §10, which are the
 source of truth. An earlier version of this block quoted ~$54M/~24,000/~$65M as
 the "conservative default" — those were the **universal 6-month** figures
 (and ~24,000 was recipients, not births), so the guide was advertising the
 most expensive means-test-free design as if it were the statutory one.*
 
-**The 2028 birth cohort is ~14,127**, not ~24,000 — recipients exceed births
+**The 2028 birth cohort is ~14,126**, not ~24,000 — recipients exceed births
 because each eligible birth draws both a prenatal and a postnatal payment, so
 one birth can generate two recipients (§10 of the methodology).
 
@@ -140,7 +141,7 @@ why the honest MOE is ±30–40%:
 | Assumption | Default | Why it's uncertain |
 |---|---|---|
 | Take-up rate | 0.90 newborn / 0.83 prenatal | No Hawaiʻi program to anchor against (Flint observed 0.98 newborn / ~0.90 prenatal); scales the estimate linearly |
-| 2028 birth cohort | ~14,127 | CDC NVSR finals (thru 2024) + DOH nowcast (2025–26), projected; scales the whole estimate. The legacy 0.066 births/dependent proxy is `--use-proxy-births` only — it does **not** drive the default. |
+| 2028 birth cohort | ~14,126 (90% PI ~12,900–15,400) | CDC NVSR finals thru 2024 (via WONDER) + DOH nowcast 2025–26, Kalman-projected; scales the whole estimate. The legacy 0.066 births/dependent proxy is `--use-proxy-births` only — it does **not** drive the default. |
 | Eligibility gate | Medicaid OR ≤300% FPL | The statutory design. Dropping the test entirely (universal) is ~+$22M — the single largest lever in the model |
 | Fertility response | 0 (off) | Flint saw ~+10% births; a real upside risk, off by default |
 | "Family income" grain | MAGI household | Legal-definitional (see §1); ~15–20% lever, not CLI-exposed |

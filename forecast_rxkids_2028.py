@@ -126,14 +126,36 @@ DEFAULT_SCENARIO_KEY = "statutory_6mo"
 # forward with the repo's own damped-trend ensemble, so the demographic driver
 # is aged coherently with income (rather than frozen at the base-year level).
 # Update with each new NVSR final-data release.
+#
+# CORRECTED 2026-08-07 against CDC WONDER (the queryable NVSR natality file,
+# dataset D66 "Natality, 2007-2024", filtered to Hawaiʻi, grouped by year).
+# Four of the seven values were wrong, two of them badly:
+#
+#     year   was      is       error
+#     2018   15,404   16,972   -9.24%
+#     2019   15,403   16,797   -8.30%
+#     2020   15,730   15,785   -0.35%
+#     2023   14,643   14,808   -1.11%
+#     2021/2022/2024 were already correct.
+#
+# 2022 (NVSR 73-02) and 2024 (NVSR 75-02 Table 5) cross-validate exactly against
+# WONDER, so WONDER is authoritative and the four odd values came from somewhere
+# else. The corrected series is also the demographically coherent one: a smooth
+# ~12% decline 2018->2024. The old series had 2018/2019 sitting BELOW 2020/2021,
+# i.e. births *rising* into the pandemic, which is backwards.
+#
+# This matters beyond the level: the bogus 2018/2019 values manufactured a fake
+# ~1.10 DOH/NVSR ratio in those years, which was previously (wrongly) explained
+# here as a pre-COVID "birth tourism" regime that the travel collapse ended. No
+# such regime exists — see the ratio note below.
 HI_BIRTHS_BY_YEAR = {
-    2018: 15404,
-    2019: 15403,
-    2020: 15730,
+    2018: 16972,
+    2019: 16797,
+    2020: 15785,
     2021: 15620,
     2022: 15535,
-    2023: 14643,
-    2024: 14917,  # NVSR 75-02 (Jun 9 2026), Table 5, by place of residence
+    2023: 14808,
+    2024: 14917,  # cross-checks vs NVSR 75-02 (Jun 9 2026) Table 5
 }
 # PUMS construction / birth-observation base year (matches PUMS_CONSTRUCTION_YEAR).
 BIRTH_BASE_YEAR = 2022
@@ -153,16 +175,23 @@ BIRTH_BASE_YEAR = 2022
 # 1. OCCURRENCE -> RESIDENCE. DOH counts births *occurring* in Hawaiʻi
 #    (including to non-residents); NVSR counts births to Hawaiʻi *residents*
 #    (including those occurring out of state). RxKids eligibility is a
-#    residency question, so NVSR is the correct basis. The DOH/NVSR ratio is
-#    strongly time-varying — it tracks travel volume, because the wedge is
-#    largely non-resident births:
-#        2018 1.1054 | 2019 1.0928 | 2020 1.0051 | 2021 1.0023
-#        2022 1.0023 | 2023 1.0142 | 2024 1.0037
-#    Pre-COVID it ran ~1.10; the travel collapse drove it to ~1.00 and it has
-#    only partially recovered. We therefore calibrate on the post-COVID regime
-#    ONLY (2020-2024) and carry its dispersion into the MOE rather than
-#    pretending the factor is known. A pre-COVID-style recovery toward 1.10 is
-#    the main directional risk and would make these nowcasts too HIGH.
+#    residency question, so NVSR is the correct basis. Measured against the
+#    CORRECTED NVSR series, the ratio is small and remarkably stable:
+#        2018 1.0032 | 2019 1.0021 | 2020 1.0016 | 2021 1.0023
+#        2022 1.0023 | 2023 1.0029 | 2024 1.0037
+#    mean 1.0026, sd 0.0007, range 1.0016-1.0037 — no regime shift, no trend.
+#    That is what you'd expect of an island state 2,400 miles from anywhere:
+#    almost nobody flies in to give birth and almost no resident delivers out
+#    of state, so occurrence and residence nearly coincide.
+#
+#    HISTORY (do not re-derive the old story): this block previously claimed a
+#    ~1.10 "pre-COVID birth-tourism regime" that the travel collapse ended, and
+#    calibrated on 2020+ only to avoid it. That regime never existed. It was an
+#    artifact of four wrong values in HI_BIRTHS_BY_YEAR (2018/2019 were ~9% low
+#    — see the note there), which inflated the 2018/2019 ratios to 1.1054/1.0928.
+#    With the series corrected, all years belong to one regime and all are used.
+#    The dispersion is still carried into the MOE rather than treating the
+#    factor as exactly known, but it is now genuinely tiny.
 # 2. TRAILING-MONTH INCOMPLETENESS. Birth certificates register with a lag, so
 #    the newest month(s) in any snapshot are structurally short (in the
 #    2026-07-06 pull, June reads 777 against a ~1,200 run-rate: ~65% complete).
@@ -174,7 +203,6 @@ BIRTH_BASE_YEAR = 2022
 # discipline the anchor-source bundles use. Re-pull and bump DOH_SNAPSHOT when
 # refreshing; drop any year that NVSR has since finalised (NVSR always wins).
 DOH_SNAPSHOT = "2026-07-06"
-DOH_SNAPSHOT_MONTH = 7
 # Statewide births by month of OCCURRENCE, as published at DOH_SNAPSHOT.
 HI_DOH_BIRTHS_MONTHLY = {
     2018: [1411, 1277, 1412, 1413, 1498, 1389, 1407, 1441, 1493, 1454, 1395, 1437],
@@ -191,8 +219,21 @@ HI_DOH_BIRTHS_MONTHLY = {
 # 2 is empirical: in the 2026-07-06 pull May (2 months out) sits on the run-rate
 # while June (1 month out) is ~35% short.
 DOH_MATURATION_MONTHS = 2
-# Years whose DOH/NVSR ratio defines the current (post-travel-collapse) regime.
-DOH_RATIO_YEARS = (2020, 2021, 2022, 2023, 2024)
+# Earliest year admitted to the occurrence/residence ratio calibration. The
+# ratio years are DERIVED from this (every year >= it present in BOTH the NVSR
+# and DOH tables) rather than hardcoded, so a newly-landed NVSR final is picked
+# up automatically instead of being silently excluded.
+#
+# Set to 2018 (i.e. everything available): with HI_BIRTHS_BY_YEAR corrected the
+# ratio is stable across the whole window, so there is no regime to exclude and
+# more years is simply a better-estimated mean. It was 2020 while the bogus
+# 2018/2019 births were in place.
+DOH_RATIO_FIRST_YEAR = 2018
+
+# Projector for the birth cohort. "kalman" by default on back-test evidence --
+# see _project_births and scripts/backtest_birth_projection.py. "ensemble" is
+# the legacy damped-trend + AR(1) combiner, retained for comparison.
+BIRTH_PROJECTION_METHOD = "kalman"
 
 # ---------------------------------------------------------------------------
 # DOH county-level births — calibration target for the county split
@@ -218,29 +259,48 @@ DOH_RATIO_YEARS = (2020, 2021, 2022, 2023, 2024)
 #    real sampled geography. Any Maui/Kauai split computed from raw PUMS
 #    shares is therefore an artifact of that imputer, not survey evidence.
 #
-# Hawaii DOH's monthly county vital-statistics counts (same source as the
-# state-level nowcast above) are genuine administrative data -- exactly
-# resolved by county, immune to both problems. County shares below are the
-# AGGREGATE share of each county across all complete DOH years (2018-2025;
-# 2026 excluded as partial), from the same snapshot as HI_DOH_BIRTHS_MONTHLY.
-# Shares are essentially flat over this window (Honolulu 72.8-74.3%, Hawaii
-# 11.4-13.1%, Maui 9.35-9.79%, Kauai 4.25-5.03% year to year) -- no material
-# trend, so a plain aggregate share (not recency-weighted) is the right
-# estimator here, unlike the state-level birth-COUNT series, which does trend.
+# The calibration target is CDC WONDER county natality (dataset D66, Hawaiʻi,
+# grouped by county x year) -- i.e. the NVSR file itself, resolved to county.
+# Two reasons this beats the DOH county tables that were used here first:
+#
+#   * BASIS. WONDER is by county of RESIDENCE, which is what RxKids eligibility
+#     actually turns on. DOH counts by county of OCCURRENCE, and in Hawaiʻi
+#     that is NOT a wash at county level even though it nearly is statewide:
+#     neighbour-island mothers routinely deliver on Oʻahu (Molokaʻi/Lānaʻi have
+#     no delivery services; high-risk Kauaʻi/Hawaiʻi-island births go to
+#     Kapiʻolani). Occurrence therefore overstates Honolulu and understates the
+#     neighbour islands. Measured, aggregate 2018-2024:
+#         Honolulu  occurrence 73.45%  vs residence 71.24%   (-2.20pp)
+#         Hawaii    occurrence 12.31%  vs residence 13.19%   (+0.88pp)
+#         Maui      occurrence  9.60%  vs residence 10.76%   (+1.16pp)
+#         Kauai     occurrence  4.65%  vs residence  4.81%   (+0.16pp)
+#   * CONSISTENCY. Same source as the state-level anchor, so the county targets
+#     and the state target cannot drift apart definitionally.
+#
+# Kauaʻi is not published separately (WONDER suppresses counties under 100k
+# population) -- it arrives as "Unidentified Counties, HI". In Hawaiʻi that
+# label is unambiguous: Kauaʻi is the only county below the threshold, so
+# Unidentified == Kauaʻi (+ Kalawao, pop. ~80, whose births round to nothing).
+# Verified: the four county counts sum EXACTLY to the state total in 2021,
+# 2022 and 2024.
+#
+# Window is 2020-2024 rather than all years: shares carry a mild real trend
+# (Honolulu -1.37pp, Hawaii +0.94pp across 2018-2024), so the recent window is
+# the better estimator for a 2028 target. Year-to-year sd is small (0.11-0.68pp)
+# so this is a level choice, not noise-chasing.
 #
 # This calibrates the SPLIT of the state BIRTH total, not the birth total
-# itself -- sum(DOH_COUNTY_SHARE.values()) == 1 by construction, so summing
+# itself -- sum(NVSR_COUNTY_SHARE.values()) == 1 by construction, so summing
 # the four county birth targets reproduces the state birth target exactly.
 # It does NOT hold for the state COST total: eligibility is unit-specific and
 # correlated with county (Hawaii County runs poorer than Honolulu), so moving
 # birth mass onto a previously-undersampled county changes the state-weighted
-# eligible share too (measured +2.1% on cost/recipients; see
-# _calibrate_births_by_county).
-DOH_COUNTY_SHARE = {
-    "Honolulu": 0.733707,
-    "Hawaii": 0.123490,
-    "Maui": 0.095995,
-    "Kauai": 0.046808,
+# eligible share too (see _calibrate_births_by_county).
+NVSR_COUNTY_SHARE = {
+    "Honolulu": 0.709320,   # 54,380 births 2020-2024
+    "Hawaii": 0.134155,     # 10,285
+    "Maui": 0.107194,       #  8,218
+    "Kauai": 0.049332,      #  3,782 (WONDER "Unidentified Counties, HI")
 }
 
 # Default administrative-load fraction. Program cost in this model is pure
@@ -317,18 +377,27 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                    help="Drop the Hawaiʻi DOH preliminary-births nowcast and project "
                         "from CDC NVSR final data only. NVSR lags ~18 months, so this "
                         "leaves the post-final years unobserved (see RXKIDS_METHODOLOGY.md §3).")
-    p.add_argument("--no-doh-county-shares", action="store_true", default=False,
+    p.add_argument("--no-county-share-calibration", action="store_true", default=False,
                    help="Use raw ACS PUMS county shares for cost_by_county instead of "
-                        "recalibrating to DOH's county-level vital statistics. PUMS's "
+                        "recalibrating to CDC WONDER county-of-residence natality. PUMS's "
                         "county split is small-sample-noisy (Hawaii County n~11) and "
                         "Maui/Kauai are not independently sampled (combined PUMA, split "
                         "only by a demographic-heuristic imputer) — see "
                         "RXKIDS_METHODOLOGY.md §3. The state BIRTH total is unaffected "
                         "either way (redistribution, not a level change), but the state "
-                        "COST total moves ~1-2% -- eligibility is unit-specific and "
+                        "COST total moves ~1-2 pct -- eligibility is unit-specific and "
                         "correlated with county, so shifting birth mass toward a "
                         "previously-undersampled (poorer) county changes the weighted "
                         "eligible share, not just cost_by_county.")
+    p.add_argument("--birth-projection-method", choices=("kalman", "ensemble"),
+                   default=BIRTH_PROJECTION_METHOD,
+                   help="Projector for the birth cohort (default: kalman), chosen on "
+                        "back-test evidence -- scripts/backtest_birth_projection.py. "
+                        "Against the legacy trend ensemble, Kalman cuts MAPE from 3.28 to "
+                        "2.34 (pct), near-eliminates bias (-2.5 to +0.6), and fixes badly "
+                        "under-covering intervals: measured CI90 coverage was 50 pct "
+                        "against a 90 pct target. 'ensemble' restores the legacy "
+                        "damped-trend + AR(1) combiner.")
     p.add_argument("--use-proxy-births", action="store_true", default=False,
                    help="Use the legacy num_dependents × child_under_age_share birth "
                         "proxy instead of observed (age-0 dependent) infant counts. "
@@ -467,20 +536,33 @@ def _safe_age(value) -> int:
         return -1
 
 
+def doh_ratio_years() -> tuple:
+    """Years defining the current occurrence/residence regime.
+
+    Derived, not hardcoded: every year from ``DOH_RATIO_FIRST_YEAR`` onward that
+    appears in BOTH the NVSR finals and the DOH monthly table. Hardcoding the
+    tuple meant a newly-landed NVSR final (e.g. 2025) was silently excluded from
+    the ratio calibration until someone remembered to widen it by hand.
+    """
+    return tuple(sorted(
+        y for y in HI_BIRTHS_BY_YEAR
+        if y >= DOH_RATIO_FIRST_YEAR and y in HI_DOH_BIRTHS_MONTHLY
+    ))
+
+
 def _doh_ratio() -> tuple:
     """Return (mean, sd) of the DOH-occurrence / NVSR-residence ratio.
 
-    Calibrated on ``DOH_RATIO_YEARS`` only — the pre-2020 ratio (~1.10) belongs
-    to a different travel regime and would bias the conversion badly. The sd is
-    the honest dispersion across those years and is carried into the nowcast
-    MOE; it is NOT a fixed constant we pretend to know.
+    Calibrated on ``doh_ratio_years()`` only — the pre-2020 ratio (~1.10)
+    belongs to a different travel regime and would bias the conversion badly.
+    The sd is the honest dispersion across those years and is carried into the
+    nowcast MOE; it is NOT a fixed constant we pretend to know.
     """
     import statistics
 
     ratios = [
         sum(HI_DOH_BIRTHS_MONTHLY[y]) / HI_BIRTHS_BY_YEAR[y]
-        for y in DOH_RATIO_YEARS
-        if y in HI_BIRTHS_BY_YEAR and y in HI_DOH_BIRTHS_MONTHLY
+        for y in doh_ratio_years()
     ]
     if not ratios:
         return 1.0, 0.0
@@ -490,13 +572,29 @@ def _doh_ratio() -> tuple:
 
 
 def _doh_mature_months(year: int) -> int:
-    """How many leading months of ``year`` are old enough to be fully registered."""
-    snap_year = int(DOH_SNAPSHOT[:4])
-    if year < snap_year:
-        return 12
-    if year > snap_year:
-        return 0
-    return max(0, min(12, DOH_SNAPSHOT_MONTH - DOH_MATURATION_MONTHS))
+    """How many leading months of ``year`` are old enough to be fully registered.
+
+    Computed as *elapsed months since each month ended*, measured against the
+    snapshot date — NOT per calendar year. The earlier per-year form returned a
+    flat 12 for any year before the snapshot year, which is only right when the
+    snapshot sits well into the following year. Refresh the snapshot in, say,
+    January 2027 and December 2026 (one month old, squarely inside the
+    maturation window) would have been counted as complete — understating the
+    2026 nowcast at exactly the moment it becomes the most recent, highest-
+    influence point in the series. Crossing the year boundary correctly is the
+    whole job here.
+    """
+    snap_year, snap_month = int(DOH_SNAPSHOT[:4]), int(DOH_SNAPSHOT[5:7])
+    # Months elapsed from the end of month m of `year` to the snapshot month.
+    # month m is usable once DOH_MATURATION_MONTHS full months have passed.
+    mature = 0
+    for m in range(1, 13):
+        elapsed = (snap_year - year) * 12 + (snap_month - m)
+        if elapsed >= DOH_MATURATION_MONTHS:
+            mature += 1
+        else:
+            break  # months are chronological; once one is too fresh, so is the rest
+    return mature
 
 
 def _doh_nowcast_births() -> list:
@@ -583,20 +681,37 @@ def _birth_nowcast_note(proj: dict) -> str:
     )
 
 
-def _project_births(target_year: int, use_doh_nowcast: bool = True) -> dict:
-    """Project the Hawaiʻi birth cohort to ``target_year`` via the repo ensemble.
+def _project_births(target_year: int, use_doh_nowcast: bool = True,
+                    method: str = BIRTH_PROJECTION_METHOD) -> dict:
+    """Project the Hawaiʻi birth cohort to ``target_year``.
 
-    Feeds the CDC NVSR resident-births series (``HI_BIRTHS_BY_YEAR``) to the
-    package's damped-trend + AR(1) ensemble (``project_acs_ensemble``), the same
-    machinery the income forecast uses (φ=0.85/yr annual cadence). Returns the
-    point projection plus its 90% PI and the base-year level. Vital-statistics
-    counts are near-complete, so a small nominal Poisson SE (1.645·√n) is used
-    only to let the ensemble's inverse-variance weighting run.
+    Feeds the NVSR resident-births series (``HI_BIRTHS_BY_YEAR``), optionally
+    extended by the DOH nowcasts, to one of two projectors:
 
-    When ``use_doh_nowcast`` (default), DOH preliminary counts extend the series
-    past the NVSR final-data wall — see ``_doh_nowcast_births``. Those points
-    carry materially wider MOEs, so the ensemble leans on them only as far as
-    their precision warrants. ``--no-doh-nowcast`` restores the NVSR-only series.
+    * ``"kalman"`` (default) — the package's state-space filter. Chosen on
+      back-test evidence, not preference: ``scripts/backtest_birth_projection.py``
+      walk-forwards both methods over the NVSR finals and Kalman wins on every
+      metric (MAPE 2.34% vs 3.28%, bias +0.6% vs −2.5%, RMSE 395 vs 635) and
+      improves with horizon where the ensemble degrades. Decisively, ensemble
+      CI90 coverage is **50%** against a 90% target — its interval is too tight
+      to quote — while Kalman's contains the truth in every fold.
+    * ``"ensemble"`` — the legacy damped-trend + AR(1) combiner, kept for
+      comparison via ``--birth-projection-method ensemble``.
+
+    The mechanism behind the difference matters for this series: Kalman
+    consumes each observation's MOE as measurement noise (R = (se/estimate)²),
+    whereas ``fit_damped_trend`` / ``fit_ar1_log_diff`` ignore per-observation
+    MOE entirely — they only ever read the *latest* observation's MOE, for the
+    sampling-SE term. So under the ensemble the DOH nowcasts' uncertainty could
+    reach the interval but never the point estimate. (Honest caveat: the
+    nowcast MOEs land close to the finals' nominal Poisson MOEs — 199/347 vs
+    ~201 — so this down-weighting is real but modest, and it does not price the
+    risk that DOH revises or that the occurrence/residence ratio drifts.)
+
+    Vital-statistics counts are near-complete, so finals carry a nominal
+    Poisson SE (1.645·√n) rather than a survey MOE.
+
+    ``--no-doh-nowcast`` restores the NVSR-only series.
     """
     import math
 
@@ -625,8 +740,27 @@ def _project_births(target_year: int, use_doh_nowcast: bool = True) -> dict:
         "doh_ratio": ratio,
         "doh_ratio_sd": ratio_sd,
         "doh_snapshot": DOH_SNAPSHOT if nowcasts else None,
+        "method": method,
     }
-    fp = project_acs_ensemble(obs, target_year=target_year)
+
+    fp = None
+    if method == "kalman":
+        try:
+            from census_forecaster.kalman import project_kalman
+            # end_year MUST be an explicit int: project_kalman's own default is
+            # max(effective_year(...)), a float, which it then feeds to range().
+            fp = project_kalman(
+                obs, target_year=target_year,
+                end_year=int(max(o.year for o in obs)), geoid="15",
+            )
+        except Exception:  # pragma: no cover — fall back rather than fail a run
+            LOG.warning("_project_births: Kalman path failed; "
+                        "falling back to the trend ensemble.", exc_info=True)
+            fp = None
+        if fp is None and method == "kalman":
+            meta["method"] = "ensemble (kalman unavailable)"
+    if fp is None:
+        fp = project_acs_ensemble(obs, target_year=target_year)
     if fp is None:
         return {"point": base_level, "ci90_low": base_level,
                 "ci90_high": base_level, "projected": False, **meta}
@@ -635,27 +769,28 @@ def _project_births(target_year: int, use_doh_nowcast: bool = True) -> dict:
 
 
 def _calibrate_births_by_county(
-    projected: pd.DataFrame, target: float, use_doh_county: bool = True,
+    projected: pd.DataFrame, target: float, use_county_shares: bool = True,
 ) -> dict:
     """Redistribute the (already state-calibrated) birth total across counties
-    to match DOH's aggregate county shares, instead of ACS PUMS's own county
-    split.
+    to match CDC WONDER's county-of-residence shares, instead of ACS PUMS's own
+    county split.
 
     Why: the state total is well-anchored (NVSR + DOH nowcast), but PUMS's
     COUNTY allocation of it is not independently anchored to anything, for two
-    distinct reasons documented at ``DOH_COUNTY_SHARE``: (1) tiny per-county
+    distinct reasons documented at ``NVSR_COUNTY_SHARE``: (1) tiny per-county
     infant samples (Hawaii County n=11 on the 2024 1yr frame — ~30% Poisson
     relative SE) and (2) Maui/Kauai are structurally NOT independently
     sampled — Hawaii's 2020 PUMA geography combines them into one PUMA, split
     only by a probabilistic demographic-heuristic imputer, not real survey
-    evidence. DOH's monthly county vital-statistics are genuine administrative
-    data, exactly resolved by county, immune to both problems.
+    evidence. WONDER county natality is the NVSR file resolved to county, by
+    RESIDENCE (the basis eligibility actually turns on) and from the same
+    source as the state anchor — immune to both problems.
 
     Mutates ``projected['observed_births']`` in place: rescales it per-county
     so ``Σ observed_births × weight`` within each county hits
-    ``DOH_COUNTY_SHARE[county] × target``. The state BIRTH total is unchanged
-    by construction (``Σ DOH_COUNTY_SHARE.values() == 1``) — this only
-    reslices it. Rows in a county absent from ``DOH_COUNTY_SHARE`` keep the
+    ``NVSR_COUNTY_SHARE[county] × target``. The state BIRTH total is unchanged
+    by construction (``Σ NVSR_COUNTY_SHARE.values() == 1``) — this only
+    reslices it. Rows in a county absent from ``NVSR_COUNTY_SHARE`` keep the
     state-level scale already applied by the caller — no county is silently
     zeroed.
 
@@ -669,7 +804,7 @@ def _calibrate_births_by_county(
     mechanism is reallocation of birth-weighted mass onto eligible units, not
     a change in who's eligible.
     """
-    if (not use_doh_county or "county" not in projected.columns
+    if (not use_county_shares or "county" not in projected.columns
             or "observed_births" not in projected.columns):
         return {"mode": "raw_pums_shares", "county_factors": {}}
 
@@ -682,7 +817,7 @@ def _calibrate_births_by_county(
     b = projected["observed_births"].astype(float).to_numpy()
     scale = np.ones(len(projected), dtype=float)
     county_factors: dict = {}
-    for county, share in DOH_COUNTY_SHARE.items():
+    for county, share in NVSR_COUNTY_SHARE.items():
         mask = (county_key == county).to_numpy()
         raw_c = float((b[mask] * w[mask]).sum())
         target_c = share * target
@@ -690,7 +825,7 @@ def _calibrate_births_by_county(
         scale[mask] = factor_c
         county_factors[county] = {"raw": raw_c, "target": target_c, "factor": factor_c}
 
-    unmatched = ~county_key.isin(list(DOH_COUNTY_SHARE))
+    unmatched = ~county_key.isin(list(NVSR_COUNTY_SHARE))
     if unmatched.any():
         LOG.warning(
             "_calibrate_births_by_county: %d rows in unmapped counties (%s); "
@@ -699,7 +834,7 @@ def _calibrate_births_by_county(
         )
 
     projected["observed_births"] = b * scale
-    return {"mode": "doh_county_shares", "county_factors": county_factors}
+    return {"mode": "nvsr_county_shares", "county_factors": county_factors}
 
 
 def _calibrate_births(projected: pd.DataFrame, tax_year: int, args) -> dict:
@@ -713,15 +848,17 @@ def _calibrate_births(projected: pd.DataFrame, tax_year: int, args) -> dict:
     is absent) it is a no-op and the proxy drives both arms downstream.
 
     After the state-level scalar is applied, ``_calibrate_births_by_county``
-    (unless ``--no-doh-county-shares``) redistributes that SAME birth total
+    (unless ``--no-county-share-calibration``) redistributes that SAME birth total
     across counties using DOH's county shares rather than PUMS's own (noisy /
-    structurally-imputed, see DOH_COUNTY_SHARE) county split. The state BIRTH
+    structurally-imputed, see NVSR_COUNTY_SHARE) county split. The state BIRTH
     total is unaffected either way, but the state COST total is NOT — see
     ``_calibrate_births_by_county`` for why (eligibility is unit-specific and
     correlated with county).
     """
     proj = _project_births(
-        tax_year, use_doh_nowcast=not getattr(args, "no_doh_nowcast", False)
+        tax_year,
+        use_doh_nowcast=not getattr(args, "no_doh_nowcast", False),
+        method=getattr(args, "birth_projection_method", BIRTH_PROJECTION_METHOD),
     )
     if args.use_proxy_births or "observed_births" not in projected.columns:
         return {
@@ -742,7 +879,7 @@ def _calibrate_births(projected: pd.DataFrame, tax_year: int, args) -> dict:
 
     county_calibration = _calibrate_births_by_county(
         projected, target,
-        use_doh_county=not getattr(args, "no_doh_county_shares", False),
+        use_county_shares=not getattr(args, "no_county_share_calibration", False),
     )
 
     return {
@@ -1873,28 +2010,29 @@ def main(argv: Optional[list] = None) -> int:
          "prefer the observed-infant basis (default).")
     )
     cc = birth_info.get("county_calibration", {})
-    if cc.get("mode") == "doh_county_shares":
+    if cc.get("mode") == "nvsr_county_shares":
         cf = cc["county_factors"]
         county_note = (
-            " County split: recalibrated to Hawaiʻi DOH's aggregate county vital-"
-            "statistics shares (2018-2025), not raw PUMS county shares — PUMS's own "
-            "county allocation is small-sample-noisy (Hawaii County carries only ~11 "
+            " County split: recalibrated to CDC WONDER county-of-RESIDENCE natality "
+            "shares (2020-2024), not raw PUMS county shares — PUMS's own county "
+            "allocation is small-sample-noisy (Hawaii County carries only ~11 "
             "sampled infants) and Maui/Kauai are not independently sampled at all "
             "(one combined PUMA, split by a demographic-heuristic imputer, not survey "
-            "evidence). Per-county factor vs the raw PUMS-implied count: "
+            "evidence). Residence basis matters here: DOH's occurrence counts "
+            "overstate Honolulu ~2.2pp because neighbour-island mothers deliver on "
+            "Oʻahu. Per-county factor vs the raw PUMS-implied count: "
             + "; ".join(f"{c}×{v['factor']:.2f}" for c, v in cf.items())
             + ". The state BIRTH total is unchanged (redistribution only), but "
               "the state COST total is NOT — eligibility is unit-specific and "
               "correlated with county, so this also corrects the eligible share "
-              "(measured +2.1% on cost/recipients on the real frame; "
-              "eligible_families itself is unchanged). "
-              "--no-doh-county-shares restores raw PUMS shares."
+              "(eligible_families itself is unchanged). "
+              "--no-county-share-calibration restores raw PUMS shares."
         )
     elif cc.get("mode") == "raw_pums_shares":
         county_note = (
-            " County split: raw PUMS shares (--no-doh-county-shares) — unreliable for "
+            " County split: raw PUMS shares (--no-county-share-calibration) — unreliable for "
             "Hawaii/Maui/Kauai (small samples; Maui/Kauai not independently sampled). "
-            "Prefer the default DOH-calibrated split."
+            "Prefer the default WONDER-calibrated residence split."
         )
     else:
         county_note = ""

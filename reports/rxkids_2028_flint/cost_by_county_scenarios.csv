@@ -1,13 +1,13 @@
 scenario,label,county,cost_total,cost_prenatal,cost_postnatal,cost_se,recipients
-statutory_6mo,Statutory (Medicaid OR ≤300% FPL) · 6-mo postnatal,Hawaii,7644254.0,2408463.0,5235790.0,2588945.0,3351.0
-statutory_6mo,Statutory (Medicaid OR ≤300% FPL) · 6-mo postnatal,Honolulu,26237303.0,8266548.0,17970756.0,4899989.0,11501.0
-statutory_6mo,Statutory (Medicaid OR ≤300% FPL) · 6-mo postnatal,Kauai,2601356.0,819605.0,1781751.0,1499782.0,1140.0
-statutory_6mo,Statutory (Medicaid OR ≤300% FPL) · 6-mo postnatal,Maui,1800237.0,567198.0,1233039.0,887055.0,789.0
-universal_6mo,Universal · 6-mo postnatal,Hawaii,7644254.0,2408463.0,5235790.0,2588945.0,3351.0
-universal_6mo,Universal · 6-mo postnatal,Honolulu,47205022.0,14872815.0,32332207.0,7310876.0,20693.0
-universal_6mo,Universal · 6-mo postnatal,Kauai,2601356.0,819605.0,1781751.0,1499782.0,1140.0
-universal_6mo,Universal · 6-mo postnatal,Maui,6342483.0,1998316.0,4344166.0,3202331.0,2780.0
-universal_12mo,Universal · 12-mo postnatal,Hawaii,12880044.0,2408463.0,10471580.0,4362196.0,3351.0
-universal_12mo,Universal · 12-mo postnatal,Honolulu,79537229.0,14872815.0,64664414.0,12318325.0,20693.0
-universal_12mo,Universal · 12-mo postnatal,Kauai,4383107.0,819605.0,3563502.0,2527030.0,1140.0
-universal_12mo,Universal · 12-mo postnatal,Maui,10686649.0,1998316.0,8688332.0,5395708.0,2780.0
+statutory_6mo,Statutory (Medicaid OR ≤300% FPL) · 6-mo postnatal,Hawaii,8303727.0,2616243.0,5687484.0,2812295.0,3640.0
+statutory_6mo,Statutory (Medicaid OR ≤300% FPL) · 6-mo postnatal,Honolulu,25363059.0,7991101.0,17371958.0,4736718.0,11118.0
+statutory_6mo,Statutory (Medicaid OR ≤300% FPL) · 6-mo postnatal,Kauai,2741393.0,863727.0,1877667.0,1580519.0,1202.0
+statutory_6mo,Statutory (Medicaid OR ≤300% FPL) · 6-mo postnatal,Maui,1990442.0,627126.0,1363316.0,980027.0,873.0
+universal_6mo,Universal · 6-mo postnatal,Hawaii,8303727.0,2616243.0,5687484.0,2812295.0,3640.0
+universal_6mo,Universal · 6-mo postnatal,Honolulu,45632119.0,14377243.0,31254876.0,7067273.0,20003.0
+universal_6mo,Universal · 6-mo postnatal,Kauai,2741393.0,863727.0,1877667.0,1580519.0,1202.0
+universal_6mo,Universal · 6-mo postnatal,Maui,7062164.0,2225065.0,4837098.0,3571707.0,3096.0
+universal_12mo,Universal · 12-mo postnatal,Hawaii,13991211.0,2616243.0,11374968.0,4738524.0,3640.0
+universal_12mo,Universal · 12-mo postnatal,Honolulu,76886995.0,14377243.0,62509752.0,11907870.0,20003.0
+universal_12mo,Universal · 12-mo postnatal,Kauai,4619060.0,863727.0,3755333.0,2663065.0,1202.0
+universal_12mo,Universal · 12-mo postnatal,Maui,11899262.0,2225065.0,9674197.0,6018081.0,3096.0

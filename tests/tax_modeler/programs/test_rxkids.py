@@ -611,8 +611,8 @@ def test_doh_ratio_uses_post_covid_regime_only():
     # Post-COVID regime sits just above 1.0; pre-COVID was ~1.10.
     assert 1.0 < mean < 1.02, f"ratio {mean} looks like it swept in pre-COVID years"
     assert sd > 0.0, "dispersion must be carried into the nowcast MOE, not dropped"
-    for year in fc.DOH_RATIO_YEARS:
-        assert year >= 2020
+    for year in fc.doh_ratio_years():
+        assert year >= fc.DOH_RATIO_FIRST_YEAR
 
 
 def test_doh_maturation_drops_unregistered_trailing_months():
@@ -620,11 +620,47 @@ def test_doh_maturation_drops_unregistered_trailing_months():
     registered and must be excluded (in the 2026-07-06 pull June is ~35% short)."""
     fc = _forecast_module()
     snap_year = int(fc.DOH_SNAPSHOT[:4])
+    snap_month = int(fc.DOH_SNAPSHOT[5:7])
     assert fc._doh_mature_months(snap_year - 1) == 12      # prior year fully mature
     assert fc._doh_mature_months(snap_year + 1) == 0       # future year has nothing
     partial = fc._doh_mature_months(snap_year)
-    assert partial == fc.DOH_SNAPSHOT_MONTH - fc.DOH_MATURATION_MONTHS
+    assert partial == snap_month - fc.DOH_MATURATION_MONTHS
     assert 0 < partial < 12
+
+
+def test_doh_maturation_respects_year_boundary(monkeypatch):
+    """A snapshot taken early in year Y+1 must NOT treat all of year Y as
+    mature: December of Y is only weeks old and is still under-registered.
+
+    The earlier per-calendar-year form returned a flat 12 for any year before
+    the snapshot year, which silently understated the most recent (and highest-
+    influence) nowcast on any January/February refresh."""
+    fc = _forecast_module()
+    monkeypatch.setattr(fc, "DOH_SNAPSHOT", "2027-01-15")
+    # Jan 2027 snapshot, 2-month maturation -> Nov 2026 is the newest usable month.
+    assert fc._doh_mature_months(2026) == 11
+    assert fc._doh_mature_months(2025) == 12    # a full year back is genuinely done
+    assert fc._doh_mature_months(2027) == 0
+
+    # A February snapshot exposes the same boundary one month further on.
+    monkeypatch.setattr(fc, "DOH_SNAPSHOT", "2027-02-10")
+    assert fc._doh_mature_months(2026) == 12    # Dec 2026 now 2 months old: usable
+
+
+def test_doh_ratio_years_derived_not_hardcoded(monkeypatch):
+    """Adding a new NVSR final must widen the ratio calibration automatically.
+    Hardcoding the year tuple silently excluded newly-landed finals."""
+    fc = _forecast_module()
+    before = fc.doh_ratio_years()
+    assert max(before) == max(y for y in fc.HI_BIRTHS_BY_YEAR
+                              if y in fc.HI_DOH_BIRTHS_MONTHLY)
+
+    # Simulate the 2025 NVSR final landing; DOH already has 2025.
+    monkeypatch.setitem(fc.HI_BIRTHS_BY_YEAR, 2025, 14_500)
+    assert 2025 in fc.doh_ratio_years()
+    assert len(fc.doh_ratio_years()) == len(before) + 1
+    # Pre-regime years stay excluded regardless.
+    assert all(y >= fc.DOH_RATIO_FIRST_YEAR for y in fc.doh_ratio_years())
 
 
 def test_nvsr_final_always_wins_over_doh_nowcast():
@@ -759,12 +795,12 @@ def test_dependent_details_carry_person_weight():
 
 
 def test_county_shares_sum_to_one():
-    """DOH_COUNTY_SHARE must be a proper partition -- the county recalibration
+    """NVSR_COUNTY_SHARE must be a proper partition -- the county recalibration
     relies on this to leave the state total unchanged (sums to the same target
     the state-level calibration already computed)."""
     fc = _forecast_module()
-    assert sum(fc.DOH_COUNTY_SHARE.values()) == pytest.approx(1.0, abs=1e-6)
-    assert set(fc.DOH_COUNTY_SHARE) == {"Honolulu", "Hawaii", "Maui", "Kauai"}
+    assert sum(fc.NVSR_COUNTY_SHARE.values()) == pytest.approx(1.0, abs=1e-6)
+    assert set(fc.NVSR_COUNTY_SHARE) == {"Honolulu", "Hawaii", "Maui", "Kauai"}
 
 
 def _county_frame(rows):
@@ -776,7 +812,7 @@ def _county_frame(rows):
 
 def test_calibrate_births_by_county_matches_doh_shares_exactly():
     """After calibration, each county's weighted birth total must equal
-    DOH_COUNTY_SHARE[county] x target -- not whatever raw PUMS happened to
+    NVSR_COUNTY_SHARE[county] x target -- not whatever raw PUMS happened to
     imply. This is the core behavior: DOH decides the split, PUMS only
     decides which specific units within a county carry the (rescaled)
     births."""
@@ -788,14 +824,14 @@ def test_calibrate_births_by_county_matches_doh_shares_exactly():
         ("Kauai", 100.0, 1.0),
     ])
     target = 10_000.0
-    info = fc._calibrate_births_by_county(df, target, use_doh_county=True)
-    assert info["mode"] == "doh_county_shares"
+    info = fc._calibrate_births_by_county(df, target, use_county_shares=True)
+    assert info["mode"] == "nvsr_county_shares"
 
     w = df["weight"].to_numpy(float)
     b = df["observed_births"].to_numpy(float)
     for i, county in enumerate(df["county"]):
         weighted = b[i] * w[i]
-        expected = fc.DOH_COUNTY_SHARE[county] * target
+        expected = fc.NVSR_COUNTY_SHARE[county] * target
         assert weighted == pytest.approx(expected, rel=1e-6), county
 
     # State total is exactly reproduced -- redistribution, not a level change.
@@ -803,7 +839,7 @@ def test_calibrate_births_by_county_matches_doh_shares_exactly():
 
 
 def test_calibrate_births_by_county_leaves_unmapped_counties_alone():
-    """A county absent from DOH_COUNTY_SHARE (e.g. 'Unknown') must keep its
+    """A county absent from NVSR_COUNTY_SHARE (e.g. 'Unknown') must keep its
     pre-existing (state-level-scaled) value rather than being zeroed or
     crashing the redistribution."""
     fc = _forecast_module()
@@ -812,18 +848,18 @@ def test_calibrate_births_by_county_leaves_unmapped_counties_alone():
         ("Unknown", 50.0, 2.0),
     ])
     before_unknown = float(df.loc[1, "weight"] * df.loc[1, "observed_births"])
-    fc._calibrate_births_by_county(df, 1000.0, use_doh_county=True)
+    fc._calibrate_births_by_county(df, 1000.0, use_county_shares=True)
     after_unknown = float(df.loc[1, "weight"] * df.loc[1, "observed_births"])
     assert after_unknown == pytest.approx(before_unknown)
 
 
 def test_calibrate_births_by_county_noop_flag():
-    """--no-doh-county-shares (use_doh_county=False) must leave observed_births
+    """--no-county-share-calibration (use_county_shares=False) must leave observed_births
     untouched -- the escape hatch back to raw PUMS shares."""
     fc = _forecast_module()
     df = _county_frame([("Honolulu", 100.0, 5.0), ("Hawaii", 100.0, 1.0)])
     before = df["observed_births"].tolist()
-    info = fc._calibrate_births_by_county(df, 10_000.0, use_doh_county=False)
+    info = fc._calibrate_births_by_county(df, 10_000.0, use_county_shares=False)
     assert info["mode"] == "raw_pums_shares"
     assert df["observed_births"].tolist() == before
 
@@ -837,7 +873,7 @@ def test_calibrate_births_by_county_zero_raw_gets_finite_factor():
         ("Honolulu", 100.0, 5.0), ("Hawaii", 100.0, 0.0),
         ("Maui", 100.0, 0.0), ("Kauai", 100.0, 0.0),
     ])
-    info = fc._calibrate_births_by_county(df, 10_000.0, use_doh_county=True)
+    info = fc._calibrate_births_by_county(df, 10_000.0, use_county_shares=True)
     assert all(np.isfinite(v["factor"]) for v in info["county_factors"].values())
     assert df["observed_births"].tolist() == [5.0 * info["county_factors"]["Honolulu"]["factor"], 0.0, 0.0, 0.0]
 
@@ -868,9 +904,9 @@ def test_calibrate_births_state_total_invariant_to_county_flag():
         use_proxy_births = False
         no_birth_projection = True
         no_doh_nowcast = True
-        no_doh_county_shares = False
+        no_county_share_calibration = False
     class ArgsNoCounty(Args):
-        no_doh_county_shares = True
+        no_county_share_calibration = True
 
     info_a = fc._calibrate_births(df_a, 2028, Args())
     info_b = fc._calibrate_births(df_b, 2028, ArgsNoCounty())
@@ -880,3 +916,103 @@ def test_calibrate_births_state_total_invariant_to_county_flag():
     w_a = df_a["weight"].to_numpy(float); b_a = df_a["observed_births"].to_numpy(float)
     w_b = df_b["weight"].to_numpy(float); b_b = df_b["observed_births"].to_numpy(float)
     assert float((b_a * w_a).sum()) == pytest.approx(float((b_b * w_b).sum()))
+
+
+def test_nvsr_series_matches_wonder_and_is_monotone_plausible():
+    """HI_BIRTHS_BY_YEAR must match CDC WONDER (dataset D66, Hawaii, by year).
+
+    Four values were wrong before 2026-08-07 (2018/2019 by ~9%), which
+    manufactured a spurious ~1.10 DOH/NVSR ratio in those years and got
+    rationalised as a 'pre-COVID birth-tourism regime'. Pinning the series
+    against its source stops that recurring.
+    """
+    fc = _forecast_module()
+    wonder = {2018: 16972, 2019: 16797, 2020: 15785, 2021: 15620,
+              2022: 15535, 2023: 14808, 2024: 14917}
+    for year, expected in wonder.items():
+        assert fc.HI_BIRTHS_BY_YEAR[year] == expected, (
+            f"{year}: expected WONDER value {expected}, "
+            f"got {fc.HI_BIRTHS_BY_YEAR[year]}")
+
+    # Sanity the old series failed: births should not RISE into the pandemic.
+    s = fc.HI_BIRTHS_BY_YEAR
+    assert s[2018] > s[2020] > s[2022], "2018-2022 should decline, not rise"
+
+
+def test_occurrence_residence_ratio_is_stable_single_regime():
+    """With the series corrected the DOH/NVSR ratio is ~1.003 in EVERY year --
+    there is no pre/post-COVID regime, and the calibration should span all
+    available years rather than excluding early ones."""
+    fc = _forecast_module()
+    ratios = {
+        y: sum(fc.HI_DOH_BIRTHS_MONTHLY[y]) / fc.HI_BIRTHS_BY_YEAR[y]
+        for y in fc.doh_ratio_years()
+    }
+    assert len(ratios) >= 7, "all overlapping years should be in the calibration"
+    for y, r in ratios.items():
+        assert 1.000 < r < 1.010, f"{y}: ratio {r:.4f} outside the stable band"
+    mean, sd = fc._doh_ratio()
+    assert 1.002 < mean < 1.004
+    assert sd < 0.002, "a large sd would mean the single-regime claim is wrong"
+
+
+def test_county_shares_are_residence_basis_not_occurrence():
+    """NVSR_COUNTY_SHARE must carry the WONDER residence split, which gives
+    Honolulu a materially LOWER share than DOH's occurrence counts (neighbour-
+    island mothers deliver on Oahu). Guards against silently reverting to the
+    occurrence-based numbers."""
+    fc = _forecast_module()
+    # Occurrence (DOH, 2018-2025) had Honolulu at ~73.4%; residence is ~70.9%.
+    assert fc.NVSR_COUNTY_SHARE["Honolulu"] < 0.72
+    assert fc.NVSR_COUNTY_SHARE["Maui"] > 0.10      # occurrence understated Maui
+    assert fc.NVSR_COUNTY_SHARE["Hawaii"] > 0.13
+
+
+# ---------------------------------------------------------------------------
+# Birth projector selection (Kalman by default, on back-test evidence)
+# ---------------------------------------------------------------------------
+
+
+def test_birth_projection_defaults_to_kalman():
+    """Kalman is the default because it won the walk-forward back-test on every
+    metric AND fixed 50%-coverage intervals -- not because it is fancier."""
+    fc = _forecast_module()
+    assert fc.BIRTH_PROJECTION_METHOD == "kalman"
+    proj = fc._project_births(2028)
+    assert proj["method"] == "kalman"
+    assert proj["projected"] is True
+
+
+def test_birth_projection_methods_both_runnable_and_plausible():
+    """Both projectors must run on the production series and land in a sane
+    band; the ensemble stays available for comparison."""
+    fc = _forecast_module()
+    points = {}
+    for method in ("kalman", "ensemble"):
+        p = fc._project_births(2028, method=method)
+        assert p["method"] == method
+        assert 10_000 < p["point"] < 18_000, method
+        assert p["ci90_low"] < p["point"] < p["ci90_high"], method
+        points[method] = p
+    # The two disagree (they are genuinely different estimators); if they ever
+    # coincide exactly, the method switch has silently stopped taking effect.
+    assert points["kalman"]["point"] != points["ensemble"]["point"]
+
+
+def test_kalman_interval_is_wider_than_the_undercovering_ensemble():
+    """The back-test measured ensemble CI90 coverage at 50% (target 90%) --
+    i.e. too tight. The replacement must not be even tighter."""
+    fc = _forecast_module()
+    k = fc._project_births(2028, method="kalman")
+    e = fc._project_births(2028, method="ensemble")
+    width = lambda p: p["ci90_high"] - p["ci90_low"]
+    assert width(k) > width(e)
+
+
+def test_unknown_birth_projection_method_falls_back_not_crashes():
+    """An unrecognised method must degrade to the ensemble rather than abort a
+    forecast run (the CLI constrains choices, but library callers may not)."""
+    fc = _forecast_module()
+    p = fc._project_births(2028, method="not-a-method")
+    assert p["projected"] is True
+    assert 10_000 < p["point"] < 18_000
