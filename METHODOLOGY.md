@@ -1596,6 +1596,68 @@ coherent, since rates and prices both rise in booms while the
 contractionary effect operates over longer horizons. Reading the lag
 column matters; a flag is a prompt to look, not a verdict.
 
+### Splitting arrivals: the signal was in the international margin (2026-08-07)
+
+A survey for new sources found the best one was already being fetched:
+the DBEDT MEI workbook carries ~40 columns this repo was not reading,
+including a **domestic/international split** of both arrivals and
+visitor days, in all five workbooks. No new fetcher, no new dependency —
+20 series added (4 measures × 5 geographies), monthly, arrivals from
+1990-01 and visitor days from 2002-01.
+
+The blended `DBEDT_ARRIVALS_*` averages two markets that behave nothing
+alike. International travel (Japan above all) collapsed after 2020 and
+has recovered on a completely different path from domestic, and it is
+the higher-spend, hotel-concentrated segment. If the tourism→employment
+channel is real, averaging the two should weaken it.
+
+**It did.** Against `HI_UNEMPLOYMENT`, all three clear BH on the full
+sample; the 2020-exclusion run separates them:
+
+| predictor | lag 3 | lag 6 | lag 12 | robust |
+|---|---|---|---|---|
+| `HI_VISITORS_ARRIVALS` (blended) | p=0.028 | 0.145 | 0.087 | **no** |
+| `HI_VISITORS_DOM` | p=0.061 | 0.421 | 0.220 | **no** |
+| `HI_VISITORS_INTL` | **p=0.0014** | 0.105 | 0.186 | **yes (lag 3)** |
+
+The blended pair fails the robustness gate at every lag. Split apart,
+the international segment survives at lag 3 — a signal the average was
+hiding. Robust count 14 → 15, nothing displaced.
+
+**How far to trust it, stated plainly: not far yet.** The new sign
+check declines to endorse this one. Its mean lead-1..3 correlation is
+**+0.040** where the mechanism predicts negative — below the
+materiality floor (1/√234 ≈ 0.065), so the verdict is *no material
+direction* rather than *contradicted*, but it is the wrong side of zero
+and it only just escapes being flagged. Granger predictive content and
+a clean bivariate lead relationship are different claims; this has the
+first and not the second. Treat it as a lead worth watching, not a
+validated channel, and do not promote it without a mechanism restated
+at a specific horizon.
+
+**Not registered: the segments against their own total.**
+`DBEDT_ARRIVALS_*` *is* DOM + INTL — verified on the data rather than
+assumed, across 5 geographies × 438 months, worst reconstruction error
+1 visitor out of 345,075. Screening a term against its own sum is
+circular, and more starkly so than HIPHCI, which at least blended four
+inputs. Against `HI_UNEMPLOYMENT` the segments are legitimate, since
+the unemployment rate is built from neither.
+
+*Also surveyed and rejected this round*, so nobody re-researches them:
+the **DOT Consumer Airfare Report** (DB1B fares) excludes Hawaii *and*
+Alaska entirely — 142 city-market values, zero HI/AK, contiguous-48
+only; **OpenSky Network** historical flights now returns 403
+(authentication required). **FDIC call reports** for the six
+Hawaii-domiciled banks are live, keyless and rich (net loans, RE loans,
+C&I, deposits, quarterly 1984→2026) and the mechanism is attractive —
+local credit is the fundamental under the BOH/FHB *equity* pairs
+already screened — but they are **quarterly, and this screen cannot
+test quarterly predictors**: `granger_f_test` requires all lags present
+and a quarterly series has data only every third month, so it returns
+`None` at lags 3, 6 and 12 alike (verified with a synthetic series, not
+assumed). Same wall the bimonthly CPI hits. Bundling them would give
+descriptive cross-correlations only.
+
 *Process note.* An intermediate check during this work compared the
 count of entries in `selected_signals.json` before and after and read
 "+2" as "two new robust findings". That file holds **all 67 BH passes**

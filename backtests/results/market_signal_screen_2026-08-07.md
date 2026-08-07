@@ -1,6 +1,6 @@
 # Market-signal screen — 2026-08-07
 
-Pre-registered ticker→target hypotheses (41 pairs), Granger F-tests on monthly log-returns at lags 3/6/12, BH-FDR q=0.1. 104 tests run.
+Pre-registered ticker→target hypotheses (43 pairs), Granger F-tests on monthly log-returns at lags 3/6/12, BH-FDR q=0.1. 110 tests run.
 
 **Granger ≠ causation.** A pass means the ticker's past adds predictive content beyond the target's own past. Confounders survive this screen; the Phase-3 forecaster ablation is the final arbiter. mom12 rows are descriptive cross-correlations only (overlapping windows invalidate the F-test).
 
@@ -106,6 +106,14 @@ Every registered pair declares the direction its mechanism predicts (`EXPECTED_S
 | HI_BIZ_APPS | log_return | HI_UNEMPLOYMENT | 6 | 2.33 | 0.0334 | 244 | -0.147@1m | n/a | **YES** |  |
 | HI_BIZ_APPS | log_return | HI_UNEMPLOYMENT | 12 | 2.09 | 0.0186 | 236 | -0.147@1m | n/a | **YES** |  |
 | HI_BIZ_APPS | mom12 | HI_UNEMPLOYMENT | — | — | — | — | -0.223@1m | n/a | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
+| HI_VISITORS_INTL | log_return | HI_UNEMPLOYMENT | 3 | 5.04 | 0.0021 | 250 | -0.835@0m | n/a | **YES** |  |
+| HI_VISITORS_INTL | log_return | HI_UNEMPLOYMENT | 6 | 3.64 | 0.0018 | 244 | -0.835@0m | n/a | **YES** |  |
+| HI_VISITORS_INTL | log_return | HI_UNEMPLOYMENT | 12 | 4.02 | 0.0000 | 236 | -0.835@0m | n/a | **YES** |  |
+| HI_VISITORS_INTL | mom12 | HI_UNEMPLOYMENT | — | — | — | — | +0.151@2m | n/a | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
+| HI_VISITORS_DOM | log_return | HI_UNEMPLOYMENT | 3 | 5.47 | 0.0012 | 250 | -0.859@0m | n/a | **YES** |  |
+| HI_VISITORS_DOM | log_return | HI_UNEMPLOYMENT | 6 | 3.39 | 0.0032 | 244 | -0.859@0m | n/a | **YES** |  |
+| HI_VISITORS_DOM | log_return | HI_UNEMPLOYMENT | 12 | 3.88 | 0.0000 | 236 | -0.859@0m | n/a | **YES** |  |
+| HI_VISITORS_DOM | mom12 | HI_UNEMPLOYMENT | — | — | — | — | -0.259@0m | n/a | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
 | XLRE | log_return | HONOLULU_ZHVI | 3 | 3.71 | 0.0136 | 125 | +0.194@5m | n/a | **YES** |  |
 | XLRE | log_return | HONOLULU_ZHVI | 6 | 3.46 | 0.0036 | 122 | +0.194@5m | ok | **YES** |  |
 | XLRE | log_return | HONOLULU_ZHVI | 12 | — | — | — | +0.194@5m | n/a | no | insufficient aligned months |
@@ -191,7 +199,7 @@ Every registered pair declares the direction its mechanism predicts (`EXPECTED_S
 | US_EMPPOP | log_return | HI_UNEMPLOYMENT | 12 | 8.85 | 0.0000 | 236 | -0.961@0m | n/a | **YES** |  |
 | US_EMPPOP | mom12 | HI_UNEMPLOYMENT | — | — | — | — | -0.288@0m | n/a | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
 
-## 2020 excluded (COVID sensitivity) — 93 tests
+## 2020 excluded (COVID sensitivity) — 99 tests
 
 A signal that only exists because of the 2020 crash is a one-event artifact, not a relationship.
 
@@ -277,6 +285,14 @@ A signal that only exists because of the 2020 crash is a one-event artifact, not
 | HI_BIZ_APPS | log_return | HI_UNEMPLOYMENT | 6 | 0.84 | 0.5400 | 225 | -0.048@3m | n/a | no |  |
 | HI_BIZ_APPS | log_return | HI_UNEMPLOYMENT | 12 | 0.84 | 0.6083 | 211 | -0.048@3m | n/a | no |  |
 | HI_BIZ_APPS | mom12 | HI_UNEMPLOYMENT | — | — | — | — | +0.153@7m | n/a | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
+| HI_VISITORS_INTL | log_return | HI_UNEMPLOYMENT | 3 | 5.38 | 0.0014 | 234 | -0.168@0m | n/a | **YES** |  |
+| HI_VISITORS_INTL | log_return | HI_UNEMPLOYMENT | 6 | 1.78 | 0.1046 | 225 | -0.168@0m | n/a | no |  |
+| HI_VISITORS_INTL | log_return | HI_UNEMPLOYMENT | 12 | 1.36 | 0.1864 | 211 | -0.168@0m | n/a | no |  |
+| HI_VISITORS_INTL | mom12 | HI_UNEMPLOYMENT | — | — | — | — | -0.131@8m | n/a | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
+| HI_VISITORS_DOM | log_return | HI_UNEMPLOYMENT | 3 | 2.50 | 0.0607 | 234 | -0.277@4m | ok | no |  |
+| HI_VISITORS_DOM | log_return | HI_UNEMPLOYMENT | 6 | 1.01 | 0.4207 | 225 | -0.277@4m | ok | no |  |
+| HI_VISITORS_DOM | log_return | HI_UNEMPLOYMENT | 12 | 1.30 | 0.2201 | 211 | -0.277@4m | ok | no |  |
+| HI_VISITORS_DOM | mom12 | HI_UNEMPLOYMENT | — | — | — | — | -0.239@2m | n/a | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
 | XLRE | log_return | HONOLULU_ZHVI | 3 | 2.97 | 0.0352 | 109 | +0.191@5m | n/a | no |  |
 | XLRE | log_return | HONOLULU_ZHVI | 6 | — | — | — | +0.191@5m | n/a | no | insufficient aligned months |
 | XLRE | log_return | HONOLULU_ZHVI | 12 | — | — | — | +0.191@5m | n/a | no | insufficient aligned months |

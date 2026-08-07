@@ -81,6 +81,20 @@ SERIES: dict[tuple[str, int], str] = {
     ("visitor arrivals by air", 0): "DBEDT_ARRIVALS_",
     ("total visitor days by air", 0): "DBEDT_VISITOR_DAYS_",
     ("visitor expenditures by air", 0): "DBEDT_VISITOR_SPEND_",
+    # Domestic/international split of the two flow measures above.
+    # The totals average two markets that behave nothing alike: the
+    # international share (Japan above all) collapsed after 2020 and has
+    # recovered on a completely different path from domestic travel, so
+    # a single arrivals number hides the margin where Hawaii's tourism
+    # volatility actually lives.
+    #
+    # Present in all five workbooks but at DIFFERENT column positions —
+    # 51/52 in the county books, 55/56 in the state book — which is why
+    # this module matches header fragments instead of column indices.
+    ("domestic flight visitors", 0): "DBEDT_ARRIVALS_DOM_",
+    ("international flight visitors", 0): "DBEDT_ARRIVALS_INTL_",
+    ("domestic visitor days by air", 0): "DBEDT_VISITOR_DAYS_DOM_",
+    ("international visitor days by air", 0): "DBEDT_VISITOR_DAYS_INTL_",
     # --- tourism-exposed employment (the labour side of that chain) ---
     ("accommodation", 0): "DBEDT_JOBS_ACCOM_",
     ("food services & drinking places", 0): "DBEDT_JOBS_FOOD_",

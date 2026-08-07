@@ -9,7 +9,11 @@ from datetime import datetime
 import openpyxl
 import pytest
 
-from census_forecaster.markets.screen import HAWAII_PREDICTORS, MONTHLY_TARGETS
+from census_forecaster.markets.screen import (
+    HAWAII_PREDICTORS,
+    HYPOTHESIS_PAIRS,
+    MONTHLY_TARGETS,
+)
 from census_forecaster.scripts import refresh_dbedt_mei as mei
 
 
@@ -122,6 +126,52 @@ def test_duplicate_label_resolves_to_distinct_columns():
     sf = out["DBEDT_SF_INVENTORY_"][0]["value"]
     condo = out["DBEDT_CONDO_INVENTORY_"][0]["value"]
     assert (sf, condo) == (781.0, 2525.0), "occurrences collapsed onto one column"
+
+
+def test_domestic_international_split_parsed():
+    """The blended total averages two markets that behave nothing alike.
+    Column positions differ between the state book (55/56) and the
+    county books (51/52), which is why fragments are matched, not
+    indices — so both layouts are exercised here."""
+    headers = ["Total visitor days by air", "Domestic visitor days by air",
+               "International visitor days by air", "Visitor arrivals by air",
+               "Domestic flight visitors 2/", "International flight visitors 2/"]
+    out = mei.parse_mei_workbook(_workbook(headers, [
+        (datetime(2026, 6, 1), [900, 700, 200, 100, 75, 25]),
+    ]))
+    assert out["DBEDT_ARRIVALS_"][0]["value"] == 100.0
+    assert out["DBEDT_ARRIVALS_DOM_"][0]["value"] == 75.0
+    assert out["DBEDT_ARRIVALS_INTL_"][0]["value"] == 25.0
+    assert out["DBEDT_VISITOR_DAYS_"][0]["value"] == 900.0
+    assert out["DBEDT_VISITOR_DAYS_DOM_"][0]["value"] == 700.0
+    assert out["DBEDT_VISITOR_DAYS_INTL_"][0]["value"] == 200.0
+
+
+def test_total_fragment_does_not_swallow_the_split_columns():
+    """'total visitor days by air' must not also match the domestic or
+    international variants, and vice versa — substring matching makes
+    that a live risk every time a fragment is added."""
+    frags = {f for f, _ in mei.SERIES}
+    assert "total visitor days by air" in frags
+    for label in ("domestic visitor days by air",
+                  "international visitor days by air"):
+        matched = {f for f in frags if f in label}
+        assert matched == {label}, f"{label} also matched {matched - {label}}"
+
+
+def test_segments_not_screened_against_their_own_total():
+    """DBEDT_ARRIVALS_* IS the sum of the DOM and INTL columns (verified
+    on the data: worst reconstruction error 1 visitor in 345,075 across
+    5 geographies x 438 months). Screening a term against its own sum is
+    circular — starker than the HIPHCI case, which at least blended
+    four inputs."""
+    assert HAWAII_PREDICTORS["HI_VISITORS_INTL"] == "DBEDT_ARRIVALS_INTL_STATEWIDE"
+    assert HAWAII_PREDICTORS["HI_VISITORS_DOM"] == "DBEDT_ARRIVALS_DOM_STATEWIDE"
+    assert ("HI_VISITORS_INTL", "HI_VISITORS") not in HYPOTHESIS_PAIRS
+    assert ("HI_VISITORS_DOM", "HI_VISITORS") not in HYPOTHESIS_PAIRS
+    # ...but against labour slack they are legitimate.
+    assert ("HI_VISITORS_INTL", "HI_UNEMPLOYMENT") in HYPOTHESIS_PAIRS
+    assert ("HI_VISITORS_DOM", "HI_UNEMPLOYMENT") in HYPOTHESIS_PAIRS
 
 
 def test_tax_rows_deliberately_not_taken():

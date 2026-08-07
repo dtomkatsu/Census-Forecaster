@@ -168,6 +168,16 @@ HAWAII_PREDICTORS: dict[str, str] = {
     # HTML search forms — no CSV, no API, no series (verified
     # 2026-08-06).
     "HI_BIZ_APPS": "BABATOTALSAHI",
+    # --- domestic / international split of arrivals (2026-08-07) ---
+    # HI_VISITORS_ARRIVALS above averages two markets that behave
+    # nothing alike. International (Japan above all) collapsed after
+    # 2020 and has recovered on a completely different path from
+    # domestic travel, and it is the higher-spend, hotel-concentrated
+    # segment — so the tourism→employment signal, if it exists, should
+    # be stronger here than in the blended total. Splitting it is the
+    # cheapest available test of that.
+    "HI_VISITORS_INTL": "DBEDT_ARRIVALS_INTL_STATEWIDE",
+    "HI_VISITORS_DOM": "DBEDT_ARRIVALS_DOM_STATEWIDE",
     #
     # NOT registered as predictors, deliberately:
     #
@@ -342,6 +352,21 @@ HYPOTHESIS_PAIRS: tuple[tuple[str, str], ...] = (
     # US applications vs 0.43% of population), so the signal may simply
     # be small here.
     ("HI_BIZ_APPS", "HI_UNEMPLOYMENT"),
+    # --- 2026-08-07: does the tourism signal live in one segment? ---
+    # Both segments against labour slack, so the blended
+    # HI_VISITORS_ARRIVALS -> HI_UNEMPLOYMENT pair above can be read as
+    # a decomposition rather than a single averaged verdict.
+    ("HI_VISITORS_INTL", "HI_UNEMPLOYMENT"),
+    ("HI_VISITORS_DOM", "HI_UNEMPLOYMENT"),
+    #
+    # NOT REGISTERED — ("HI_VISITORS_INTL", "HI_VISITORS") and
+    # ("HI_VISITORS_DOM", "HI_VISITORS"): ARITHMETICALLY CIRCULAR, and
+    # more starkly than HIPHCI ever was. HIPHCI at least blends four
+    # inputs; here the target IS the sum of the two predictors.
+    # Verified on the data rather than assumed — across all five
+    # geographies and 438 months, DOM + INTL reconstructs the published
+    # total to within one visitor (worst case 1 of 345,075). Asking
+    # whether a term predicts its own sum is not a hypothesis.
     #
     # NOT REGISTERED, deliberately:
     #
@@ -431,6 +456,8 @@ EXPECTED_SIGN: dict[tuple[str, str], int] = {
     ("HI_AIR_PAX", "HI_VISITORS"): +1,
     # Tourism inflow up -> slack down.
     ("HI_VISITORS_ARRIVALS", "HI_UNEMPLOYMENT"): -1,
+    ("HI_VISITORS_INTL", "HI_UNEMPLOYMENT"): -1,
+    ("HI_VISITORS_DOM", "HI_UNEMPLOYMENT"): -1,
     ("HI_VISITOR_SPEND", "HI_UNEMPLOYMENT"): -1,
     # Labour-market mechanics.
     ("HI_UI_CLAIMS", "HI_UNEMPLOYMENT"): +1,   # more filings -> more slack
