@@ -13,9 +13,9 @@ follows a draft Hawaiʻi statute: a family qualifies if it **(1) qualifies for
 the State's Medicaid program, OR (2) has family income ≤ 300% of the federal
 poverty level**, including the expected unborn child.
 
-**Headline (TY2028, statutory design — the default):** ~**$31M/yr** in benefit
-dollars (~$34M with 8% admin), reaching ~**13,700 recipients** across ~7,340
-eligible families. Assumption band ~**$19M–$40M**. A Flint-equivalent scenario
+**Headline (TY2028, statutory design — the default):** ~**$32M/yr** in benefit
+dollars (~$35M with 8% admin), reaching ~**14,000 recipients** across ~7,340
+eligible families. Assumption band ~**$19M–$41M**. A Flint-equivalent scenario
 (98% take-up, +10% fertility) is ~**$38M**. The estimate is dominated by
 *specification* uncertainty, not sampling — see §6.
 
@@ -26,11 +26,12 @@ income or Medicaid test), which cost substantially more:
 
 | Design | Benefit cost | With 8% admin | Recipients/yr | Flint-equivalent |
 |---|---|---|---|---|
-| **`statutory_6mo` (default)** | **~$31M** | ~$34M | ~13,700 | ~$38M |
-| `universal_6mo` | ~$53M | ~$58M | ~23,400 | ~$64M |
-| `universal_12mo` | ~$90M | ~$97M | ~23,400 | ~$108M |
+| **`statutory_6mo` (default)** | **~$32M** | ~$35M | ~14,000 | ~$38M |
+| `universal_6mo` | ~$53M | ~$58M | ~23,300 | ~$64M |
+| `universal_12mo` | ~$90M | ~$97M | ~23,300 | ~$108M |
 
-*Figures re-derived from live runs on 2026-08-06; they match
+*Figures re-derived from live runs on 2026-08-07 (post county-split fix, see
+RXKIDS_METHODOLOGY.md §3 "County split"); they match
 [`RXKIDS_METHODOLOGY.md`](RXKIDS_METHODOLOGY.md) §0 and §10, which are the
 source of truth. An earlier version of this block quoted ~$54M/~24,000/~$65M as
 the "conservative default" — those were the **universal 6-month** figures

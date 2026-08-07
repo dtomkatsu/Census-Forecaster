@@ -194,6 +194,55 @@ DOH_MATURATION_MONTHS = 2
 # Years whose DOH/NVSR ratio defines the current (post-travel-collapse) regime.
 DOH_RATIO_YEARS = (2020, 2021, 2022, 2023, 2024)
 
+# ---------------------------------------------------------------------------
+# DOH county-level births — calibration target for the county split
+# ---------------------------------------------------------------------------
+# The state-level birth target (NVSR + DOH nowcast, above) is well-anchored,
+# but ACS PUMS's COUNTY ALLOCATION of that total is not independently anchored
+# to anything and is unreliable for two distinct reasons:
+#
+# 1. SMALL SAMPLE. On the 2024 1-year PUMS frame, the raw (unweighted) age-0
+#    infant sample is Honolulu=81, Hawaii=11, Maui=9, Kauai=6. At n=11 the
+#    Poisson relative SE is ~30% -- comfortably large enough to explain
+#    Hawaii County's ~36% divergence from DOH's actual (stable, ~1,900-1,950
+#    every year 2018-2025) county-level count by chance alone. A larger 5-year
+#    PUMS frame narrows this (n=65 for Hawaii County) but doesn't eliminate it,
+#    and doesn't touch problem 2 below.
+# 2. STRUCTURAL: Maui and Kauai are NOT independently sampled at all. Hawaii's
+#    2020-vintage PUMA geography combines Maui + Kalawao + Kauai into a single
+#    PUMA (0100) -- confirmed present, still combined, in both the 1-year and
+#    5-year files (Census PUMA boundaries are fixed for the decade; no PUMS
+#    vintage separates them). `PUMA0100Imputer` (analysis/puma_imputation.py)
+#    assigns each unit a *probabilistic* Maui-vs-Kauai label from population
+#    shares + demographic heuristics (income/family-size/housing-type), not
+#    real sampled geography. Any Maui/Kauai split computed from raw PUMS
+#    shares is therefore an artifact of that imputer, not survey evidence.
+#
+# Hawaii DOH's monthly county vital-statistics counts (same source as the
+# state-level nowcast above) are genuine administrative data -- exactly
+# resolved by county, immune to both problems. County shares below are the
+# AGGREGATE share of each county across all complete DOH years (2018-2025;
+# 2026 excluded as partial), from the same snapshot as HI_DOH_BIRTHS_MONTHLY.
+# Shares are essentially flat over this window (Honolulu 72.8-74.3%, Hawaii
+# 11.4-13.1%, Maui 9.35-9.79%, Kauai 4.25-5.03% year to year) -- no material
+# trend, so a plain aggregate share (not recency-weighted) is the right
+# estimator here, unlike the state-level birth-COUNT series, which does trend.
+#
+# This calibrates the SPLIT of the state BIRTH total, not the birth total
+# itself -- sum(DOH_COUNTY_SHARE.values()) == 1 by construction, so summing
+# the four county birth targets reproduces the state birth target exactly.
+# It does NOT hold for the state COST total: eligibility is unit-specific and
+# correlated with county (Hawaii County runs poorer than Honolulu), so moving
+# birth mass onto a previously-undersampled county changes the state-weighted
+# eligible share too (measured +2.1% on cost/recipients; see
+# _calibrate_births_by_county).
+DOH_COUNTY_SHARE = {
+    "Honolulu": 0.733707,
+    "Hawaii": 0.123490,
+    "Maui": 0.095995,
+    "Kauai": 0.046808,
+}
+
 # Default administrative-load fraction. Program cost in this model is pure
 # benefit dollars (cash out the door); a real appropriation also carries
 # operating overhead (enrollment, disbursement, eligibility, outreach).
@@ -268,6 +317,18 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                    help="Drop the Hawaiʻi DOH preliminary-births nowcast and project "
                         "from CDC NVSR final data only. NVSR lags ~18 months, so this "
                         "leaves the post-final years unobserved (see RXKIDS_METHODOLOGY.md §3).")
+    p.add_argument("--no-doh-county-shares", action="store_true", default=False,
+                   help="Use raw ACS PUMS county shares for cost_by_county instead of "
+                        "recalibrating to DOH's county-level vital statistics. PUMS's "
+                        "county split is small-sample-noisy (Hawaii County n~11) and "
+                        "Maui/Kauai are not independently sampled (combined PUMA, split "
+                        "only by a demographic-heuristic imputer) — see "
+                        "RXKIDS_METHODOLOGY.md §3. The state BIRTH total is unaffected "
+                        "either way (redistribution, not a level change), but the state "
+                        "COST total moves ~1-2% -- eligibility is unit-specific and "
+                        "correlated with county, so shifting birth mass toward a "
+                        "previously-undersampled (poorer) county changes the weighted "
+                        "eligible share, not just cost_by_county.")
     p.add_argument("--use-proxy-births", action="store_true", default=False,
                    help="Use the legacy num_dependents × child_under_age_share birth "
                         "proxy instead of observed (age-0 dependent) infant counts. "
@@ -573,6 +634,74 @@ def _project_births(target_year: int, use_doh_nowcast: bool = True) -> dict:
             "ci90_high": float(fp.ci90_high), "projected": True, **meta}
 
 
+def _calibrate_births_by_county(
+    projected: pd.DataFrame, target: float, use_doh_county: bool = True,
+) -> dict:
+    """Redistribute the (already state-calibrated) birth total across counties
+    to match DOH's aggregate county shares, instead of ACS PUMS's own county
+    split.
+
+    Why: the state total is well-anchored (NVSR + DOH nowcast), but PUMS's
+    COUNTY allocation of it is not independently anchored to anything, for two
+    distinct reasons documented at ``DOH_COUNTY_SHARE``: (1) tiny per-county
+    infant samples (Hawaii County n=11 on the 2024 1yr frame — ~30% Poisson
+    relative SE) and (2) Maui/Kauai are structurally NOT independently
+    sampled — Hawaii's 2020 PUMA geography combines them into one PUMA, split
+    only by a probabilistic demographic-heuristic imputer, not real survey
+    evidence. DOH's monthly county vital-statistics are genuine administrative
+    data, exactly resolved by county, immune to both problems.
+
+    Mutates ``projected['observed_births']`` in place: rescales it per-county
+    so ``Σ observed_births × weight`` within each county hits
+    ``DOH_COUNTY_SHARE[county] × target``. The state BIRTH total is unchanged
+    by construction (``Σ DOH_COUNTY_SHARE.values() == 1``) — this only
+    reslices it. Rows in a county absent from ``DOH_COUNTY_SHARE`` keep the
+    state-level scale already applied by the caller — no county is silently
+    zeroed.
+
+    NOT invariant: the state COST total. RxKids eligibility (Medicaid/FPL) is
+    per-unit and correlated with county (Hawaiʻi County runs poorer than
+    Honolulu), so moving birth mass from an over- to an under-sampled county
+    changes how much of it lands on already-eligible vs already-ineligible
+    units. Measured effect on the real frame: +2.1% on both cost and
+    recipients when this recalibration is enabled, with ``eligible_families``
+    (the 0/1 eligibility test itself) exactly unchanged — confirming the
+    mechanism is reallocation of birth-weighted mass onto eligible units, not
+    a change in who's eligible.
+    """
+    if (not use_doh_county or "county" not in projected.columns
+            or "observed_births" not in projected.columns):
+        return {"mode": "raw_pums_shares", "county_factors": {}}
+
+    county_key = projected["county"]
+    if isinstance(county_key.dtype, pd.CategoricalDtype):
+        county_key = county_key.astype(object)
+    county_key = county_key.fillna("Unknown")
+
+    w = projected["weight"].fillna(0).to_numpy(dtype=float)
+    b = projected["observed_births"].astype(float).to_numpy()
+    scale = np.ones(len(projected), dtype=float)
+    county_factors: dict = {}
+    for county, share in DOH_COUNTY_SHARE.items():
+        mask = (county_key == county).to_numpy()
+        raw_c = float((b[mask] * w[mask]).sum())
+        target_c = share * target
+        factor_c = (target_c / raw_c) if raw_c > 0 else 1.0
+        scale[mask] = factor_c
+        county_factors[county] = {"raw": raw_c, "target": target_c, "factor": factor_c}
+
+    unmatched = ~county_key.isin(list(DOH_COUNTY_SHARE))
+    if unmatched.any():
+        LOG.warning(
+            "_calibrate_births_by_county: %d rows in unmapped counties (%s); "
+            "left at the state-level scale, not DOH-recalibrated.",
+            int(unmatched.sum()), sorted(set(county_key[unmatched])),
+        )
+
+    projected["observed_births"] = b * scale
+    return {"mode": "doh_county_shares", "county_factors": county_factors}
+
+
 def _calibrate_births(projected: pd.DataFrame, tax_year: int, args) -> dict:
     """Scale ``observed_births`` so the weighted total hits the (projected) target.
 
@@ -582,6 +711,14 @@ def _calibrate_births(projected: pd.DataFrame, tax_year: int, args) -> dict:
     ensemble projection, unless ``--no-birth-projection``). Returns metadata
     for reporting. In ``--use-proxy-births`` mode (or when the observed column
     is absent) it is a no-op and the proxy drives both arms downstream.
+
+    After the state-level scalar is applied, ``_calibrate_births_by_county``
+    (unless ``--no-doh-county-shares``) redistributes that SAME birth total
+    across counties using DOH's county shares rather than PUMS's own (noisy /
+    structurally-imputed, see DOH_COUNTY_SHARE) county split. The state BIRTH
+    total is unaffected either way, but the state COST total is NOT — see
+    ``_calibrate_births_by_county`` for why (eligibility is unit-specific and
+    correlated with county).
     """
     proj = _project_births(
         tax_year, use_doh_nowcast=not getattr(args, "no_doh_nowcast", False)
@@ -591,7 +728,7 @@ def _calibrate_births(projected: pd.DataFrame, tax_year: int, args) -> dict:
             "mode": "proxy", "raw_weighted": float("nan"),
             "calibrated_weighted": float("nan"), "target": float("nan"),
             "factor": 1.0, "projection": proj,
-            "trend_applied": False,
+            "trend_applied": False, "county_calibration": {"mode": "n/a", "county_factors": {}},
         }
 
     w = projected["weight"].fillna(0).to_numpy(dtype=float)
@@ -603,10 +740,16 @@ def _calibrate_births(projected: pd.DataFrame, tax_year: int, args) -> dict:
     factor = (target / raw_weighted) if raw_weighted > 0 else 1.0
     projected["observed_births"] = projected["observed_births"].astype(float) * factor
 
+    county_calibration = _calibrate_births_by_county(
+        projected, target,
+        use_doh_county=not getattr(args, "no_doh_county_shares", False),
+    )
+
     return {
         "mode": "observed", "raw_weighted": raw_weighted,
         "calibrated_weighted": raw_weighted * factor, "target": float(target),
         "factor": factor, "projection": proj, "trend_applied": trend_applied,
+        "county_calibration": county_calibration,
     }
 
 
@@ -1729,6 +1872,33 @@ def main(argv: Optional[list] = None) -> int:
          "rate per dependent) — --use-proxy-births. This overstates total births; "
          "prefer the observed-infant basis (default).")
     )
+    cc = birth_info.get("county_calibration", {})
+    if cc.get("mode") == "doh_county_shares":
+        cf = cc["county_factors"]
+        county_note = (
+            " County split: recalibrated to Hawaiʻi DOH's aggregate county vital-"
+            "statistics shares (2018-2025), not raw PUMS county shares — PUMS's own "
+            "county allocation is small-sample-noisy (Hawaii County carries only ~11 "
+            "sampled infants) and Maui/Kauai are not independently sampled at all "
+            "(one combined PUMA, split by a demographic-heuristic imputer, not survey "
+            "evidence). Per-county factor vs the raw PUMS-implied count: "
+            + "; ".join(f"{c}×{v['factor']:.2f}" for c, v in cf.items())
+            + ". The state BIRTH total is unchanged (redistribution only), but "
+              "the state COST total is NOT — eligibility is unit-specific and "
+              "correlated with county, so this also corrects the eligible share "
+              "(measured +2.1% on cost/recipients on the real frame; "
+              "eligible_families itself is unchanged). "
+              "--no-doh-county-shares restores raw PUMS shares."
+        )
+    elif cc.get("mode") == "raw_pums_shares":
+        county_note = (
+            " County split: raw PUMS shares (--no-doh-county-shares) — unreliable for "
+            "Hawaii/Maui/Kauai (small samples; Maui/Kauai not independently sampled). "
+            "Prefer the default DOH-calibrated split."
+        )
+    else:
+        county_note = ""
+    birth_note = birth_note + county_note
     notes = [
         f"RxKids Hawaiʻi — methodology notes (TY {ty})",
         "",

@@ -29,7 +29,7 @@ A family qualifies if **either** of these is true:
 
 This is broader than a Medicaid-only program but narrower than giving cash to
 everyone. On the real Hawaiʻi data, roughly **60% of all birth families** clear
-this bar (~7,944 of ~14,127 projected 2028 births). Most of that eligibility —
+this bar (~8,101 of ~14,127 projected 2028 births). Most of that eligibility —
 about **two-thirds** — comes from families who already qualify for Medicaid; the
 300% FPL income test adds the rest. (See the decomposition in §10.)
 
@@ -51,9 +51,9 @@ scenario comparison in §0 (bottom line) and §10.
 4. **Project to 2028 and scale up to the whole state** using Census population
    weights.
 
-**Bottom line (statutory design):** about **$31 million a year** in cash benefits
-(≈$34M including 8% administrative overhead), reaching roughly **13,700 people a
-year**. The realistic uncertainty range is **$19M–$40M** — driven mostly by how
+**Bottom line (statutory design):** about **$32 million a year** in cash benefits
+(≈$35M including 8% administrative overhead), reaching roughly **14,000 people a
+year**. The realistic uncertainty range is **$19M–$41M** — driven mostly by how
 many families actually enroll, which no Hawaiʻi track record exists to pin down
 yet.
 
@@ -62,9 +62,9 @@ yet.
 
 | Design | Who qualifies | Payments | Cash cost/yr | With 8% admin | Recipients/yr |
 |---|---|---|---|---|---|
-| **Statutory · 6 mo** | Medicaid OR ≤300% FPL | $1,500 + $500×6 | **~$31M** | ~$34M | ~13,700 |
-| **Universal · 6 mo** | every birth family | $1,500 + $500×6 | **~$53M** | ~$58M | ~23,400 |
-| **Universal · 12 mo** | every birth family | $1,500 + $500×12 | **~$90M** | ~$97M | ~23,400 |
+| **Statutory · 6 mo** | Medicaid OR ≤300% FPL | $1,500 + $500×6 | **~$32M** | ~$35M | ~14,000 |
+| **Universal · 6 mo** | every birth family | $1,500 + $500×6 | **~$53M** | ~$58M | ~23,300 |
+| **Universal · 12 mo** | every birth family | $1,500 + $500×12 | **~$90M** | ~$97M | ~23,300 |
 
 Going universal at 6 months adds ~$22M (it reaches ~9,600 more recipients); the
 extra 6 months of payments on top adds ~$37M more (the postnatal arm doubles,
@@ -482,6 +482,59 @@ absent-`pwgtp` fallback, and the constructor field.
 > The RxKids birth driver was the one place this had leaked; other demographic
 > consumers should be audited against the same rule.
 
+#### County split — DOH shares, not raw PUMS shares (2026-08-07)
+
+The state birth total is well-anchored (NVSR + DOH nowcast, §3 below). PUMS's
+**county allocation** of that total is not anchored to anything, for two
+distinct reasons — one a sample-size problem, one structural:
+
+**1. Small samples.** On the 2024 1-year frame, the raw (unweighted) age-0
+infant count is Honolulu 81, Hawaii 11, Maui 9, Kauai 6. At n=11 the Poisson
+relative SE is ~30% — comfortably large enough to explain what the raw PUMS
+split implied for Hawaii County: a **−36.5%** collapse from DOH's actual level
+by 2028, when DOH itself shows Hawaii County flat (~1,900–1,950) every year
+2018–2025. A larger 5-year frame narrows this (n=65 for Hawaii County) but
+doesn't fix problem 2, and wasn't pursued for that reason.
+
+**2. Maui and Kauai are not independently sampled at all.** Hawaiʻi's
+2020-vintage PUMA geography combines Maui + Kalawao + Kauai into a single PUMA
+(0100) — confirmed present, still combined, in both the 1-year and 5-year
+files (Census PUMA boundaries are fixed for the decade; no PUMS vintage
+separates them). `PUMA0100Imputer`
+(`analysis/puma_imputation.py`) assigns each unit a **probabilistic**
+Maui-vs-Kauai label from 2023 population shares (68.9%/31.1%) plus demographic
+heuristics (income, family size, housing type) — not real sampled geography.
+Any Maui/Kauai split read off raw PUMS shares is therefore an artifact of that
+imputer's heuristics, not survey evidence.
+
+**The fix.** Hawaiʻi DOH's monthly county vital-statistics (the same source as
+the state-level nowcast, §3) are genuine administrative data, exactly resolved
+by county — immune to both problems. `_calibrate_births_by_county`
+redistributes the (unchanged) state birth total across counties to match
+DOH's **aggregate 2018–2025 county shares** (2026 excluded as a partial year;
+shares are flat over the window — no material trend, so a plain aggregate
+share, not recency-weighting, is the right estimator):
+
+| County | DOH share (2018–2025) | Raw PUMS-implied share (2028) | Factor applied |
+|---|---|---|---|
+| Honolulu | 73.4% | 76.8% | ×0.94 |
+| Hawaii | 12.3% | 8.8% | **×1.42** |
+| Maui | 9.6% | 9.4% | ×1.03 |
+| Kauai | 4.7% | 5.1% | ×0.92 |
+
+**This moves the state COST total too — not just `cost_by_county`.** The state
+*birth* total is unaffected by construction (`Σ DOH_COUNTY_SHARE == 1`, so
+summing the four county targets reproduces the state target exactly — verified
+by test). But RxKids eligibility (Medicaid/300% FPL) is tested **per unit**,
+and Hawaiʻi County runs poorer than Honolulu — so shifting birth-weighted mass
+from an over- to an under-sampled county changes how much of it lands on
+already-eligible vs. already-ineligible units. Measured on the real frame:
+**statutory cost +2.1% ($31.3M → $32.0M), recipients +2.1% (13,728 → 14,011)**,
+with `eligible_families` (the 0/1 test itself) **exactly unchanged** at 7,340 —
+confirming the mechanism is reallocation onto already-eligible units, not a
+change in who qualifies. `--no-doh-county-shares` restores the raw (small-
+sample, partly-imputed) PUMS split for comparison.
+
 #### Data-source audit: DOH vs CDC (2026-08-06)
 
 The birth series is the least externally-anchored input in this model — unlike
@@ -666,7 +719,7 @@ Projected Hawaii impact under default Medicaid-targeted parameters:
 |---|---|---|
 | Take-up | 98% | 0.90 postnatal / 0.83 prenatal (default) |
 | Avg disbursement / recipient | ~$3,505 (rolling) | ~$2,280 (prenatal+postnatal mix) |
-| Reach | 10,774 families (cumulative) | ~13,700 recipients/yr (~6,578 pregnancies + ~7,150 infants) |
+| Reach | 10,774 families (cumulative) | ~14,000 recipients/yr (~6,713 pregnancies + ~7,297 infants) |
 | Annual cost | ~$25-30M (single-city) | ~$32M benefit / ~$35M w/ admin (statutory 300%-FPL-OR-Medicaid); ~$50M (universal·6mo) / ~$84M (universal·12mo) |
 | Persons lifted out of poverty | Not yet published | Reported per `--apply-rxkids` run |
 
@@ -882,7 +935,7 @@ This headline is the **statutory 6-month** design (the first scenario in the
 | **Appropriation total (benefit + admin)** | **~$35M** |
 | Sampling 90% CI | ~$29M–$36M |
 | **Assumption band (joint corners)** | **~$19M–$41M** |
-| Expected recipients / year | ~13,700 (≈6,578 pregnancies + 7,150 infants) |
+| Expected recipients / year | ~14,000 (≈6,713 pregnancies + 7,297 infants) |
 | Avg benefit per recipient | ~$2,280 |
 | First fiscal year (launch, 12-mo ramp) | ~$13M (41% of steady) |
 | Optional +6-month postnatal (statutory) | +~$22M (12-month-design total ~$54M) |
@@ -930,6 +983,20 @@ This headline is the **statutory 6-month** design (the first scenario in the
 > Net of both changes on the same day, the statutory headline moves
 > **~$32M → ~$31M**.
 
+> **County-split fix (2026-08-07).** `cost_by_county` was driven by ACS PUMS's
+> own county allocation of the birth total — unreliable for two reasons (§3,
+> "County split"): small samples (Hawaii County n=11 infants) and Maui/Kauai
+> not being independently sampled at all (combined PUMA, split only by a
+> demographic-heuristic imputer). Recalibrated to Hawaiʻi DOH's aggregate
+> county vital-statistics shares instead. This is **not** just a
+> `cost_by_county` cosmetic fix — eligibility is unit-specific and correlated
+> with county (Hawaiʻi County runs poorer than Honolulu), so correcting the
+> allocation moved the **state** total too: statutory **$31.3M → $32.0M
+> (+2.1%)**, recipients **13,728 → 14,011 (+2.1%)**, with `eligible_families`
+> exactly unchanged at 7,340 (confirming the mechanism is reallocation onto
+> already-eligible units, not a change in who qualifies). `--no-doh-county-shares`
+> restores the raw PUMS split.
+
 Take-up is **arm-specific** (see §2): postnatal/newborn **0.90**, prenatal
 **0.83** (0.92 × postnatal, from Flint's ~90% prenatal vs ~98% newborn). So
 postnatal is a bit *more* than 2× prenatal — the 2× per-birth payment ratio
@@ -954,12 +1021,12 @@ two policy levers — the **eligibility gate** and the **postnatal duration**:
 
 | Scenario (`key`) | Eligibility | Postnatal | $/birth | Cash cost | Appropriation | Recipients/yr | Assumption band |
 |---|---|---|---|---|---|---|---|
-| `statutory_6mo` | Medicaid OR ≤300% FPL | 6 mo | $4,500 | **~$31M** | ~$34M | ~13,700 | ~$19M–$40M |
-| `universal_6mo` | universal (no test) | 6 mo | $4,500 | **~$53M** | ~$58M | ~23,400 | ~$32M–$68M |
-| `universal_12mo` | universal (no test) | 12 mo | $7,500 | **~$90M** | ~$97M | ~23,400 | ~$54M–$115M |
+| `statutory_6mo` | Medicaid OR ≤300% FPL | 6 mo | $4,500 | **~$32M** | ~$35M | ~14,000 | ~$19M–$41M |
+| `universal_6mo` | universal (no test) | 6 mo | $4,500 | **~$53M** | ~$58M | ~23,300 | ~$32M–$68M |
+| `universal_12mo` | universal (no test) | 12 mo | $7,500 | **~$90M** | ~$97M | ~23,300 | ~$54M–$114M |
 
 - **Universal eligibility** (`income_fpl_cap=100.0`, ≈ no income/Medicaid test)
-  reaches essentially every birth family — ~23,400 recipients vs ~13,700 under
+  reaches essentially every birth family — ~23,300 recipients vs ~14,000 under
   the statutory gate. Going universal at 6 months adds **~$18M** in cash cost
   (it pulls in the ~7,700 birth families above the statutory gate).
 - **The extra 6 months** (`postnatal_months=12`) doubles the postnatal arm and
@@ -976,7 +1043,7 @@ behavioral response). Two Flint-observed assumptions raise it:
 
 | Sensitivity | Take-up (post/pre) | Fertility | Steady-state cost | Band |
 |---|---|---|---|---|
-| Conservative (default) | 0.90 / 0.83 | — | **~$31M** | ~$19–40M |
+| Conservative (default) | 0.90 / 0.83 | — | **~$32M** | ~$19–41M |
 | **Flint-equivalent** | 0.98 / 0.90 | +10% | **~$38M** | ~$23–48M |
 
 `--takeup-rate 0.98 --fertility-response 0.10` produces the Flint scenario —
@@ -984,7 +1051,7 @@ which sets postnatal take-up to 0.98 and prenatal to 0.98 × 0.92 ≈ 0.90,
 recovering Flint's *observed* arm rates exactly. The **fertility response**
 (`_apply_fertility`) models the ~10% post-launch birth rise documented in the
 *Rx Kids Flint Birth Report (2026)* as a uniform +10% on eligible births
-(×1.10 on both arms): ~$31M × (0.98/0.90 take-up lift) × 1.10 ≈ $38M.
+(×1.10 on both arms): ~$32M × (0.98/0.90 take-up lift) × 1.10 ≈ $38M.
 It is a real upside risk a static model would miss, but **off by default**:
 Flint's rise may blend a conception response with in-migration of pregnant
 residents into eligible areas, and Hawaiʻi's island geography would see far
@@ -995,7 +1062,7 @@ fertility levers compose with any of the three scenario designs above.)
 
 "Eligible families" (~7,340 weighted on the observed basis — families with an
 **observed birth** clearing the income/Medicaid test) is NOT the recipient
-count. Actual **expected recipients** (pregnancies + infants) are ~13,700/yr,
+count. Actual **expected recipients** (pregnancies + infants) are ~14,000/yr,
 recovered by dividing each arm's expected-dollar column by its full
 per-recipient payment ($1,500 prenatal, $3,000 postnatal). Report recipients,
 not the eligible base. (Under the legacy proxy the eligible base was ~100k —
@@ -1013,9 +1080,9 @@ universe, which overcounted pregnancies ~2× and required a runtime
 
 ### Eligible-birth cross-check
 
-On the **observed** basis the model implies **~7,944 eligible births** (=
-~7,150 infant recipients ÷ 0.90 take-up) out of the ~14,127 projected 2028
-births = **~56% of births eligible**, on the MAGI-household grain.
+On the **observed** basis the model implies **~8,108 eligible births** (=
+~7,297 infant recipients ÷ 0.90 take-up) out of the ~14,127 projected 2028
+births = **~57% of births eligible**, on the MAGI-household grain.
 
 - **External anchor:** Hawaii Medicaid-financed births ≈ 40% (~6,200) — a
   *floor* (the pregnancy-Medicaid pathway sits at 196% FPL). The model's 60%
@@ -1030,7 +1097,7 @@ births = **~56% of births eligible**, on the MAGI-household grain.
   |---|---|---|
   | Clause 1 — Medicaid families (≈40% floor, scaled to 2028) | ~5,450 | ~40% |
   | Clause 2 — income-only (≤300% FPL, **not** on Medicaid) | ~2,690 | ~20% |
-  | **Combined eligible (model output)** | **~7,944** | **~56%** |
+  | **Combined eligible (model output)** | **~8,108** | **~57%** |
 
   So roughly **two-thirds of eligibility is the Medicaid clause**, with the
   300% FPL income test adding the remaining ~third on top. This is a useful

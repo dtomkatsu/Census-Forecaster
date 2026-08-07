@@ -751,3 +751,132 @@ def test_dependent_details_carry_person_weight():
     assert len(details) == 1
     assert details[0]["age"] == 0
     assert details[0]["pwgtp"] == pytest.approx(125.0)
+
+
+# ---------------------------------------------------------------------------
+# County-split calibration — DOH shares, not raw (noisy/imputed) PUMS shares
+# ---------------------------------------------------------------------------
+
+
+def test_county_shares_sum_to_one():
+    """DOH_COUNTY_SHARE must be a proper partition -- the county recalibration
+    relies on this to leave the state total unchanged (sums to the same target
+    the state-level calibration already computed)."""
+    fc = _forecast_module()
+    assert sum(fc.DOH_COUNTY_SHARE.values()) == pytest.approx(1.0, abs=1e-6)
+    assert set(fc.DOH_COUNTY_SHARE) == {"Honolulu", "Hawaii", "Maui", "Kauai"}
+
+
+def _county_frame(rows):
+    """rows: list of (county, weight, births)."""
+    return pd.DataFrame([
+        {"county": c, "weight": w, "observed_births": b} for c, w, b in rows
+    ])
+
+
+def test_calibrate_births_by_county_matches_doh_shares_exactly():
+    """After calibration, each county's weighted birth total must equal
+    DOH_COUNTY_SHARE[county] x target -- not whatever raw PUMS happened to
+    imply. This is the core behavior: DOH decides the split, PUMS only
+    decides which specific units within a county carry the (rescaled)
+    births."""
+    fc = _forecast_module()
+    df = _county_frame([
+        ("Honolulu", 100.0, 5.0),   # raw weighted 500 -- wildly PUMS-skewed
+        ("Hawaii", 100.0, 1.0),     # raw weighted 100 -- tiny sample
+        ("Maui", 100.0, 1.0),
+        ("Kauai", 100.0, 1.0),
+    ])
+    target = 10_000.0
+    info = fc._calibrate_births_by_county(df, target, use_doh_county=True)
+    assert info["mode"] == "doh_county_shares"
+
+    w = df["weight"].to_numpy(float)
+    b = df["observed_births"].to_numpy(float)
+    for i, county in enumerate(df["county"]):
+        weighted = b[i] * w[i]
+        expected = fc.DOH_COUNTY_SHARE[county] * target
+        assert weighted == pytest.approx(expected, rel=1e-6), county
+
+    # State total is exactly reproduced -- redistribution, not a level change.
+    assert float((b * w).sum()) == pytest.approx(target, rel=1e-6)
+
+
+def test_calibrate_births_by_county_leaves_unmapped_counties_alone():
+    """A county absent from DOH_COUNTY_SHARE (e.g. 'Unknown') must keep its
+    pre-existing (state-level-scaled) value rather than being zeroed or
+    crashing the redistribution."""
+    fc = _forecast_module()
+    df = _county_frame([
+        ("Honolulu", 100.0, 1.0),
+        ("Unknown", 50.0, 2.0),
+    ])
+    before_unknown = float(df.loc[1, "weight"] * df.loc[1, "observed_births"])
+    fc._calibrate_births_by_county(df, 1000.0, use_doh_county=True)
+    after_unknown = float(df.loc[1, "weight"] * df.loc[1, "observed_births"])
+    assert after_unknown == pytest.approx(before_unknown)
+
+
+def test_calibrate_births_by_county_noop_flag():
+    """--no-doh-county-shares (use_doh_county=False) must leave observed_births
+    untouched -- the escape hatch back to raw PUMS shares."""
+    fc = _forecast_module()
+    df = _county_frame([("Honolulu", 100.0, 5.0), ("Hawaii", 100.0, 1.0)])
+    before = df["observed_births"].tolist()
+    info = fc._calibrate_births_by_county(df, 10_000.0, use_doh_county=False)
+    assert info["mode"] == "raw_pums_shares"
+    assert df["observed_births"].tolist() == before
+
+
+def test_calibrate_births_by_county_zero_raw_gets_finite_factor():
+    """A county with zero raw sampled births (small-sample edge case) must not
+    produce inf/nan -- falls back to factor=1.0 (contributes nothing, rather
+    than crashing or injecting a phantom population)."""
+    fc = _forecast_module()
+    df = _county_frame([
+        ("Honolulu", 100.0, 5.0), ("Hawaii", 100.0, 0.0),
+        ("Maui", 100.0, 0.0), ("Kauai", 100.0, 0.0),
+    ])
+    info = fc._calibrate_births_by_county(df, 10_000.0, use_doh_county=True)
+    assert all(np.isfinite(v["factor"]) for v in info["county_factors"].values())
+    assert df["observed_births"].tolist() == [5.0 * info["county_factors"]["Honolulu"]["factor"], 0.0, 0.0, 0.0]
+
+
+def test_calibrate_births_state_total_invariant_to_county_flag():
+    """Whether county recalibration is on or off, the STATE total that
+    _calibrate_births computes must be identical -- county calibration only
+    reslices an already-fixed total, it never changes it.
+
+    Requires every DOH-covered county to have >=1 sampled infant (true in the
+    real PUMS frame: Honolulu/Hawaii/Maui/Kauai all have nonzero samples) --
+    a county with zero raw sample gets factor=1.0 (see
+    test_calibrate_births_by_county_zero_raw_gets_finite_factor) and its DOH
+    share genuinely can't attach anywhere, so the invariant only holds when
+    the fixture mirrors that well-posed case."""
+    fc = _forecast_module()
+    rows = [
+        {"weight": 100.0, "county": c,
+         "dependents_details": [{"age": 0, "relationship": 25, "citizenship": 1,
+                                  "months_in_home": 12, "school_level": 0,
+                                  "disabled": False, "pwgtp": 100.0}]}
+        for c in ("Honolulu", "Hawaii", "Maui", "Kauai")
+    ]
+    df_a = fc._observed_births(pd.DataFrame(rows))
+    df_b = df_a.copy(deep=True)
+
+    class Args:
+        use_proxy_births = False
+        no_birth_projection = True
+        no_doh_nowcast = True
+        no_doh_county_shares = False
+    class ArgsNoCounty(Args):
+        no_doh_county_shares = True
+
+    info_a = fc._calibrate_births(df_a, 2028, Args())
+    info_b = fc._calibrate_births(df_b, 2028, ArgsNoCounty())
+    assert info_a["target"] == pytest.approx(info_b["target"])
+    assert info_a["calibrated_weighted"] == pytest.approx(info_b["calibrated_weighted"])
+
+    w_a = df_a["weight"].to_numpy(float); b_a = df_a["observed_births"].to_numpy(float)
+    w_b = df_b["weight"].to_numpy(float); b_b = df_b["observed_births"].to_numpy(float)
+    assert float((b_a * w_a).sum()) == pytest.approx(float((b_b * w_b).sum()))
