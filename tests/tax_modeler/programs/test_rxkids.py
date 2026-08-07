@@ -1016,3 +1016,51 @@ def test_unknown_birth_projection_method_falls_back_not_crashes():
     p = fc._project_births(2028, method="not-a-method")
     assert p["projected"] is True
     assert 10_000 < p["point"] < 18_000
+
+
+# ---------------------------------------------------------------------------
+# Empirical calibration of the Kalman birth path (bias + conformal kappa)
+# ---------------------------------------------------------------------------
+
+
+def test_kalman_birth_path_applies_bias_and_kappa():
+    """The production Kalman projection must NOT quote the raw analytical
+    output: the repo's discipline requires empirically calibrated PIs, and the
+    46-fold back-test measured a systematic +2% point bias and an over-covering
+    (97.8%) analytical interval. Point = raw * exp(-b); half-width shrunk by
+    kappa on the bias-corrected SE."""
+    import math
+    fc = _forecast_module()
+    p = fc._project_births(2028, method="kalman")
+    cal = p.get("calibration")
+    assert cal, "kalman path must attach its calibration metadata"
+    shrink = math.exp(-fc.BIRTH_KALMAN_LOG_BIAS)
+    assert p["point"] == pytest.approx(cal["raw_point"] * shrink, rel=1e-9)
+    # Interval is symmetric about the corrected point.
+    assert (p["point"] - p["ci90_low"]) == pytest.approx(
+        p["ci90_high"] - p["point"], rel=1e-9)
+    # Ensemble path carries no such metadata (it is not calibrated here).
+    assert "calibration" not in fc._project_births(2028, method="ensemble")
+
+
+def test_kalman_calibration_constants_in_derivable_range():
+    """Pin the constants to the neighbourhood the back-test derives them in;
+    a wildly different value on re-derivation means the series or the filter
+    changed and the write-up needs revisiting, not just the constant."""
+    fc = _forecast_module()
+    assert 0.0 < fc.BIRTH_KALMAN_LOG_BIAS < 0.05     # +2.0% pooled at derivation
+    assert 0.5 < fc.BIRTH_KALMAN_SE_KAPPA < 1.2      # 0.862 at derivation
+
+
+def test_nvsr_series_extends_to_wonder_2007():
+    """The series spans the full WONDER D66 window so the back-test has 46
+    folds and the filter enters recent years with an established trend state.
+    Spot-pin the ends and the 2017->2018 join that exposed the old error."""
+    fc = _forecast_module()
+    assert fc.HI_BIRTHS_BY_YEAR[2007] == 19134
+    assert fc.HI_BIRTHS_BY_YEAR[2017] == 17517
+    assert len(fc.HI_BIRTHS_BY_YEAR) == 18
+    # The join: a smooth -3.1% step, not the absurd -12% cliff the wrong
+    # 2018 value (15,404) implied.
+    step = fc.HI_BIRTHS_BY_YEAR[2018] / fc.HI_BIRTHS_BY_YEAR[2017] - 1
+    assert -0.05 < step < 0.0

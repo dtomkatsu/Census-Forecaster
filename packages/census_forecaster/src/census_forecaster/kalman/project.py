@@ -87,14 +87,19 @@ def project_kalman(
         return None
 
     if end_year is None:
-        end_year = max(effective_year(o) for o in obs_1y)
+        # effective_year returns a float (5y vintages sit at year-2.0); the
+        # filter loop and the h-step predictor below both feed this to
+        # range(), so it MUST be an int. Without the coercion the default
+        # branch raises TypeError — latent until now because every in-repo
+        # caller (ensemble.project_ensemble_multi) passes an explicit int.
+        end_year = int(round(max(effective_year(o) for o in obs_1y)))
 
     # Trim to ≤ end_year (caller may have already done this).
     obs_1y = [o for o in obs_1y if effective_year(o) <= end_year]
     if not obs_1y:
         return None
 
-    h = target_year - end_year
+    h = int(target_year - end_year)
     if h < 0:
         return None
 

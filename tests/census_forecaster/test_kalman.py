@@ -159,6 +159,19 @@ class TestProjectKalmanBasic:
         assert fp is not None
         assert fp.horizon == 3
 
+    def test_default_end_year_is_usable(self):
+        """Omitting end_year must work. The default used to be
+        max(effective_year(o)) — a float — which range() then rejected with
+        TypeError. It stayed latent for months because every caller (and every
+        test above) passed an explicit int; this pins the default path itself.
+        """
+        obs = _flat_series(6)   # ends 2015
+        fp_default = project_kalman(obs, target_year=2018)
+        fp_explicit = project_kalman(obs, target_year=2018, end_year=2015)
+        assert fp_default is not None
+        assert fp_default.point == pytest.approx(fp_explicit.point)
+        assert fp_default.horizon == fp_explicit.horizon
+
     def test_point_within_10pct_annual_rate_cap(self):
         # Anchors may pull growth up from a flat series, but never beyond the 10%/yr cap.
         obs = _flat_series(8, base=60_000.0)

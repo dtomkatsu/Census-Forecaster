@@ -148,7 +148,26 @@ DEFAULT_SCENARIO_KEY = "statutory_6mo"
 # ~1.10 DOH/NVSR ratio in those years, which was previously (wrongly) explained
 # here as a pre-COVID "birth tourism" regime that the travel collapse ended. No
 # such regime exists — see the ratio note below.
+# Extended to the full WONDER D66 window (2007-2024) on 2026-08-07: the longer
+# history lets the Kalman filter enter the recent years with a well-established
+# trend state instead of a diffuse initialisation at 2018, and gives the
+# walk-forward back-test 46 scoreable folds instead of 6 (the difference
+# between a sanity gate and an actual calibration — see
+# scripts/backtest_birth_projection.py). The 2017→2018 join (17,517 → 16,972)
+# also confirms the 2018/2019 correction: the previously-recorded 15,404 would
+# have been an absurd 12% single-year cliff.
 HI_BIRTHS_BY_YEAR = {
+    2007: 19134,
+    2008: 19484,
+    2009: 18887,
+    2010: 18988,
+    2011: 18956,
+    2012: 18980,
+    2013: 18987,
+    2014: 18550,
+    2015: 18420,
+    2016: 18059,
+    2017: 17517,
     2018: 16972,
     2019: 16797,
     2020: 15785,
@@ -234,6 +253,26 @@ DOH_RATIO_FIRST_YEAR = 2018
 # see _project_births and scripts/backtest_birth_projection.py. "ensemble" is
 # the legacy damped-trend + AR(1) combiner, retained for comparison.
 BIRTH_PROJECTION_METHOD = "kalman"
+
+# Empirical calibration of the Kalman birth path, derived by
+# scripts/backtest_birth_projection.py from a 46-fold walk-forward over the
+# 2007-2024 NVSR finals (h <= 4). Re-run the script and update BOTH constants
+# whenever the series gains a new final. Applied in the repo's canonical order
+# (bias first, then kappa -- see ensemble.py): the raw Kalman point carries a
+# systematic +2.0% high bias on this persistently-declining series (the phi
+# damping under-extrapolates the decline; per-horizon b runs +0.4% at h=1 to
+# +4.2% at h=4, pooled per the repo's n>=20 strata threshold), and the raw
+# analytical interval over-covers (97.8% vs the 90% target), so kappa < 1
+# SHRINKS it onto calibrated coverage (93.5% in-sample after both).
+#
+#   point_corrected = point * exp(-BIRTH_KALMAN_LOG_BIAS)
+#   half_width      = 1.645 * BIRTH_KALMAN_SE_KAPPA * se_total * exp(-b)
+#
+# Without this, the quoted PI is purely analytical -- which the repo's own
+# discipline forbids ("empirically calibrated 90% PIs via backtest, NOT
+# analytical").
+BIRTH_KALMAN_LOG_BIAS = 0.0203
+BIRTH_KALMAN_SE_KAPPA = 0.862
 
 # ---------------------------------------------------------------------------
 # DOH county-level births — calibration target for the county split
@@ -764,8 +803,24 @@ def _project_births(target_year: int, use_doh_nowcast: bool = True,
     if fp is None:
         return {"point": base_level, "ci90_low": base_level,
                 "ci90_high": base_level, "projected": False, **meta}
-    return {"point": float(fp.point), "ci90_low": float(fp.ci90_low),
-            "ci90_high": float(fp.ci90_high), "projected": True, **meta}
+
+    point = float(fp.point)
+    lo, hi = float(fp.ci90_low), float(fp.ci90_high)
+    if meta["method"] == "kalman":
+        # Empirical calibration (bias first, then kappa) -- see the constants'
+        # comment block. Both the point and the SE rescale by exp(-b); the
+        # half-width additionally shrinks by kappa onto calibrated coverage.
+        shrink = math.exp(-BIRTH_KALMAN_LOG_BIAS)
+        point *= shrink
+        half = 1.645 * BIRTH_KALMAN_SE_KAPPA * float(fp.se_total) * shrink
+        lo, hi = point - half, point + half
+        meta["calibration"] = {
+            "log_bias": BIRTH_KALMAN_LOG_BIAS,
+            "kappa": BIRTH_KALMAN_SE_KAPPA,
+            "raw_point": float(fp.point),
+        }
+    return {"point": point, "ci90_low": lo, "ci90_high": hi,
+            "projected": True, **meta}
 
 
 def _calibrate_births_by_county(

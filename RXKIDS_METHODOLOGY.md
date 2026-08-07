@@ -29,7 +29,7 @@ A family qualifies if **either** of these is true:
 
 This is broader than a Medicaid-only program but narrower than giving cash to
 everyone. On the real Hawaiʻi data, roughly **60% of all birth families** clear
-this bar (~8,132 of ~14,126 projected 2028 births). Most of that eligibility —
+this bar (~7,969 of ~13,842 projected 2028 births). Most of that eligibility —
 about **two-thirds** — comes from families who already qualify for Medicaid; the
 300% FPL income test adds the rest. (See the decomposition in §10.)
 
@@ -51,9 +51,9 @@ scenario comparison in §0 (bottom line) and §10.
 4. **Project to 2028 and scale up to the whole state** using Census population
    weights.
 
-**Bottom line (statutory design):** about **$32 million a year** in cash benefits
-(≈$35M including 8% administrative overhead), reaching roughly **14,100 people a
-year**. The realistic uncertainty range is **$19M–$41M** — driven mostly by how
+**Bottom line (statutory design):** about **$31 million a year** in cash benefits
+(≈$34M including 8% administrative overhead), reaching roughly **13,800 people a
+year**. The realistic uncertainty range is **$19M–$40M** — driven mostly by how
 many families actually enroll, which no Hawaiʻi track record exists to pin down
 yet.
 
@@ -62,9 +62,9 @@ yet.
 
 | Design | Who qualifies | Payments | Cash cost/yr | With 8% admin | Recipients/yr |
 |---|---|---|---|---|---|
-| **Statutory · 6 mo** | Medicaid OR ≤300% FPL | $1,500 + $500×6 | **~$32M** | ~$35M | ~14,100 |
-| **Universal · 6 mo** | every birth family | $1,500 + $500×6 | **~$53M** | ~$57M | ~23,300 |
-| **Universal · 12 mo** | every birth family | $1,500 + $500×12 | **~$90M** | ~$97M | ~23,300 |
+| **Statutory · 6 mo** | Medicaid OR ≤300% FPL | $1,500 + $500×6 | **~$31M** | ~$34M | ~13,800 |
+| **Universal · 6 mo** | every birth family | $1,500 + $500×6 | **~$52M** | ~$56M | ~22,900 |
+| **Universal · 12 mo** | every birth family | $1,500 + $500×12 | **~$88M** | ~$95M | ~22,900 |
 
 Going universal at 6 months adds ~$22M (it reaches ~9,600 more recipients); the
 extra 6 months of payments on top adds ~$37M more (the postnatal arm doubles,
@@ -133,9 +133,10 @@ This is the single most important input, so here is exactly how it works:
 
 4. **We project births forward to 2028.** Because the forecast is for 2028, not
    2022, we age the birth count forward — since 2026-08-07 with the repo's
-   **Kalman state-space filter**, chosen over the older trend ensemble on
-   back-test evidence (§3). It projects **~14,126 births in 2028** (90% range
-   ~12,900–15,400) — a **×0.909** adjustment on the 2022 level. (You can turn
+   **Kalman state-space filter**, chosen over the older trend ensemble and then
+   empirically calibrated (bias + conformal κ) on a 46-fold back-test (§3). It
+   projects **~13,842 births in 2028** (90% range ~12,800–14,900) — a
+   **×0.891** adjustment on the 2022 level. (You can turn
    the projection off with `--no-birth-projection` to hold births at the 2022
    level, or drop the nowcast years with `--no-doh-nowcast`.)
 
@@ -156,7 +157,7 @@ families those births belong to; the trend model carries that forward to 2028.**
 
 | Input | Value | Source |
 |---|---|---|
-| Annual births | 15,535 (2022) → ~14,126 (2028 proj.) | CDC NVSR finals (via WONDER) + Hawaiʻi DOH nowcast, Kalman-projected (§3) |
+| Annual births | 15,535 (2022) → ~13,842 (2028 proj.) | CDC NVSR finals (via WONDER) + Hawaiʻi DOH nowcast, Kalman-projected + calibrated (§3) |
 | Family records / incomes | Hawaiʻi sample | Census PUMS (ACS 2018–2022 5-yr) |
 | Payment amounts | $1,500 prenatal; $500/mo × 6 postnatal | RxKids Flint program (rxkids.org) |
 | Take-up (enrollment) | 90% newborn / 83% prenatal | RxKids Flint observed 98%/90%, set conservatively |
@@ -401,11 +402,11 @@ base-year→target-year trend. The trend comes from running the resident-birth
 series (`HI_BIRTHS_BY_YEAR` + DOH nowcasts, by state of residence) through the
 package's own damped-trend + AR(1) ensemble (`project_acs_ensemble`, φ=0.85/yr
 annual cadence — the same machinery the income forecast uses). For TY2028 the
-Kalman filter projects **~14,126 births** (90% PI ~[12,868, 15,384]) from a 2022
-base of 15,535 — a **×0.909 vital-statistics trend**. Combined with the
+calibrated Kalman filter projects **~13,842 births** (90% PI ~[12,779, 14,905])
+from a 2022 base of 15,535 — a **×0.891 vital-statistics trend**. Combined with the
 PUMS→vital base correction (raw weighted **12,755** scaled up to the NVSR
 level, since the survey undercounts infants ~10%), the single scalar actually
-applied to `observed_births` is **×1.108** (12,755 → 14,126). Pass
+applied to `observed_births` is **×1.085** (12,755 → 13,842). Pass
 `--no-birth-projection` to hold the cohort at the base-year level instead.
 
 #### Birth weighting basis — person weight, not the hybrid unit weight
@@ -633,14 +634,17 @@ method change is isolated):
 | + 2024 NVSR final | 14,453 | [12,736, 16,169] | 3,433 |
 | + DOH nowcast | 14,127 | [13,071, 15,183] | 2,112 |
 | + corrected NVSR series (2018/19/20/23) | 13,923 | [13,104, 14,743] | 1,639 |
-| **+ Kalman projector (current default)** | **14,126** | **[12,868, 15,384]** | **2,516** |
+| + Kalman projector (raw) | 14,126 | [12,868, 15,384] | 2,516 |
+| **+ bias & κ calibration, 2007-2024 series (current default)** | **13,842** | **[12,779, 14,905]** | **2,126** |
 
 The individual moves matter more than the total, because they largely cancel:
 adding 2024 pushes the cohort **up** (+6.0%) by removing the dip-extrapolation;
 the nowcasts pull it **down** (−2.3%); correcting the series pulls it **down**
 again (−1.4%, the corrected 2018/19 are higher so the fitted decline is
-steeper); switching to Kalman pushes it **up** (+1.5%). Net across all four:
-13,632 → 14,126, **+3.6%**.
+steeper); switching to Kalman pushes it **up** (+1.5%); the empirical bias
+correction pulls it back **down** (−2.0%, the filter systematically
+under-extrapolates this decline in 46 walk-forward folds). Net across all five:
+13,632 → 13,842, **+1.5%**.
 
 **The headline barely moved; the honesty of the interval did.** The last row
 *widens* the PI, which is the point — the back-test found the ensemble's 90%
@@ -680,22 +684,24 @@ so the next refresh is a re-run rather than a retype.
 
 The cohort is projected with the package's **Kalman state-space filter**
 (`BIRTH_PROJECTION_METHOD = "kalman"`), not the damped-trend + AR(1) ensemble
-that drives the dollar indicators. That is an empirical result, not a
-preference: `scripts/backtest_birth_projection.py` walk-forwards both over the
-NVSR finals (full write-up in
-[`backtests/results/birth_projection_2026-08-07.md`](backtests/results/birth_projection_2026-08-07.md)).
+that drives the dollar indicators — and since later on 2026-08-07 the raw
+filter output is **empirically calibrated** (bias + conformal κ, below). Both
+decisions are back-test results, not preferences: the series was extended to
+the full CDC WONDER window (**2007–2024, 18 finals**) precisely so
+`scripts/backtest_birth_projection.py` could walk-forward **46 folds** at the
+production-relevant horizons (h ≤ 4). Full write-up in
+[`backtests/results/birth_projection_2026-08-07.md`](backtests/results/birth_projection_2026-08-07.md).
 
-| method | MAPE | bias | RMSE | CI90 coverage |
-|---|---|---|---|---|
-| persistence (floor) | 3.42% | +3.18% | 589 | — |
-| ensemble (old default) | 3.28% | −2.49% | 635 | **50%** |
-| **kalman (new default)** | **2.34%** | **+0.57%** | **395** | 100% |
+| method | n | MAPE | bias | RMSE | CI90 coverage |
+|---|---|---|---|---|---|
+| persistence (floor) | 46 | 5.18% | +5.14% | 1,018 | — |
+| ensemble (old default) | 46 | 3.43% | +3.12% | 715 | **69.6%** (40% at h=4) |
+| **kalman (default)** | 46 | **3.27%** | **+2.11%** | **658** | 97.8% |
 
-Kalman wins on every point metric and the gap *widens with horizon* (h=3: 0.41%
-vs the ensemble's 8.13%), which is what matters for a 2028 target. The decisive
-finding is the coverage column: the ensemble's 90% interval contained the truth
-in half its folds. The ensemble also barely beat naive persistence, i.e. it was
-adding almost nothing.
+Kalman wins every point metric, and the ensemble's interval genuinely collapses
+with horizon — **40% coverage at h=4**, the horizon the 2028 target sits at from
+the last final. (An earlier 6-fold version of this table measured that as 50%
+pooled; real n confirmed the direction and sharpened the location.)
 
 **Why they differ here.** `project_kalman` consumes each observation's MOE as
 measurement noise (R = (se/estimate)²). `fit_damped_trend` / `fit_ar1_log_diff`
@@ -703,14 +709,33 @@ ignore per-observation MOE entirely. On a series whose newest points are
 *nowcasts carrying deliberately-sized MOEs*, only the Kalman path lets that
 uncertainty reach the point estimate.
 
-**Caveats, stated plainly.** Seven finals, six folds. This is a sanity gate, not
-a calibration: enough to catch a clearly-worse method or a clearly-broken
-interval, not enough to tune a κ. Kalman's 100% coverage may well mean *too
-wide* — six folds cannot tell. `--birth-projection-method ensemble` restores the
-old path for comparison. Note also that neither projector gets the v3
-bias/κ/conformal calibration the dollar indicators receive; births still inherit
-the global `EMPIRICAL_SE_INFLATOR = 1.30`, which was fitted on ACS *survey*
-series, not vital-statistics counts.
+**Empirical calibration (bias + conformal κ).** At n=46 two miscalibrations
+became measurable, and both are now corrected in `_project_births`, in the
+repo-canonical order (bias first, κ on bias-corrected residuals):
+
+* **Systematic +2.0% point bias** (`BIRTH_KALMAN_LOG_BIAS = 0.0203`): the
+  φ=0.85 damping pulls the growth state toward zero while the real series keeps
+  declining, so the filter under-extrapolates the decline — monotone in horizon
+  (+0.4% at h=1 → +4.2% at h=4; pooled, per the repo's n≥20 strata threshold).
+  Bias-corrected in-sample MAPE: 3.27% → **2.62%**.
+* **Over-covering analytical interval** (97.8% vs the 90% target):
+  `BIRTH_KALMAN_SE_KAPPA = 0.862`, the split-conformal quantile on
+  bias-corrected residuals (same finite-sample convention as
+  `acs/conformal.py`), *shrinks* the half-width onto **93.5%** in-sample
+  coverage. Before this, the quoted PI was purely analytical — something the
+  repo's own discipline forbids.
+
+Re-run the script and re-paste both constants whenever a new NVSR final lands.
+
+**Caveats, stated plainly.** The 46 folds come from one series with overlapping
+windows, so the effective sample is smaller than 46. The pooled bias slightly
+overcorrects at the production horizon (h=2 measured +1.5%) and undercorrects at
+h=4 (+4.2%). The correction encodes "the decline keeps being under-extrapolated"
+— if Hawaiʻi fertility genuinely flattens (2024 ticked up), it overshoots
+downward by up to ~2%. And the folds score finals only: nowcast-specific risks
+(DOH revisions, ratio drift) are priced only via the nowcasts' wider MOEs in the
+filter's R. `--birth-projection-method ensemble` restores the old path for
+comparison.
 
 **Snapshot discipline.** DOH counts are pinned in-code
 (`HI_DOH_BIRTHS_MONTHLY`, `DOH_SNAPSHOT`) rather than live-fetched, matching the
@@ -815,7 +840,7 @@ Projected Hawaii impact under default Medicaid-targeted parameters:
 |---|---|---|
 | Take-up | 98% | 0.90 postnatal / 0.83 prenatal (default) |
 | Avg disbursement / recipient | ~$3,505 (rolling) | ~$2,280 (prenatal+postnatal mix) |
-| Reach | 10,774 families (cumulative) | ~14,100 recipients/yr (~6,734 pregnancies + ~7,319 infants) |
+| Reach | 10,774 families (cumulative) | ~13,800 recipients/yr (~6,598 pregnancies + ~7,172 infants) |
 | Annual cost | ~$25-30M (single-city) | ~$32M benefit / ~$35M w/ admin (statutory 300%-FPL-OR-Medicaid); ~$50M (universal·6mo) / ~$84M (universal·12mo) |
 | Persons lifted out of poverty | Not yet published | Reported per `--apply-rxkids` run |
 
@@ -1032,7 +1057,7 @@ This headline is the **statutory 6-month** design (the first scenario in the
 | **Appropriation total (benefit + admin)** | **~$35M** |
 | Sampling 90% CI | ~$29M–$36M |
 | **Assumption band (joint corners)** | **~$19M–$41M** |
-| Expected recipients / year | ~14,100 (≈6,734 pregnancies + 7,319 infants) |
+| Expected recipients / year | ~13,800 (≈6,598 pregnancies + 7,172 infants) |
 | Avg benefit per recipient | ~$2,280 |
 | First fiscal year (launch, 12-mo ramp) | ~$13M (41% of steady) |
 | Optional +6-month postnatal (statutory) | +~$22M (12-month-design total ~$54M) |
@@ -1111,6 +1136,20 @@ This headline is the **statutory 6-month** design (the first scenario in the
 > luck, while the interval around it was too narrow by half and the county
 > detail was on the wrong basis. Full detail in §3.
 
+> **Calibration round (2026-08-07, third pass).** The series was extended to
+> the full CDC WONDER window (2007–2024, 18 finals), giving the walk-forward
+> back-test **46 folds** — enough to calibrate, not just gate. It measured a
+> systematic **+2.0% high bias** in the Kalman point (the damping
+> under-extrapolates this persistently-declining series) and an over-covering
+> analytical interval (97.8%). Both are now corrected in production
+> (`BIRTH_KALMAN_LOG_BIAS`, `BIRTH_KALMAN_SE_KAPPA`; bias first, κ on
+> corrected residuals — the repo-canonical order). The 2028 cohort moved
+> **14,126 → 13,842** and the statutory headline **~$32.1M → ~$31.4M**. A
+> latent crash in `kalman/project.py`'s default `end_year` (float into
+> `range()`) was also fixed, with a follow-up queued to re-harmonize the
+> Housing-Affordability-Tracker cherry-pick. Full detail in §3 and
+> `backtests/results/birth_projection_2026-08-07.md`.
+
 Take-up is **arm-specific** (see §2): postnatal/newborn **0.90**, prenatal
 **0.83** (0.92 × postnatal, from Flint's ~90% prenatal vs ~98% newborn). So
 postnatal is a bit *more* than 2× prenatal — the 2× per-birth payment ratio
@@ -1135,12 +1174,12 @@ two policy levers — the **eligibility gate** and the **postnatal duration**:
 
 | Scenario (`key`) | Eligibility | Postnatal | $/birth | Cash cost | Appropriation | Recipients/yr | Assumption band |
 |---|---|---|---|---|---|---|---|
-| `statutory_6mo` | Medicaid OR ≤300% FPL | 6 mo | $4,500 | **~$32M** | ~$35M | ~14,100 | ~$19M–$41M |
-| `universal_6mo` | universal (no test) | 6 mo | $4,500 | **~$53M** | ~$57M | ~23,300 | ~$32M–$68M |
-| `universal_12mo` | universal (no test) | 12 mo | $7,500 | **~$90M** | ~$97M | ~23,300 | ~$54M–$114M |
+| `statutory_6mo` | Medicaid OR ≤300% FPL | 6 mo | $4,500 | **~$31M** | ~$34M | ~13,800 | ~$19M–$40M |
+| `universal_6mo` | universal (no test) | 6 mo | $4,500 | **~$52M** | ~$56M | ~22,900 | ~$31M–$66M |
+| `universal_12mo` | universal (no test) | 12 mo | $7,500 | **~$88M** | ~$95M | ~22,900 | ~$53M–$112M |
 
 - **Universal eligibility** (`income_fpl_cap=100.0`, ≈ no income/Medicaid test)
-  reaches essentially every birth family — ~23,300 recipients vs ~14,100 under
+  reaches essentially every birth family — ~22,900 recipients vs ~13,800 under
   the statutory gate. Going universal at 6 months adds **~$18M** in cash cost
   (it pulls in the ~7,700 birth families above the statutory gate).
 - **The extra 6 months** (`postnatal_months=12`) doubles the postnatal arm and
@@ -1157,7 +1196,7 @@ behavioral response). Two Flint-observed assumptions raise it:
 
 | Sensitivity | Take-up (post/pre) | Fertility | Steady-state cost | Band |
 |---|---|---|---|---|
-| Conservative (default) | 0.90 / 0.83 | — | **~$32M** | ~$19–41M |
+| Conservative (default) | 0.90 / 0.83 | — | **~$31M** | ~$19–40M |
 | **Flint-equivalent** | 0.98 / 0.90 | +10% | **~$38M** | ~$23–48M |
 
 `--takeup-rate 0.98 --fertility-response 0.10` produces the Flint scenario —
@@ -1165,7 +1204,7 @@ which sets postnatal take-up to 0.98 and prenatal to 0.98 × 0.92 ≈ 0.90,
 recovering Flint's *observed* arm rates exactly. The **fertility response**
 (`_apply_fertility`) models the ~10% post-launch birth rise documented in the
 *Rx Kids Flint Birth Report (2026)* as a uniform +10% on eligible births
-(×1.10 on both arms): ~$32M × (0.98/0.90 take-up lift) × 1.10 ≈ $38M.
+(×1.10 on both arms): ~$31M × (0.98/0.90 take-up lift) × 1.10 ≈ $38M.
 It is a real upside risk a static model would miss, but **off by default**:
 Flint's rise may blend a conception response with in-migration of pregnant
 residents into eligible areas, and Hawaiʻi's island geography would see far
@@ -1176,7 +1215,7 @@ fertility levers compose with any of the three scenario designs above.)
 
 "Eligible families" (~7,340 weighted on the observed basis — families with an
 **observed birth** clearing the income/Medicaid test) is NOT the recipient
-count. Actual **expected recipients** (pregnancies + infants) are ~14,100/yr,
+count. Actual **expected recipients** (pregnancies + infants) are ~13,800/yr,
 recovered by dividing each arm's expected-dollar column by its full
 per-recipient payment ($1,500 prenatal, $3,000 postnatal). Report recipients,
 not the eligible base. (Under the legacy proxy the eligible base was ~100k —
@@ -1194,8 +1233,8 @@ universe, which overcounted pregnancies ~2× and required a runtime
 
 ### Eligible-birth cross-check
 
-On the **observed** basis the model implies **~8,132 eligible births** (=
-~7,319 infant recipients ÷ 0.90 take-up) out of the ~14,126 projected 2028
+On the **observed** basis the model implies **~7,969 eligible births** (=
+~7,172 infant recipients ÷ 0.90 take-up) out of the ~13,842 projected 2028
 births = **~58% of births eligible**, on the MAGI-household grain.
 
 - **External anchor:** Hawaii Medicaid-financed births ≈ 40% (~6,200) — a
@@ -1205,13 +1244,13 @@ births = **~58% of births eligible**, on the MAGI-household grain.
 - **Which clause drives eligibility (approximate decomposition).** The model
   computes only the *combined* eligible share (~60%); it does not separately
   report a clause-1-vs-clause-2 split. But we can decompose it against the
-  external Medicaid floor. On the projected 2028 base of ~14,126 births:
+  external Medicaid floor. On the projected 2028 base of ~13,842 births:
 
   | Source | Eligible births | Share of births |
   |---|---|---|
   | Clause 1 — Medicaid families (≈40% floor, scaled to 2028) | ~5,450 | ~40% |
   | Clause 2 — income-only (≤300% FPL, **not** on Medicaid) | ~2,690 | ~20% |
-  | **Combined eligible (model output)** | **~8,132** | **~58%** |
+  | **Combined eligible (model output)** | **~7,969** | **~58%** |
 
   So roughly **two-thirds of eligibility is the Medicaid clause**, with the
   300% FPL income test adding the remaining ~third on top. This is a useful
@@ -1296,8 +1335,8 @@ is reported).
   re-run on the current pipeline.
 - The birth cohort is **projected to 2028** with the package's damped-trend
   ensemble off the CDC NVSR resident-birth series (`HI_BIRTHS_BY_YEAR`), so the
-  demographic driver is aged coherently with income (×0.909 vital-stats trend;
-  the single scalar applied to `observed_births` is ×1.108 once the PUMS→vital
+  demographic driver is aged coherently with income (×0.891 vital-stats trend;
+  the single scalar applied to `observed_births` is ×1.085 once the PUMS→vital
   base correction is folded in — see §3). Update `HI_BIRTHS_BY_YEAR` as new NVSR
   final-data releases land; pass `--no-birth-projection` to hold the cohort at
   the base-year level.
