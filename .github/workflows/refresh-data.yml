@@ -57,7 +57,9 @@ jobs:
           version: "latest"
 
       - name: Install census-forecaster package
-        run: uv sync --package census-forecaster --extra dev --extra markets
+        # --extra dotax pulls openpyxl, which refresh_dotax_collections
+        # needs to read DOTAX's XLSX reports (it exits 2 without it).
+        run: uv sync --package census-forecaster --extra dev --extra markets --extra dotax
 
       - name: Refresh BLS multi-MSA panel
         env:
@@ -173,6 +175,21 @@ jobs:
           # weekly grain); aggregated here to calendar-month means.
           uv run python -m census_forecaster.scripts.refresh_ui_claims
 
+      - name: Refresh DOTAX monthly tax collections
+        run: |
+          # No API key required (needs openpyxl — see the --extra dotax on
+          # the install step above). Revenue ground truth for the model's
+          # targets: individual withholding, GE&Use, TAT.
+          #
+          # The bundle is an ACCUMULATING ARCHIVE, not a snapshot: DOTAX
+          # only keeps roughly the current fiscal year up as XLSX (older
+          # months fall back to PDF-only), so the script merges into the
+          # committed JSON and must never be run in a way that truncates
+          # it to one fetch. That accumulation is exactly why this
+          # belongs on the monthly cron — every month it runs is history
+          # that would otherwise fall off the DOTAX site unrecoverably.
+          uv run python -m census_forecaster.scripts.refresh_dotax_collections
+
       - name: Regenerate BLS v3 calibration
         run: |
           # Only regenerate if the BLS panel exists. If neither key is
@@ -228,6 +245,7 @@ jobs:
             packages/census_forecaster/src/census_forecaster/data/calibration_panel/ \
             packages/census_forecaster/src/census_forecaster/data/leading_indicators/ \
             packages/census_forecaster/src/census_forecaster/data/markets/ \
+            packages/census_forecaster/src/census_forecaster/data/dotax_monthly/ \
             backtests/results/
 
           if git diff --staged --quiet; then
@@ -251,6 +269,7 @@ jobs:
           - DBEDT monthly economic indicators re-fetched
           - HTA historical visitor arrivals re-fetched
           - DOL weekly UI initial claims re-fetched
+          - DOTAX monthly tax collections merged into the accumulating bundle
           - BLS v3 calibration regenerated against the new panel
           - ACS v3 calibration regenerated against the bundled panel
 
