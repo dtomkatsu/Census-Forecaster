@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Optional, Sequence
+from typing import Iterable, Optional, Sequence
 
 import numpy as np
 from scipy import stats
@@ -178,6 +178,15 @@ HAWAII_PREDICTORS: dict[str, str] = {
     # cheapest available test of that.
     "HI_VISITORS_INTL": "DBEDT_ARRIVALS_INTL_STATEWIDE",
     "HI_VISITORS_DOM": "DBEDT_ARRIVALS_DOM_STATEWIDE",
+    # Professional & business services payrolls. Registered out of the
+    # 13 new sector series because it is the one with a mechanism the
+    # others lack: the sector contains TEMPORARY HELP SERVICES, which
+    # employers expand before committing to permanent hires and cut
+    # first when demand turns — the conventional leading edge of labour
+    # demand. The rest (retail, health, government, manufacturing...)
+    # are bundled for descriptive use but not screened; without a
+    # written mechanism they would only spend testing budget.
+    "HI_JOBS_PROF": "DBEDT_JOBS_PROF_STATEWIDE",
     #
     # NOT registered as predictors, deliberately:
     #
@@ -358,6 +367,28 @@ HYPOTHESIS_PAIRS: tuple[tuple[str, str], ...] = (
     # a decomposition rather than a single averaged verdict.
     ("HI_VISITORS_INTL", "HI_UNEMPLOYMENT"),
     ("HI_VISITORS_DOM", "HI_UNEMPLOYMENT"),
+    # Temporary-help-bearing payrolls -> labour slack.
+    #
+    # THIS SITS IN TENSION WITH AN EARLIER DECISION and the tension is
+    # deliberate rather than overlooked. ("HI_JOBS_ACCOM",
+    # "HI_UNEMPLOYMENT") was withdrawn below as circular, on the
+    # grounds that "accommodation payrolls are a component of the
+    # employment level the unemployment rate is computed against". On
+    # re-examination that reasoning does not hold: payroll counts come
+    # from the ESTABLISHMENT survey (CES, which DBEDT republishes)
+    # while the unemployment rate comes from the HOUSEHOLD survey
+    # (LAUS/CPS). Different instruments, different universes — an
+    # establishment job count is not an input to the household rate.
+    # The repo already relies on this: ("HI_PAYROLLS",
+    # "HI_UNEMPLOYMENT") registers TOTAL CES nonfarm against the same
+    # target and has never been questioned, and a single sector shares
+    # strictly less with the target than the total does.
+    #
+    # So this pair is registered, and the HI_JOBS_ACCOM withdrawal is
+    # left standing rather than quietly reversed — re-registering a
+    # pair that was withdrawn on the record is a call for a human to
+    # make, not something to slip into an unrelated commit.
+    ("HI_JOBS_PROF", "HI_UNEMPLOYMENT"),
     #
     # NOT REGISTERED — ("HI_VISITORS_INTL", "HI_VISITORS") and
     # ("HI_VISITORS_DOM", "HI_VISITORS"): ARITHMETICALLY CIRCULAR, and
@@ -458,6 +489,7 @@ EXPECTED_SIGN: dict[tuple[str, str], int] = {
     ("HI_VISITORS_ARRIVALS", "HI_UNEMPLOYMENT"): -1,
     ("HI_VISITORS_INTL", "HI_UNEMPLOYMENT"): -1,
     ("HI_VISITORS_DOM", "HI_UNEMPLOYMENT"): -1,
+    ("HI_JOBS_PROF", "HI_UNEMPLOYMENT"): -1,
     ("HI_VISITOR_SPEND", "HI_UNEMPLOYMENT"): -1,
     # Labour-market mechanics.
     ("HI_UI_CLAIMS", "HI_UNEMPLOYMENT"): +1,   # more filings -> more slack
@@ -659,6 +691,10 @@ class ScreenReport:
     q_fdr: float = 0.10
     exclude_2020: bool = False
     n_tests: int = 0
+    #: How many months an explicit exclude_months list removed (0 for
+    #: the default runs). Reported so a reader can tell a disaster-
+    #: controlled run from a plain one.
+    excluded_months: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -720,6 +756,31 @@ def transform_series(values: dict[int, float], how: str,
 def _drop_2020(values: dict[int, float]) -> dict[int, float]:
     return {k: v for k, v in values.items()
             if not (month_index(2020, 1) <= k <= month_index(2020, 12))}
+
+
+def months_to_indices(months: Iterable[str]) -> set[int]:
+    """``["2023-08", ...]`` → month-index set (bad entries ignored)."""
+    out: set[int] = set()
+    for m in months:
+        text = str(m)
+        if len(text) < 7:
+            continue
+        try:
+            year, month = int(text[:4]), int(text[5:7])
+        except (TypeError, ValueError):
+            continue
+        if not 1 <= month <= 12:
+            continue          # "2023-13" is junk, not December-plus-one
+        out.add(month_index(year, month))
+    return out
+
+
+def _drop_months(values: dict[int, float],
+                 drop: set[int]) -> dict[int, float]:
+    """Remove specific months — the disaster-control analogue of
+    ``_drop_2020``. See scripts/refresh_fema_disasters.py for where the
+    month list comes from and why it is filtered before it gets here."""
+    return {k: v for k, v in values.items() if k not in drop}
 
 
 # ---------------------------------------------------------------------------
@@ -835,6 +896,7 @@ def run_screen(
     max_lead: int = 18,
     q: float = 0.10,
     exclude_2020: bool = False,
+    exclude_months: Optional[Iterable[str]] = None,
 ) -> ScreenReport:
     """Run the pre-registered screen.
 
@@ -843,11 +905,17 @@ def run_screen(
     ``MONTHLY_TARGETS`` source ids resolved to target keys upstream.
     """
     report = ScreenReport(q_fdr=q, exclude_2020=exclude_2020)
+    dropped = months_to_indices(exclude_months or ())
+    report.excluded_months = len(dropped)
+
+    def _prep(values: dict[int, float]) -> dict[int, float]:
+        out = _drop_2020(values) if exclude_2020 else values
+        return _drop_months(out, dropped) if dropped else out
 
     # Pre-transform everything once.
     xformed_tickers: dict[tuple[str, str], dict[int, float]] = {}
     for sym, levels in ticker_series.items():
-        lv = _drop_2020(levels) if exclude_2020 else levels
+        lv = _prep(levels)
         for tf in TICKER_TRANSFORMS:
             xformed_tickers[(sym, tf)] = transform_series(lv, tf)
 
@@ -856,8 +924,7 @@ def run_screen(
         raw = target_series.get(key)
         if not raw:
             continue
-        rv = _drop_2020(raw) if exclude_2020 else raw
-        xformed_targets[key] = transform_series(rv, tf)
+        xformed_targets[key] = transform_series(_prep(raw), tf)
 
     granger_ps: list[float] = []
     granger_slots: list[int] = []

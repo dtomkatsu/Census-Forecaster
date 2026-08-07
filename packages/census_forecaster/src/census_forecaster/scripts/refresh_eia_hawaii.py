@@ -66,6 +66,14 @@ SECTORS: tuple[str, ...] = ("ALL", "RES")
 #: macro_monthly.json can tell EIA rows from BLS/FRED rows at a glance.
 SERIES_PREFIX = "EIA_HI_ELEC_"
 
+#: Consumption (million kWh) alongside price, from the same endpoint.
+#: Price is a COST channel — imported fuel reaching household bills.
+#: Sales are a VOLUME channel: how much electricity Hawaii actually
+#: used, which tracks activity (hotels running air conditioning,
+#: commercial floorspace in use) rather than what it cost. Different
+#: quantities that can move in opposite directions, so both are kept.
+SALES_PREFIX = "EIA_HI_ELEC_SALES_"
+
 _STATE = "HI"
 
 
@@ -88,9 +96,12 @@ def fetch_hawaii_electricity(
     api_key: str,
     sector: str,
     *,
+    metric: str = "price",
     timeout: float = 30.0,
 ) -> list[dict]:
-    """Monthly HI retail electricity price → ``[{year, period, value}]``.
+    """Monthly HI retail electricity ``metric`` → ``[{year, period, value}]``.
+
+    ``metric`` is "price" (cents/kWh) or "sales" (million kWh).
 
     Paginates because EIA caps a JSON response at 5000 rows; a single
     state-sector pull is ~300 rows today, but the loop keeps this honest
@@ -102,7 +113,7 @@ def fetch_hawaii_electricity(
         params = {
             "api_key": api_key,
             "frequency": "monthly",
-            "data[0]": "price",
+            "data[0]": metric,
             "facets[stateid][]": _STATE,
             "facets[sectorid][]": sector,
             "sort[0][column]": "period",
@@ -116,7 +127,7 @@ def fetch_hawaii_electricity(
         data = payload.get("data", [])
         for item in data:
             period = item.get("period", "")      # "YYYY-MM"
-            value = item.get("price")
+            value = item.get(metric)
             if value is None or len(period) != 7:
                 continue
             try:
@@ -160,7 +171,10 @@ def merge_into_macro_monthly(
         "(cents/kWh, nominal). Genuine monthly Hawaii-specific price "
         "series — added as the monthly price proxy the causal screen "
         "needed (the genuine Urban Hawaii CPI is bimonthly). Published "
-        "with roughly a 3-month lag and revised."
+        "with roughly a 3-month lag and revised. EIA_HI_ELEC_SALES_* "
+        "are retail SALES VOLUME (million kWh, NOT seasonally adjusted) "
+        "from the same endpoint — an activity proxy, distinct from and "
+        "not comparable with the price series."
     )
     lims = payload.setdefault("limitations", [])
     if note not in lims:
@@ -187,22 +201,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
 
     series_by_id: dict[str, list[dict]] = {}
-    for sector in SECTORS:
-        try:
-            rows = fetch_hawaii_electricity(api_key, sector)
-        except Exception as exc:  # noqa: BLE001 — degrade, don't crash
-            print(f"::warning:: EIA fetch failed for sector {sector}: {exc}",
-                  file=sys.stderr)
-            continue
-        if not rows:
-            print(f"::warning:: EIA returned no rows for sector {sector}",
-                  file=sys.stderr)
-            continue
-        sid = f"{SERIES_PREFIX}{sector}"
-        series_by_id[sid] = rows
-        print(f"  {sid}: {len(rows)} months "
-              f"({rows[0]['year']}-{rows[0]['period']} → "
-              f"{rows[-1]['year']}-{rows[-1]['period']})", flush=True)
+    for metric, prefix in (("price", SERIES_PREFIX), ("sales", SALES_PREFIX)):
+        for sector in SECTORS:
+            try:
+                rows = fetch_hawaii_electricity(api_key, sector, metric=metric)
+            except Exception as exc:  # noqa: BLE001 — degrade, don't crash
+                print(f"::warning:: EIA {metric} fetch failed for sector "
+                      f"{sector}: {exc}", file=sys.stderr)
+                continue
+            if not rows:
+                print(f"::warning:: EIA returned no {metric} rows for sector "
+                      f"{sector}", file=sys.stderr)
+                continue
+            sid = f"{prefix}{sector}"
+            series_by_id[sid] = rows
+            print(f"  {sid}: {len(rows)} months "
+                  f"({rows[0]['year']}-{rows[0]['period']} → "
+                  f"{rows[-1]['year']}-{rows[-1]['period']})", flush=True)
 
     if not series_by_id:
         print("ERROR: nothing fetched; leaving macro_monthly.json alone.",

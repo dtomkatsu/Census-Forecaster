@@ -101,6 +101,49 @@ SERIES: dict[tuple[str, int], str] = {
     # --- construction activity ---
     ("private building permits", 0): "DBEDT_PERMITS_",
     ("nat. resources, mining, constr", 0): "DBEDT_JOBS_CONSTR_",
+    # --- sector payrolls (2026-08-07) ---
+    # The rest of the industry breakdown that already gave us
+    # accommodation, food services and construction. Cheap to bundle
+    # (same workbook, same parse) and the sectors do not move together:
+    # professional & business services contains temporary help, which
+    # employers add before permanent hires and cut first; health care
+    # and government are the counter-cyclical ballast; retail tracks
+    # household spending.
+    ("manufacturing", 0): "DBEDT_JOBS_MANUF_",
+    ("wholesale trade", 0): "DBEDT_JOBS_WHOLESALE_",
+    ("retail trade", 0): "DBEDT_JOBS_RETAIL_",
+    ("transp., warehousing, util.", 0): "DBEDT_JOBS_TRANSPORT_",
+    ("information", 0): "DBEDT_JOBS_INFO_",
+    ("financial activities", 0): "DBEDT_JOBS_FINANCE_",
+    ("professional & business services", 0): "DBEDT_JOBS_PROF_",
+    ("private educational services", 0): "DBEDT_JOBS_EDU_",
+    ("health care & social assistance", 0): "DBEDT_JOBS_HEALTH_",
+    ("arts, entertainment & recreation", 0): "DBEDT_JOBS_ARTS_",
+    ("other services", 0): "DBEDT_JOBS_OTHER_",
+    ("government", 0): "DBEDT_JOBS_GOVT_",
+    ("private sector", 0): "DBEDT_JOBS_PRIVATE_",
+    #
+    # DELIBERATELY NOT TAKEN — both are substring traps, verified
+    # against the live workbooks on 2026-08-07:
+    #
+    # "state" would take the government-by-level split, but it matches
+    # TWO columns: "State" payrolls (24) and "State general fund tax
+    # revenues" (28). Occurrence indices could disambiguate, but the
+    # order is a property of the workbook layout rather than of
+    # anything stable, so the federal/state/local split is skipped
+    # entirely rather than half-taken. DBEDT_JOBS_GOVT_ carries the
+    # total.
+    #
+    # "agriculture wage and salary jobs" matches BOTH the agriculture
+    # column (26) and "Total NON-agriculture wage and salary jobs" (7),
+    # because the wanted label is a substring of the unwanted one. The
+    # agriculture series is tiny in Hawaii and not worth the fragility.
+    #
+    # Also skipped: "civilian unemployed", "unemployment rate" and
+    # "total wage and salary jobs". The first two ARE the screen's
+    # HI_UNEMPLOYMENT target measured by another agency; the third
+    # duplicates HI_PAYROLLS (BLS CES). Bundling a second copy of a
+    # quantity already in the panel invites the two to drift apart.
     # --- housing transactions (real sales, unlike Zillow's index) ---
     ("single-family home resales", 0): "DBEDT_SF_SALES_",
     ("median selling price", 0): "DBEDT_SF_MEDIAN_",

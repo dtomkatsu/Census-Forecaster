@@ -1658,6 +1658,85 @@ and a quarterly series has data only every third month, so it returns
 assumed). Same wall the bimonthly CPI hits. Bundling them would give
 descriptive cross-correlations only.
 
+### Sector payrolls, electricity volume, disaster control (2026-08-07)
+
+Closing out the source survey. Three additions, one registered pair,
+one more informative null.
+
+**13 MEI sector payroll series** (65 across 5 geographies, monthly
+1990-01 →), joining the accommodation/food/construction series already
+taken. Two independent validations rather than trusting the parse:
+DBEDT counts ÷ 1000 track BLS CES total nonfarm to a **0.61% mean gap
+(max 1.87%) across 258 months**, and the 14 private sectors sum
+**exactly** to DBEDT's private-sector total in all 438 months — zero
+discrepancies, so the sector list is complete.
+
+*Two substring traps, both caught before they shipped.* `state` matches
+both "State" payrolls **and** "State general fund tax revenues", so the
+federal/state/local government split is skipped entirely rather than
+half-taken; `DBEDT_JOBS_GOVT_` carries the total. And `agriculture wage
+and salary jobs` is a substring of "Total **NON**-agriculture wage and
+salary jobs" — the wanted label sits inside the unwanted one. A test
+now pins the general invariant: no fragment may be a substring of
+another.
+
+Only one sector was registered — **`HI_JOBS_PROF → HI_UNEMPLOYMENT`**,
+because professional & business services contains *temporary help*,
+which employers add before permanent hires and cut first. It is a
+**null**: p=0.90/0.82/0.88 on the full sample, no BH pass at any lag in
+either run. The sign check reports "ok" (−0.213 at lead 4, correct
+direction), so this is a no-signal result rather than a wrong-signal
+one. The other twelve sectors are bundled, unscreened — without a
+written mechanism they would only spend testing budget.
+
+*This registration sits in tension with an earlier decision, deliberately.*
+`HI_JOBS_ACCOM → HI_UNEMPLOYMENT` was withdrawn as circular on the
+grounds that payrolls are "a component of the employment level the
+unemployment rate is computed against". That reasoning does not hold:
+payroll counts come from the **establishment** survey, the unemployment
+rate from the **household** survey — different instruments, different
+universes. The repo already depends on this, since `HI_PAYROLLS`
+registers *total* CES nonfarm against the same target unchallenged, and
+one sector shares strictly less with the target than the total does.
+The `HI_JOBS_ACCOM` withdrawal is nonetheless **left standing**:
+reversing a decision made on the record is a human's call, not
+something to slip into an unrelated commit.
+
+**EIA electricity SALES volume** (`EIA_HI_ELEC_SALES_*`, 305 months,
+2001-01 →) alongside the existing price series, from the same endpoint.
+Price is a cost channel; volume is an activity channel, and they can
+move in opposite directions. **Bundled but deliberately not screened**:
+electricity use is coincident with activity rather than leading it, the
+series is not seasonally adjusted, and residential load is driven by
+weather. Registering it would spend testing budget on a hypothesis
+nobody here believes.
+
+**FEMA major-disaster declarations** (`hi_disasters.json`, 39 Hawaii
+declarations back to 1955). **Not a predictor** — a control, the
+analogue of `exclude_2020`. Hawaii gets smaller versions of the
+same problem on a regular cadence: Lahaina 2023, Kīlauea 2018,
+Hurricane Lane, repeated flood declarations, each moving arrivals,
+payrolls and prices together for a few months.
+
+Two guards decide whether this is a check or demolition, and the
+numbers show why: **60 candidate exclusion months with the defaults,
+256 without them.** Hawaii's COVID declaration alone (DR-4510) has a
+41-month incident window, 2020-01 → 2023-05; dropping every declared
+month would delete three and a half years of panel, and the 2020 gate
+already covers that regime, so `Biological` is excluded by default. A
+single declaration also contributes at most 6 months, because an
+incident window is administrative as much as physical (DR-4201 runs 7
+months as lava kept advancing) and the economic shock concentrates at
+onset. Both are arguments with documented defaults, not hardcoded rules,
+and the written payload records which filters produced its month list.
+
+`run_screen` now accepts `exclude_months=`, defaulting to `None`. **The
+committed screen behaviour is unchanged** — a test pins
+`excluded_months == 0` on a default run — so the control is available
+without a third gate appearing on its own. Making disaster exclusion a
+standing part of the robustness definition is a methodology decision
+and is left open.
+
 *Process note.* An intermediate check during this work compared the
 count of entries in `selected_signals.json` before and after and read
 "+2" as "two new robust findings". That file holds **all 67 BH passes**

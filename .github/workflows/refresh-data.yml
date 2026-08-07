@@ -183,6 +183,14 @@ jobs:
           # source degrades with a ::warning and keeps previous values.
           uv run python -m census_forecaster.scripts.refresh_hawaii_indicators
 
+      - name: Refresh FEMA Hawaii disaster declarations
+        run: |
+          # No API key required. NOT a predictor — a robustness control,
+          # the same kind of thing exclude_2020 is. Writes its own file
+          # (hi_disasters.json), so it does not touch macro_monthly and
+          # its position in this ordering does not matter.
+          uv run python -m census_forecaster.scripts.refresh_fema_disasters
+
       - name: Refresh Realtor.com Hawaii listing metrics
         run: |
           # No API key required. County listing-side indicators (days on

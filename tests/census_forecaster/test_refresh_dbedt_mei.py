@@ -174,6 +174,41 @@ def test_segments_not_screened_against_their_own_total():
     assert ("HI_VISITORS_DOM", "HI_UNEMPLOYMENT") in HYPOTHESIS_PAIRS
 
 
+def test_no_fragment_is_a_substring_of_another():
+    """The general invariant behind two traps found on 2026-08-07:
+    'state' matches both "State" payrolls and "State general fund tax
+    revenues", and 'agriculture wage and salary jobs' sits inside
+    "Total NON-agriculture wage and salary jobs". Substring matching
+    makes every new fragment a chance to silently capture a neighbour."""
+    frags = sorted({f for f, _ in mei.SERIES})
+    collisions = [(a, b) for a in frags for b in frags if a != b and a in b]
+    assert collisions == [], f"fragment captured by another: {collisions}"
+
+
+def test_government_split_and_agriculture_skipped():
+    """Both were available and both are traps — pinned so a future
+    'completeness' pass does not re-add them without the occurrence
+    handling they would need."""
+    frags = {f for f, _ in mei.SERIES}
+    assert "government" in frags          # the total is safe
+    assert "state" not in frags           # collides with tax revenues
+    assert "federal" not in frags         # half a split is worse than none
+    assert "local" not in frags
+    assert not any("agriculture" in f for f in frags)
+
+
+def test_sector_payrolls_parsed():
+    headers = ["Retail Trade", "Professional & Business Services",
+               "Health Care & Social Assistance", "Government"]
+    out = mei.parse_mei_workbook(_workbook(headers, [
+        (datetime(2026, 6, 1), [67000, 82000, 91000, 124000]),
+    ]))
+    assert out["DBEDT_JOBS_RETAIL_"][0]["value"] == 67000.0
+    assert out["DBEDT_JOBS_PROF_"][0]["value"] == 82000.0
+    assert out["DBEDT_JOBS_HEALTH_"][0]["value"] == 91000.0
+    assert out["DBEDT_JOBS_GOVT_"][0]["value"] == 124000.0
+
+
 def test_tax_rows_deliberately_not_taken():
     """DOTAX's own reports cover collections at finer granularity with
     revision tracking; two sources for one quantity invites divergence."""

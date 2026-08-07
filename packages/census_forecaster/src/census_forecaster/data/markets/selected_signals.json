@@ -1,5 +1,5 @@
 {
-  "candidates_tested": 110,
+  "candidates_tested": 113,
   "generated": "2026-08-07",
   "limitations": "Granger != causation; selection is FDR-controlled predictive precedence on monthly data. Only signals passing the Phase-3 forecaster ablation may influence forecasts.",
   "q_fdr": 0.1,
