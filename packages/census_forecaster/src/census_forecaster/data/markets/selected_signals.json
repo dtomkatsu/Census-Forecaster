@@ -8,11 +8,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.24227125807049824,
+      "expected_sign": -1,
       "granger_lags": 3,
       "granger_p": 5.267652481936607e-05,
+      "mean_lead_corr": -0.14215120892983107,
       "n_obs": 250,
       "name": "spy_log_return_hi_unemployment_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": true,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "SPY",
       "transform": "log_return"
@@ -20,11 +23,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.24227125807049824,
+      "expected_sign": -1,
       "granger_lags": 6,
       "granger_p": 0.0007951730562722543,
+      "mean_lead_corr": -0.059340649714009534,
       "n_obs": 244,
       "name": "spy_log_return_hi_unemployment_lag6",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "SPY",
       "transform": "log_return"
@@ -32,11 +38,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.24227125807049824,
+      "expected_sign": -1,
       "granger_lags": 12,
       "granger_p": 0.0017021390280350507,
+      "mean_lead_corr": -0.035176822766849546,
       "n_obs": 236,
       "name": "spy_log_return_hi_unemployment_lag12",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "SPY",
       "transform": "log_return"
@@ -44,11 +53,14 @@
     {
       "best_xcorr_lead_months": 16,
       "best_xcorr_r": -0.15715563102485344,
+      "expected_sign": -1,
       "granger_lags": 3,
       "granger_p": 0.035650741687657556,
+      "mean_lead_corr": -0.09083110191171838,
       "n_obs": 250,
       "name": "qqq_log_return_hi_unemployment_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": true,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "QQQ",
       "transform": "log_return"
@@ -56,11 +68,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.2590317855922574,
+      "expected_sign": -1,
       "granger_lags": 3,
       "granger_p": 2.411364747190175e-05,
+      "mean_lead_corr": -0.14587005540219952,
       "n_obs": 250,
       "name": "vti_log_return_hi_unemployment_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": true,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "VTI",
       "transform": "log_return"
@@ -68,11 +83,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.2590317855922574,
+      "expected_sign": -1,
       "granger_lags": 6,
       "granger_p": 0.000416075785168051,
+      "mean_lead_corr": -0.061773299872497245,
       "n_obs": 244,
       "name": "vti_log_return_hi_unemployment_lag6",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "VTI",
       "transform": "log_return"
@@ -80,11 +98,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.2590317855922574,
+      "expected_sign": -1,
       "granger_lags": 12,
       "granger_p": 0.0010350952189604947,
+      "mean_lead_corr": -0.03716020802365966,
       "n_obs": 236,
       "name": "vti_log_return_hi_unemployment_lag12",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "VTI",
       "transform": "log_return"
@@ -92,11 +113,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.26676578254606137,
+      "expected_sign": -1,
       "granger_lags": 3,
       "granger_p": 3.634063188269455e-05,
+      "mean_lead_corr": -0.14335033299266783,
       "n_obs": 250,
       "name": "xlf_log_return_hi_unemployment_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": true,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "XLF",
       "transform": "log_return"
@@ -104,11 +128,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.26676578254606137,
+      "expected_sign": -1,
       "granger_lags": 6,
       "granger_p": 0.000325119671964969,
+      "mean_lead_corr": -0.05854877683843948,
       "n_obs": 244,
       "name": "xlf_log_return_hi_unemployment_lag6",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "XLF",
       "transform": "log_return"
@@ -116,11 +143,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.26676578254606137,
+      "expected_sign": -1,
       "granger_lags": 12,
       "granger_p": 0.0011831379724721485,
+      "mean_lead_corr": -0.029926758248392846,
       "n_obs": 236,
       "name": "xlf_log_return_hi_unemployment_lag12",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "XLF",
       "transform": "log_return"
@@ -128,11 +158,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.45024626703936227,
+      "expected_sign": -1,
       "granger_lags": 3,
       "granger_p": 1.3999944631126406e-08,
+      "mean_lead_corr": -0.2068649525469418,
       "n_obs": 127,
       "name": "jets_log_return_hi_unemployment_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": true,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "JETS",
       "transform": "log_return"
@@ -140,11 +173,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.45024626703936227,
+      "expected_sign": -1,
       "granger_lags": 6,
       "granger_p": 1.552736805060761e-07,
+      "mean_lead_corr": -0.06883965917744427,
       "n_obs": 121,
       "name": "jets_log_return_hi_unemployment_lag6",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "JETS",
       "transform": "log_return"
@@ -152,11 +188,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.4471461124506552,
+      "expected_sign": -1,
       "granger_lags": 3,
       "granger_p": 1.167053925549902e-07,
+      "mean_lead_corr": -0.18441816090753968,
       "n_obs": 127,
       "name": "jets_log_return_us_unemployment_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": true,
       "target": "US_UNEMPLOYMENT",
       "ticker": "JETS",
       "transform": "log_return"
@@ -164,11 +203,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.4471461124506552,
+      "expected_sign": -1,
       "granger_lags": 6,
       "granger_p": 5.663788193721953e-07,
+      "mean_lead_corr": -0.040770445799072796,
       "n_obs": 121,
       "name": "jets_log_return_us_unemployment_lag6",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "US_UNEMPLOYMENT",
       "ticker": "JETS",
       "transform": "log_return"
@@ -176,11 +218,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": 0.4672201534767011,
+      "expected_sign": 1,
       "granger_lags": 3,
       "granger_p": 9.249874273266532e-09,
+      "mean_lead_corr": 0.2001661287473964,
       "n_obs": 131,
       "name": "jets_log_return_hi_visitors_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": true,
       "target": "HI_VISITORS",
       "ticker": "JETS",
       "transform": "log_return"
@@ -188,11 +233,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": 0.4672201534767011,
+      "expected_sign": 1,
       "granger_lags": 6,
       "granger_p": 1.9717252517070338e-08,
+      "mean_lead_corr": 0.09552431586966004,
       "n_obs": 128,
       "name": "jets_log_return_hi_visitors_lag6",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": true,
       "target": "HI_VISITORS",
       "ticker": "JETS",
       "transform": "log_return"
@@ -200,11 +248,14 @@
     {
       "best_xcorr_lead_months": 0,
       "best_xcorr_r": -0.8801434222365914,
+      "expected_sign": -1,
       "granger_lags": 3,
       "granger_p": 8.522810723564052e-05,
+      "mean_lead_corr": 0.009487782123918978,
       "n_obs": 250,
       "name": "hi_visitors_arrivals_log_return_hi_unemployment_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "HI_VISITORS_ARRIVALS",
       "transform": "log_return"
@@ -212,11 +263,14 @@
     {
       "best_xcorr_lead_months": 0,
       "best_xcorr_r": -0.8801434222365914,
+      "expected_sign": -1,
       "granger_lags": 6,
       "granger_p": 0.00012180860490828089,
+      "mean_lead_corr": 0.029103938479600213,
       "n_obs": 244,
       "name": "hi_visitors_arrivals_log_return_hi_unemployment_lag6",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "HI_VISITORS_ARRIVALS",
       "transform": "log_return"
@@ -224,11 +278,14 @@
     {
       "best_xcorr_lead_months": 0,
       "best_xcorr_r": -0.8801434222365914,
+      "expected_sign": -1,
       "granger_lags": 12,
       "granger_p": 1.580959166400629e-08,
+      "mean_lead_corr": 0.013313094055869688,
       "n_obs": 236,
       "name": "hi_visitors_arrivals_log_return_hi_unemployment_lag12",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "HI_VISITORS_ARRIVALS",
       "transform": "log_return"
@@ -236,11 +293,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": 0.8205824703141295,
+      "expected_sign": 1,
       "granger_lags": 3,
       "granger_p": 2.825654359018317e-66,
+      "mean_lead_corr": 0.2278033446083543,
       "n_obs": 250,
       "name": "hi_ui_claims_log_return_hi_unemployment_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": true,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "HI_UI_CLAIMS",
       "transform": "log_return"
@@ -248,11 +308,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": 0.8205824703141295,
+      "expected_sign": 1,
       "granger_lags": 6,
       "granger_p": 1.697382756764937e-64,
+      "mean_lead_corr": 0.10876550978834763,
       "n_obs": 244,
       "name": "hi_ui_claims_log_return_hi_unemployment_lag6",
       "robust_to_2020_exclusion": true,
+      "sign_matches_hypothesis": true,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "HI_UI_CLAIMS",
       "transform": "log_return"
@@ -260,11 +323,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": 0.8205824703141295,
+      "expected_sign": 1,
       "granger_lags": 12,
       "granger_p": 5.360205029755143e-59,
+      "mean_lead_corr": 0.04625688803057706,
       "n_obs": 236,
       "name": "hi_ui_claims_log_return_hi_unemployment_lag12",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "HI_UI_CLAIMS",
       "transform": "log_return"
@@ -272,11 +338,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.32573041132111263,
+      "expected_sign": -1,
       "granger_lags": 3,
       "granger_p": 2.645293061103737e-07,
+      "mean_lead_corr": -0.12342264084359555,
       "n_obs": 238,
       "name": "hi_visitor_spend_log_return_hi_unemployment_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": true,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "HI_VISITOR_SPEND",
       "transform": "log_return"
@@ -284,11 +353,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.32573041132111263,
+      "expected_sign": -1,
       "granger_lags": 6,
       "granger_p": 4.177925310693717e-08,
+      "mean_lead_corr": -0.03692627603026267,
       "n_obs": 229,
       "name": "hi_visitor_spend_log_return_hi_unemployment_lag6",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "HI_VISITOR_SPEND",
       "transform": "log_return"
@@ -296,11 +368,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.32573041132111263,
+      "expected_sign": -1,
       "granger_lags": 12,
       "granger_p": 1.4680573525916524e-13,
+      "mean_lead_corr": -0.021469056213817853,
       "n_obs": 215,
       "name": "hi_visitor_spend_log_return_hi_unemployment_lag12",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "HI_VISITOR_SPEND",
       "transform": "log_return"
@@ -308,11 +383,14 @@
     {
       "best_xcorr_lead_months": 10,
       "best_xcorr_r": 0.0870277373283526,
+      "expected_sign": 1,
       "granger_lags": 12,
       "granger_p": 0.019681917103601905,
+      "mean_lead_corr": 0.028629671150770322,
       "n_obs": 209,
       "name": "hi_sf_sales_log_return_honolulu_zhvi_lag12",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HONOLULU_ZHVI",
       "ticker": "HI_SF_SALES",
       "transform": "log_return"
@@ -320,11 +398,14 @@
     {
       "best_xcorr_lead_months": 3,
       "best_xcorr_r": -0.30020244418341213,
+      "expected_sign": -1,
       "granger_lags": 3,
       "granger_p": 0.008530102176387572,
+      "mean_lead_corr": -0.08358631498308274,
       "n_obs": 116,
       "name": "hi_price_cuts_log_return_honolulu_sf_median_lag3",
       "robust_to_2020_exclusion": true,
+      "sign_matches_hypothesis": null,
       "target": "HONOLULU_SF_MEDIAN",
       "ticker": "HI_PRICE_CUTS",
       "transform": "log_return"
@@ -332,11 +413,14 @@
     {
       "best_xcorr_lead_months": 3,
       "best_xcorr_r": -0.30020244418341213,
+      "expected_sign": -1,
       "granger_lags": 6,
       "granger_p": 0.0017348282542102278,
+      "mean_lead_corr": -0.0529520048061024,
       "n_obs": 113,
       "name": "hi_price_cuts_log_return_honolulu_sf_median_lag6",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HONOLULU_SF_MEDIAN",
       "ticker": "HI_PRICE_CUTS",
       "transform": "log_return"
@@ -344,11 +428,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.2800338239807776,
+      "expected_sign": -1,
       "granger_lags": 3,
       "granger_p": 0.016272567996575817,
+      "mean_lead_corr": -0.18326705857261097,
       "n_obs": 116,
       "name": "hi_dom_log_return_honolulu_zhvi_lag3",
       "robust_to_2020_exclusion": true,
+      "sign_matches_hypothesis": true,
       "target": "HONOLULU_ZHVI",
       "ticker": "HI_DOM",
       "transform": "log_return"
@@ -356,11 +443,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.2800338239807776,
+      "expected_sign": -1,
       "granger_lags": 6,
       "granger_p": 0.031671811632889055,
+      "mean_lead_corr": -0.09124081518003894,
       "n_obs": 113,
       "name": "hi_dom_log_return_honolulu_zhvi_lag6",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HONOLULU_ZHVI",
       "ticker": "HI_DOM",
       "transform": "log_return"
@@ -368,11 +458,14 @@
     {
       "best_xcorr_lead_months": 0,
       "best_xcorr_r": 0.20366026913559293,
+      "expected_sign": -1,
       "granger_lags": 3,
       "granger_p": 0.010345013070964096,
+      "mean_lead_corr": 0.0649264614525999,
       "n_obs": 431,
       "name": "us_jetfuel_log_return_hi_visitors_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": false,
       "target": "HI_VISITORS",
       "ticker": "US_JETFUEL",
       "transform": "log_return"
@@ -380,11 +473,14 @@
     {
       "best_xcorr_lead_months": 0,
       "best_xcorr_r": 0.20366026913559293,
+      "expected_sign": -1,
       "granger_lags": 6,
       "granger_p": 0.013780627453530151,
+      "mean_lead_corr": 0.0394190255775842,
       "n_obs": 428,
       "name": "us_jetfuel_log_return_hi_visitors_lag6",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_VISITORS",
       "ticker": "US_JETFUEL",
       "transform": "log_return"
@@ -392,11 +488,14 @@
     {
       "best_xcorr_lead_months": 0,
       "best_xcorr_r": 0.20366026913559293,
+      "expected_sign": -1,
       "granger_lags": 12,
       "granger_p": 0.0009002491717935338,
+      "mean_lead_corr": 0.00580882812973978,
       "n_obs": 422,
       "name": "us_jetfuel_log_return_hi_visitors_lag12",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_VISITORS",
       "ticker": "US_JETFUEL",
       "transform": "log_return"
@@ -404,11 +503,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.14715633737350578,
+      "expected_sign": -1,
       "granger_lags": 3,
       "granger_p": 0.004512836616185541,
+      "mean_lead_corr": -0.07573440161994956,
       "n_obs": 250,
       "name": "hi_biz_apps_log_return_hi_unemployment_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": true,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "HI_BIZ_APPS",
       "transform": "log_return"
@@ -416,11 +518,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.14715633737350578,
+      "expected_sign": -1,
       "granger_lags": 6,
       "granger_p": 0.0334300943512489,
+      "mean_lead_corr": -0.03061034761957337,
       "n_obs": 244,
       "name": "hi_biz_apps_log_return_hi_unemployment_lag6",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "HI_BIZ_APPS",
       "transform": "log_return"
@@ -428,11 +533,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.14715633737350578,
+      "expected_sign": -1,
       "granger_lags": 12,
       "granger_p": 0.01860278914734926,
+      "mean_lead_corr": -0.026855015235464238,
       "n_obs": 236,
       "name": "hi_biz_apps_log_return_hi_unemployment_lag12",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "HI_BIZ_APPS",
       "transform": "log_return"
@@ -440,11 +548,14 @@
     {
       "best_xcorr_lead_months": 5,
       "best_xcorr_r": 0.1936737334746437,
+      "expected_sign": 1,
       "granger_lags": 3,
       "granger_p": 0.013579150209362949,
+      "mean_lead_corr": 0.06906109567671709,
       "n_obs": 125,
       "name": "xlre_log_return_honolulu_zhvi_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HONOLULU_ZHVI",
       "ticker": "XLRE",
       "transform": "log_return"
@@ -452,11 +563,14 @@
     {
       "best_xcorr_lead_months": 5,
       "best_xcorr_r": 0.1936737334746437,
+      "expected_sign": 1,
       "granger_lags": 6,
       "granger_p": 0.0036332900829043353,
+      "mean_lead_corr": 0.11454469780682212,
       "n_obs": 122,
       "name": "xlre_log_return_honolulu_zhvi_lag6",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": true,
       "target": "HONOLULU_ZHVI",
       "ticker": "XLRE",
       "transform": "log_return"
@@ -464,11 +578,14 @@
     {
       "best_xcorr_lead_months": 2,
       "best_xcorr_r": 0.27391559597776066,
+      "expected_sign": 1,
       "granger_lags": 3,
       "granger_p": 0.016604806996658093,
+      "mean_lead_corr": 0.14674215351687042,
       "n_obs": 125,
       "name": "xlre_log_return_honolulu_zori_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": true,
       "target": "HONOLULU_ZORI",
       "ticker": "XLRE",
       "transform": "log_return"
@@ -476,11 +593,14 @@
     {
       "best_xcorr_lead_months": 9,
       "best_xcorr_r": 0.23075023023684865,
+      "expected_sign": 1,
       "granger_lags": 12,
       "granger_p": 0.00801992556453842,
+      "mean_lead_corr": 0.145719358415473,
       "n_obs": 245,
       "name": "vnq_log_return_honolulu_zhvi_lag12",
       "robust_to_2020_exclusion": true,
+      "sign_matches_hypothesis": true,
       "target": "HONOLULU_ZHVI",
       "ticker": "VNQ",
       "transform": "log_return"
@@ -488,11 +608,14 @@
     {
       "best_xcorr_lead_months": 2,
       "best_xcorr_r": 0.288722807592638,
+      "expected_sign": 1,
       "granger_lags": 3,
       "granger_p": 0.009627633212411352,
+      "mean_lead_corr": 0.14221721714940783,
       "n_obs": 134,
       "name": "vnq_log_return_honolulu_zori_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": true,
       "target": "HONOLULU_ZORI",
       "ticker": "VNQ",
       "transform": "log_return"
@@ -500,11 +623,14 @@
     {
       "best_xcorr_lead_months": 3,
       "best_xcorr_r": 0.4019413700870646,
+      "expected_sign": 1,
       "granger_lags": 3,
       "granger_p": 6.337829041060649e-14,
+      "mean_lead_corr": 0.25866591099938635,
       "n_obs": 253,
       "name": "xle_log_return_hi_electricity_lag3",
       "robust_to_2020_exclusion": true,
+      "sign_matches_hypothesis": true,
       "target": "HI_ELECTRICITY",
       "ticker": "XLE",
       "transform": "log_return"
@@ -512,11 +638,14 @@
     {
       "best_xcorr_lead_months": 3,
       "best_xcorr_r": 0.4019413700870646,
+      "expected_sign": 1,
       "granger_lags": 6,
       "granger_p": 1.5372617370074067e-14,
+      "mean_lead_corr": 0.18073275152142454,
       "n_obs": 250,
       "name": "xle_log_return_hi_electricity_lag6",
       "robust_to_2020_exclusion": true,
+      "sign_matches_hypothesis": true,
       "target": "HI_ELECTRICITY",
       "ticker": "XLE",
       "transform": "log_return"
@@ -524,11 +653,14 @@
     {
       "best_xcorr_lead_months": 3,
       "best_xcorr_r": 0.4019413700870646,
+      "expected_sign": 1,
       "granger_lags": 12,
       "granger_p": 2.293712047875458e-11,
+      "mean_lead_corr": 0.0815610151046613,
       "n_obs": 244,
       "name": "xle_log_return_hi_electricity_lag12",
       "robust_to_2020_exclusion": true,
+      "sign_matches_hypothesis": true,
       "target": "HI_ELECTRICITY",
       "ticker": "XLE",
       "transform": "log_return"
@@ -536,11 +668,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.24797195309269035,
+      "expected_sign": -1,
       "granger_lags": 3,
       "granger_p": 3.955545477843516e-05,
+      "mean_lead_corr": -0.138763726291887,
       "n_obs": 250,
       "name": "boh_log_return_hi_unemployment_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": true,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "BOH",
       "transform": "log_return"
@@ -548,11 +683,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.24797195309269035,
+      "expected_sign": -1,
       "granger_lags": 6,
       "granger_p": 4.619066169758918e-05,
+      "mean_lead_corr": -0.047876423350769824,
       "n_obs": 244,
       "name": "boh_log_return_hi_unemployment_lag6",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "BOH",
       "transform": "log_return"
@@ -560,11 +698,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.24797195309269035,
+      "expected_sign": -1,
       "granger_lags": 12,
       "granger_p": 0.0007342519212396357,
+      "mean_lead_corr": -0.02095233390385479,
       "n_obs": 236,
       "name": "boh_log_return_hi_unemployment_lag12",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "BOH",
       "transform": "log_return"
@@ -572,11 +713,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.39621177875066516,
+      "expected_sign": -1,
       "granger_lags": 3,
       "granger_p": 3.4211484387066503e-05,
+      "mean_lead_corr": -0.17074971259316685,
       "n_obs": 111,
       "name": "fhb_log_return_hi_unemployment_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": true,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "FHB",
       "transform": "log_return"
@@ -584,11 +728,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.39621177875066516,
+      "expected_sign": -1,
       "granger_lags": 6,
       "granger_p": 6.567528803917964e-05,
+      "mean_lead_corr": -0.05970623630574185,
       "n_obs": 105,
       "name": "fhb_log_return_hi_unemployment_lag6",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "FHB",
       "transform": "log_return"
@@ -596,11 +743,14 @@
     {
       "best_xcorr_lead_months": 4,
       "best_xcorr_r": 0.19021074173366415,
+      "expected_sign": 1,
       "granger_lags": 3,
       "granger_p": 0.0010090699334968515,
+      "mean_lead_corr": 0.15972429804665275,
       "n_obs": 253,
       "name": "matx_log_return_hi_electricity_lag3",
       "robust_to_2020_exclusion": true,
+      "sign_matches_hypothesis": true,
       "target": "HI_ELECTRICITY",
       "ticker": "MATX",
       "transform": "log_return"
@@ -608,11 +758,14 @@
     {
       "best_xcorr_lead_months": 4,
       "best_xcorr_r": 0.19021074173366415,
+      "expected_sign": 1,
       "granger_lags": 6,
       "granger_p": 0.006452347980481305,
+      "mean_lead_corr": 0.13816169289016283,
       "n_obs": 250,
       "name": "matx_log_return_hi_electricity_lag6",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": true,
       "target": "HI_ELECTRICITY",
       "ticker": "MATX",
       "transform": "log_return"
@@ -620,11 +773,14 @@
     {
       "best_xcorr_lead_months": 4,
       "best_xcorr_r": 0.19021074173366415,
+      "expected_sign": 1,
       "granger_lags": 12,
       "granger_p": 0.03597576728232951,
+      "mean_lead_corr": 0.051672254331458195,
       "n_obs": 244,
       "name": "matx_log_return_hi_electricity_lag12",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_ELECTRICITY",
       "ticker": "MATX",
       "transform": "log_return"
@@ -632,11 +788,14 @@
     {
       "best_xcorr_lead_months": 0,
       "best_xcorr_r": 0.17993681248431226,
+      "expected_sign": -1,
       "granger_lags": 6,
       "granger_p": 0.0014761607214553202,
+      "mean_lead_corr": 0.04014877294646823,
       "n_obs": 311,
       "name": "us_mortgage30_log_return_honolulu_zhvi_lag6",
       "robust_to_2020_exclusion": true,
+      "sign_matches_hypothesis": null,
       "target": "HONOLULU_ZHVI",
       "ticker": "US_MORTGAGE30",
       "transform": "log_return"
@@ -644,11 +803,14 @@
     {
       "best_xcorr_lead_months": 0,
       "best_xcorr_r": 0.17993681248431226,
+      "expected_sign": -1,
       "granger_lags": 12,
       "granger_p": 0.00016069189735843734,
+      "mean_lead_corr": -0.005379631788816824,
       "n_obs": 305,
       "name": "us_mortgage30_log_return_honolulu_zhvi_lag12",
       "robust_to_2020_exclusion": true,
+      "sign_matches_hypothesis": null,
       "target": "HONOLULU_ZHVI",
       "ticker": "US_MORTGAGE30",
       "transform": "log_return"
@@ -656,11 +818,14 @@
     {
       "best_xcorr_lead_months": 0,
       "best_xcorr_r": 0.14915869301242612,
+      "expected_sign": -1,
       "granger_lags": 12,
       "granger_p": 0.015658572985404663,
+      "mean_lead_corr": 0.04528131622076805,
       "n_obs": 305,
       "name": "us_dgs10_log_return_honolulu_zhvi_lag12",
       "robust_to_2020_exclusion": true,
+      "sign_matches_hypothesis": null,
       "target": "HONOLULU_ZHVI",
       "ticker": "US_DGS10",
       "transform": "log_return"
@@ -668,11 +833,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.21763326815804626,
+      "expected_sign": -1,
       "granger_lags": 3,
       "granger_p": 0.0005274905040081766,
+      "mean_lead_corr": -0.07342901904101168,
       "n_obs": 250,
       "name": "us_jolts_log_return_us_unemployment_lag3",
       "robust_to_2020_exclusion": true,
+      "sign_matches_hypothesis": true,
       "target": "US_UNEMPLOYMENT",
       "ticker": "US_JOLTS",
       "transform": "log_return"
@@ -680,11 +848,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.21763326815804626,
+      "expected_sign": -1,
       "granger_lags": 6,
       "granger_p": 0.0005404427576802001,
+      "mean_lead_corr": -0.06353490522816814,
       "n_obs": 244,
       "name": "us_jolts_log_return_us_unemployment_lag6",
       "robust_to_2020_exclusion": true,
+      "sign_matches_hypothesis": null,
       "target": "US_UNEMPLOYMENT",
       "ticker": "US_JOLTS",
       "transform": "log_return"
@@ -692,11 +863,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.21763326815804626,
+      "expected_sign": -1,
       "granger_lags": 12,
       "granger_p": 0.009741807410493011,
+      "mean_lead_corr": -0.04190018577641433,
       "n_obs": 236,
       "name": "us_jolts_log_return_us_unemployment_lag12",
       "robust_to_2020_exclusion": true,
+      "sign_matches_hypothesis": null,
       "target": "US_UNEMPLOYMENT",
       "ticker": "US_JOLTS",
       "transform": "log_return"
@@ -704,11 +878,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.22827565461239394,
+      "expected_sign": -1,
       "granger_lags": 3,
       "granger_p": 0.0003182351059214236,
+      "mean_lead_corr": -0.0659400375261661,
       "n_obs": 250,
       "name": "us_jolts_log_return_hi_unemployment_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": true,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "US_JOLTS",
       "transform": "log_return"
@@ -716,11 +893,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.22827565461239394,
+      "expected_sign": -1,
       "granger_lags": 6,
       "granger_p": 0.001461495149590681,
+      "mean_lead_corr": -0.054942480896470296,
       "n_obs": 244,
       "name": "us_jolts_log_return_hi_unemployment_lag6",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "US_JOLTS",
       "transform": "log_return"
@@ -728,11 +908,14 @@
     {
       "best_xcorr_lead_months": 1,
       "best_xcorr_r": -0.22827565461239394,
+      "expected_sign": -1,
       "granger_lags": 12,
       "granger_p": 0.029540146289477473,
+      "mean_lead_corr": -0.03149738457695216,
       "n_obs": 236,
       "name": "us_jolts_log_return_hi_unemployment_lag12",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "US_JOLTS",
       "transform": "log_return"
@@ -740,11 +923,14 @@
     {
       "best_xcorr_lead_months": 0,
       "best_xcorr_r": -0.7569580878309375,
+      "expected_sign": null,
       "granger_lags": 3,
       "granger_p": 8.420913495036137e-05,
+      "mean_lead_corr": -0.009544359017125878,
       "n_obs": 250,
       "name": "us_lfpr_log_return_hi_unemployment_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "US_LFPR",
       "transform": "log_return"
@@ -752,11 +938,14 @@
     {
       "best_xcorr_lead_months": 0,
       "best_xcorr_r": -0.7569580878309375,
+      "expected_sign": null,
       "granger_lags": 6,
       "granger_p": 0.0006626511656880262,
+      "mean_lead_corr": 0.021156769757756173,
       "n_obs": 244,
       "name": "us_lfpr_log_return_hi_unemployment_lag6",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "US_LFPR",
       "transform": "log_return"
@@ -764,11 +953,14 @@
     {
       "best_xcorr_lead_months": 0,
       "best_xcorr_r": -0.7569580878309375,
+      "expected_sign": null,
       "granger_lags": 12,
       "granger_p": 0.00035376660009657696,
+      "mean_lead_corr": 0.019785489237304145,
       "n_obs": 236,
       "name": "us_lfpr_log_return_hi_unemployment_lag12",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "US_LFPR",
       "transform": "log_return"
@@ -776,11 +968,14 @@
     {
       "best_xcorr_lead_months": 0,
       "best_xcorr_r": -0.96116462550449,
+      "expected_sign": -1,
       "granger_lags": 3,
       "granger_p": 3.312490073375697e-16,
+      "mean_lead_corr": 0.014208068660385959,
       "n_obs": 250,
       "name": "us_emppop_log_return_hi_unemployment_lag3",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "US_EMPPOP",
       "transform": "log_return"
@@ -788,11 +983,14 @@
     {
       "best_xcorr_lead_months": 0,
       "best_xcorr_r": -0.96116462550449,
+      "expected_sign": -1,
       "granger_lags": 6,
       "granger_p": 4.530973830184536e-15,
+      "mean_lead_corr": 0.028548699040574176,
       "n_obs": 244,
       "name": "us_emppop_log_return_hi_unemployment_lag6",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "US_EMPPOP",
       "transform": "log_return"
@@ -800,11 +998,14 @@
     {
       "best_xcorr_lead_months": 0,
       "best_xcorr_r": -0.96116462550449,
+      "expected_sign": -1,
       "granger_lags": 12,
       "granger_p": 1.1998046016394673e-13,
+      "mean_lead_corr": 0.01922144093877704,
       "n_obs": 236,
       "name": "us_emppop_log_return_hi_unemployment_lag12",
       "robust_to_2020_exclusion": false,
+      "sign_matches_hypothesis": null,
       "target": "HI_UNEMPLOYMENT",
       "ticker": "US_EMPPOP",
       "transform": "log_return"

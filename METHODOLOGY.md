@@ -1538,6 +1538,64 @@ Both pairs stay registered, following the `HE → HI_UNEMPLOYMENT`
 precedent: a documented null is worth more than a deleted one, because
 the next reader will otherwise re-propose the same idea.
 
+### The sign check is now part of the screen (2026-08-07)
+
+The jet-fuel null above was caught by hand. That is not a control, so
+the check now runs automatically: every registered pair declares the
+direction its mechanism predicts in `EXPECTED_SIGN`, or declares itself
+two-sided in `_AMBIGUOUS_SIGNS` **with a written reason**.
+`assert_sign_coverage()` runs before any computation and fails the run
+if a pair appears in neither or both — an undeclared pair would
+otherwise report `sign="n/a"` and look like it had passed a check that
+never ran. Current state: 41 pairs, 38 signed, 3 declared two-sided
+(permit units vs home values, mortgage rates vs rents, participation
+vs unemployment — each genuinely two-directional in standard theory).
+
+Output: a `sign` column on both result tables, a violations section at
+the top of the report, `sign_matches_hypothesis` / `expected_sign` /
+`mean_lead_corr` in `selected_signals.json`, and a `::warning::` if a
+**robust** signal ever contradicts its mechanism. That last case is not
+auto-demoted — what counts as "robust" is a documented methodology
+decision, not something a reporting script should redefine — but it
+cannot pass quietly. Today: 0 robust signals contradicted (8 sign-ok,
+6 with no material direction).
+
+**Two implementation bugs, both of which made the check worse than not
+having one.** Recorded because each is easy to reintroduce:
+
+1. *Scoring the peak-|r| lead.* The first version judged direction at
+   the largest correlation across leads 0–18. It promptly accused
+   `HI_PRICE_CUTS → HONOLULU_SF_MEDIAN` — the most carefully verified
+   finding in the screen — of contradicting itself, because the peak
+   sits at lead 12 (+0.322), a 12-month offset between two
+   non-seasonally-adjusted series, i.e. seasonality. The mechanism's
+   horizon, lead 3, reads −0.272 with the predicted sign, and lead 3 is
+   where the BH-passing test lives. **Fix:** score the mean correlation
+   over leads 1..k for a lag-k test — the window the test actually
+   uses. Lead 0 is excluded: co-movement is not prediction.
+2. *No materiality floor.* Version two reported a mean r of **+0.009**
+   as "contradicting" a negative prediction, flagging 42 combinations
+   and burying the real ones. **Fix:** `sign_materiality(n) = 1/√n`
+   (~0.05 at n=400, ~0.10 at n=100), so the bar scales with sample size
+   instead of being one arbitrary cutoff. Below it the verdict is
+   `None` — *no direction*, explicitly not *passed*. Violations fell
+   42 → 9.
+
+**What survived the corrected check**, beyond the known jet-fuel case:
+`HI_AIR_PAX → HI_VISITORS` clears BH in the 2020-excluded run at lags 3
+and 6 with mean r of −0.102 / −0.104 — the *opposite* of its registered
+`+1`. A candidate explanation worth testing rather than asserting: the
+BTS series is HNL-**origin** traffic, so it misses mainland visitors
+flying direct to Kahului, Kona and Līhuʻe, and that share has grown.
+Statewide arrivals could then rise while HNL-origin departures fall.
+Until someone checks that, the pair is a flagged anomaly, not a finding.
+
+`US_MORTGAGE30`/`US_DGS10 → HONOLULU_ZHVI` flag at lag 3 (mean r
+≈ +0.12) but not at the lags 6/12 where they clear BH — economically
+coherent, since rates and prices both rise in booms while the
+contractionary effect operates over longer horizons. Reading the lag
+column matters; a flag is a prompt to look, not a verdict.
+
 *Process note.* An intermediate check during this work compared the
 count of entries in `selected_signals.json` before and after and read
 "+2" as "two new robust findings". That file holds **all 67 BH passes**

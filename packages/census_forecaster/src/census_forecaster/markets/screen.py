@@ -396,6 +396,187 @@ HYPOTHESIS_PAIRS: tuple[tuple[str, str], ...] = (
     ("US_EMPPOP", "HI_UNEMPLOYMENT"),
 )
 
+# ---------------------------------------------------------------------------
+# Expected sign of each hypothesis
+# ---------------------------------------------------------------------------
+# A Granger F-test is direction-blind: it asks whether the predictor's
+# past adds predictive content, not whether it moves the target the way
+# the mechanism says. Those come apart in practice. On 2026-08-07,
+# US_JETFUEL -> HI_VISITORS cleared BH at all three lags with r=+0.204
+# while its written mechanism (fuel up -> long-haul capacity cut ->
+# fewer arrivals) predicts a NEGATIVE relationship. The "pass" was
+# never evidence for the stated channel — a strong world economy simply
+# lifts fuel prices and travel together. A sign check is cheaper than
+# an F-test and catches that class of error first, so it now runs
+# automatically instead of depending on someone remembering.
+#
+# +1 / -1 = the sign the mechanism predicts.
+# Deliberately ABSENT = genuinely two-sided; see _AMBIGUOUS_SIGNS below
+# for why each one is omitted. Absent is not "unknown", it is a claim
+# that no directional prediction is defensible, and it exempts the pair
+# from the check rather than failing it.
+EXPECTED_SIGN: dict[tuple[str, str], int] = {
+    # Equity/activity up -> labour-market slack down.
+    ("SPY", "HI_UNEMPLOYMENT"): -1,
+    ("QQQ", "HI_UNEMPLOYMENT"): -1,
+    ("VTI", "HI_UNEMPLOYMENT"): -1,
+    ("XLF", "HI_UNEMPLOYMENT"): -1,
+    ("JETS", "HI_UNEMPLOYMENT"): -1,
+    ("JETS", "US_UNEMPLOYMENT"): -1,
+    ("BOH", "HI_UNEMPLOYMENT"): -1,
+    ("FHB", "HI_UNEMPLOYMENT"): -1,
+    ("HE", "HI_UNEMPLOYMENT"): -1,
+    # Airline equity up -> more capacity/bookings -> more arrivals.
+    ("JETS", "HI_VISITORS"): +1,
+    ("HI_AIR_PAX", "HI_VISITORS"): +1,
+    # Tourism inflow up -> slack down.
+    ("HI_VISITORS_ARRIVALS", "HI_UNEMPLOYMENT"): -1,
+    ("HI_VISITOR_SPEND", "HI_UNEMPLOYMENT"): -1,
+    # Labour-market mechanics.
+    ("HI_UI_CLAIMS", "HI_UNEMPLOYMENT"): +1,   # more filings -> more slack
+    ("HI_PAYROLLS", "HI_UNEMPLOYMENT"): -1,
+    ("HI_BIZ_APPS", "HI_UNEMPLOYMENT"): -1,    # formations -> hiring
+    ("US_JOLTS", "US_UNEMPLOYMENT"): -1,
+    ("US_JOLTS", "HI_UNEMPLOYMENT"): -1,
+    ("US_AHE", "HI_UNEMPLOYMENT"): -1,         # wage pressure = tight market
+    ("US_EMPPOP", "HI_UNEMPLOYMENT"): -1,
+    # Real-estate equity -> local housing.
+    ("XLRE", "HONOLULU_ZHVI"): +1,
+    ("XLRE", "HONOLULU_ZORI"): +1,
+    ("VNQ", "HONOLULU_ZHVI"): +1,
+    ("VNQ", "HONOLULU_ZORI"): +1,
+    ("MATX", "HONOLULU_ZHVI"): +1,             # local activity proxy
+    # Rates up -> home values down.
+    ("US_MORTGAGE30", "HONOLULU_ZHVI"): -1,
+    ("US_DGS10", "HONOLULU_ZHVI"): -1,
+    # Imported-energy / freight cost -> local prices up.
+    ("XLE", "HONOLULU_CPI"): +1,
+    ("XLE", "HI_ELECTRICITY"): +1,
+    ("MATX", "HONOLULU_CPI"): +1,
+    ("MATX", "HI_ELECTRICITY"): +1,
+    ("HE", "HI_ELECTRICITY"): +1,
+    # Listing-market tightness -> price direction.
+    ("HI_DOM", "HONOLULU_SF_MEDIAN"): -1,      # homes sit longer -> softer
+    ("HI_DOM", "HONOLULU_ZHVI"): -1,
+    ("HI_PRICE_CUTS", "HONOLULU_SF_MEDIAN"): -1,
+    ("HI_PENDING_RATIO", "HONOLULU_SF_MEDIAN"): +1,
+    ("HI_SF_SALES", "HONOLULU_ZHVI"): +1,      # volume leads price up
+    # Fuel cost -> long-haul capacity -> arrivals. The pair that
+    # motivated this table; it violates its own prediction.
+    ("US_JETFUEL", "HI_VISITORS"): -1,
+}
+
+#: Pairs with NO directional prediction, and why. Kept as an explicit
+#: table so "missing from EXPECTED_SIGN" is always a decision on the
+#: record rather than an oversight — ``assert_sign_coverage`` enforces
+#: that every registered pair appears in exactly one of the two.
+_AMBIGUOUS_SIGNS: dict[tuple[str, str], str] = {
+    ("HI_PERMIT_UNITS", "HONOLULU_ZHVI"):
+        "Permits are procyclical (authorised when demand is strong, "
+        "pushing the correlation positive) but also add supply "
+        "(pushing it negative). Which dominates depends on the lag and "
+        "on how binding Oahu's construction constraints are — no "
+        "honest single prediction.",
+    ("US_MORTGAGE30", "HONOLULU_ZORI"):
+        "Higher mortgage rates price households out of buying and into "
+        "renting (rents up), while also signalling a tightening cycle "
+        "that cools rents. Standard housing economics gives both.",
+    ("US_LFPR", "HI_UNEMPLOYMENT"):
+        "Rising participation mechanically ADDS job-seekers to the "
+        "denominator (measured unemployment up) while also indicating "
+        "a labour market strong enough to draw people in (down).",
+}
+
+
+def expected_sign(predictor: str, target: str) -> Optional[int]:
+    """+1/-1 if the mechanism predicts a direction, else None."""
+    return EXPECTED_SIGN.get((predictor, target))
+
+
+def mean_lead_corr(xcorrs: Sequence[LeadCorr], lags: int) -> Optional[float]:
+    """Mean correlation over leads 1..``lags`` — the window the Granger
+    test at that lag actually uses.
+
+    Lead 0 is excluded deliberately: a contemporaneous correlation is
+    not prediction, and including it lets same-month co-movement decide
+    the direction of a claim about leading.
+    """
+    rs = [c.r for c in xcorrs if 1 <= c.lead <= lags]
+    return sum(rs) / len(rs) if rs else None
+
+
+def sign_materiality(nobs: Optional[int]) -> float:
+    """|mean r| below this is not a direction, it is noise around zero.
+
+    ``1/sqrt(n)`` — approximately one standard error of a correlation
+    coefficient under the null, so it tightens as the sample grows
+    (~0.05 at n=400, ~0.10 at n=100) instead of imposing one arbitrary
+    cutoff on samples of very different sizes.
+    """
+    if not nobs or nobs <= 1:
+        return float("inf")      # nothing to judge -> never material
+    return 1.0 / math.sqrt(nobs)
+
+
+def sign_matches(predictor: str, target: str,
+                 xcorrs: Sequence[LeadCorr], lags: int,
+                 nobs: Optional[int] = None) -> Optional[bool]:
+    """Does the correlation run the way the mechanism predicts?
+
+    Returns ``None`` — meaning "no directional verdict", NOT "passed" —
+    when the pair makes no directional claim, when the row carries no
+    Granger test (``lags == 0``: the descriptive mom12 rows have no
+    test for a sign to contradict), or when |mean r| falls below
+    ``sign_materiality``. That last case matters: the first version of
+    this check had no floor and duly reported a mean r of +0.009 as
+    "contradicting" its mechanism. A correlation that small is noise
+    around zero; calling it a contradiction buries the two or three
+    real violations in a wall of false ones, which is how a check stops
+    being read.
+
+    Judged on ``mean_lead_corr`` over leads 1..lags rather than on the
+    peak-|r| lead. The first implementation of this check used the peak
+    and was wrong, in a way its own output exposed on 2026-08-07: it
+    flagged HI_PRICE_CUTS -> HONOLULU_SF_MEDIAN as a violation because
+    the largest |r| across leads 0-18 sits at lead 12 (+0.322) — a
+    12-month offset, which is what seasonality manufactures between two
+    non-seasonally-adjusted series — while the mechanism's own horizon,
+    lead 3, reads -0.272 with the predicted sign, and lead 3 is where
+    the BH-passing test lives. Scoring a direction at a lead the test
+    never used, and letting a seasonal echo outvote the signal, made
+    the check worse than useless: it accused the one finding that had
+    been verified most carefully.
+    """
+    want = EXPECTED_SIGN.get((predictor, target))
+    if want is None or not lags:
+        return None
+    m = mean_lead_corr(xcorrs, lags)
+    if m is None or abs(m) < sign_materiality(nobs):
+        return None
+    return (m > 0) == (want > 0)
+
+
+def assert_sign_coverage(
+    pairs: Sequence[tuple[str, str]] = HYPOTHESIS_PAIRS,
+) -> None:
+    """Every registered pair must declare a sign or declare ambiguity.
+
+    Guards the failure mode this table exists to prevent: a new pair
+    added without a directional claim silently skips the check and
+    looks like it passed one.
+    """
+    missing = [p for p in pairs
+               if p not in EXPECTED_SIGN and p not in _AMBIGUOUS_SIGNS]
+    if missing:
+        raise ValueError(
+            "pairs missing a directional claim — add to EXPECTED_SIGN, or "
+            f"to _AMBIGUOUS_SIGNS with a reason: {sorted(missing)}")
+    both = [p for p in pairs
+            if p in EXPECTED_SIGN and p in _AMBIGUOUS_SIGNS]
+    if both:
+        raise ValueError(f"pairs in BOTH sign tables: {sorted(both)}")
+
+
 # Ticker transforms screened. mom12 is only used for cross-correlation
 # (its 12-month overlap induces autocorrelation that invalidates the
 # Granger F-test's iid-residual assumption).
@@ -433,6 +614,15 @@ class ScreenCandidate:
     best_xcorr: Optional[LeadCorr]
     bh_pass: bool = False
     note: str = ""
+    #: True/False if the mean correlation over leads 1..lags runs the
+    #: way the mechanism predicts; None when the pair makes no
+    #: directional claim (EXPECTED_SIGN / _AMBIGUOUS_SIGNS) or the row
+    #: carries no Granger test. False means the hypothesis as WRITTEN
+    #: is contradicted even if bh_pass is True.
+    sign_ok: Optional[bool] = None
+    #: The mean lead-1..lags correlation that sign_ok was judged on,
+    #: kept so the report can show what was actually scored.
+    sign_stat: Optional[float] = None
 
 
 @dataclass
@@ -665,6 +855,9 @@ def run_screen(
                     cand = ScreenCandidate(
                         ticker=sym, transform=tf, target=target, lags=p,
                         granger=g, best_xcorr=best,
+                        sign_ok=sign_matches(sym, target, xcorrs, p,
+                                             g.nobs if g else None),
+                        sign_stat=mean_lead_corr(xcorrs, p),
                         note="" if g else "insufficient aligned months",
                     )
                     report.candidates.append(cand)
@@ -687,7 +880,8 @@ def run_screen(
         report.candidates[slot] = ScreenCandidate(
             ticker=c.ticker, transform=c.transform, target=c.target,
             lags=c.lags, granger=c.granger, best_xcorr=c.best_xcorr,
-            bh_pass=passed, note=c.note,
+            bh_pass=passed, note=c.note, sign_ok=c.sign_ok,
+            sign_stat=c.sign_stat,
         )
     return report
 

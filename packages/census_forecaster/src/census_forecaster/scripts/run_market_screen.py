@@ -31,6 +31,8 @@ from ..markets.screen import (
     NATIONAL_PREDICTORS,
     ScreenReport,
     annual_descriptive_leads,
+    assert_sign_coverage,
+    expected_sign,
     month_index,
     run_screen,
     series_to_monthly_dict,
@@ -146,6 +148,13 @@ def ticker_annual_logdiff(panel) -> dict[str, dict[int, float]]:
 # Report rendering
 # ---------------------------------------------------------------------------
 
+def _fmt_sign(c) -> str:
+    """Sign verdict vs the pre-registered mechanism direction."""
+    if c.sign_ok is None:
+        return "n/a"
+    return "ok" if c.sign_ok else "**WRONG**"
+
+
 def _fmt_candidate_row(c) -> str:
     g = c.granger
     x = c.best_xcorr
@@ -155,8 +164,38 @@ def _fmt_candidate_row(c) -> str:
         f"{f'{g.p_value:.4f}' if g else '—'} | "
         f"{g.nobs if g else '—'} | "
         f"{f'{x.r:+.3f}@{x.lead}m' if x else '—'} | "
+        f"{_fmt_sign(c)} | "
         f"{'**YES**' if c.bh_pass else 'no'} | {c.note} |"
     )
+
+
+def _sign_violation_lines(base: ScreenReport,
+                          sans2020: ScreenReport) -> list[str]:
+    """Rows whose correlation contradicts their own mechanism."""
+    seen: set[tuple] = set()
+    rows: list[str] = []
+    for label, rep in (("full sample", base), ("2020 excluded", sans2020)):
+        for c in rep.candidates:
+            if c.sign_ok is not False:
+                continue
+            key = (c.ticker, c.target, c.lags, label)
+            if key in seen:
+                continue
+            seen.add(key)
+            want = expected_sign(c.ticker, c.target)
+            rows.append(
+                f"| {c.ticker} | {c.target} | {label} | {c.lags} | "
+                f"{'+' if want and want > 0 else '-'} | "
+                f"{f'{c.sign_stat:+.3f}' if c.sign_stat is not None else '—'} | "
+                f"{'**yes**' if c.bh_pass else 'no'} |")
+    if not rows:
+        return ["_No registered pair contradicts its own predicted "
+                "direction in either run._"]
+    return ([f"**{len(rows)} pair/run combination(s) contradict their "
+             "predicted direction.**", "",
+             "| predictor | target | run | lag | predicted | "
+             "mean r (leads 1..lag) | cleared BH |",
+             "|---|---|---|---|---|---|---|"] + rows)
 
 
 def render_markdown(
@@ -180,11 +219,22 @@ def render_markdown(
         "final arbiter. mom12 rows are descriptive cross-correlations "
         "only (overlapping windows invalidate the F-test).",
         "",
+        "## Sign check vs the written mechanism",
+        "",
+        "Every registered pair declares the direction its mechanism "
+        "predicts (`EXPECTED_SIGN` in screen.py) or declares itself "
+        "two-sided. A Granger F-test is direction-blind, so a pair can "
+        "clear BH while moving the OPPOSITE way to its own stated "
+        "story — that is not evidence for the hypothesis, and the rows "
+        "below are the ones to read first.",
+        "",
+    ] + _sign_violation_lines(base, sans2020) + [
+        "",
         "## Full sample",
         "",
         "| ticker | transform | target | lags | F | p | n | best xcorr | "
-        "BH pass | note |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "sign | BH pass | note |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     lines += [_fmt_candidate_row(c) for c in base.candidates]
     lines += [
@@ -195,8 +245,8 @@ def render_markdown(
         "one-event artifact, not a relationship.",
         "",
         "| ticker | transform | target | lags | F | p | n | best xcorr | "
-        "BH pass | note |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "sign | BH pass | note |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     lines += [_fmt_candidate_row(c) for c in sans2020.candidates]
     lines += [
@@ -260,6 +310,14 @@ def build_selected_signals(base: ScreenReport,
             "best_xcorr_lead_months": (
                 c.best_xcorr.lead if c.best_xcorr else None),
             "robust_to_2020_exclusion": key in robust_keys,
+            # Does the peak correlation run the way the pre-registered
+            # mechanism predicts? None = the pair makes no directional
+            # claim. False = the hypothesis AS WRITTEN is contradicted,
+            # regardless of the p-value — consumers must not promote
+            # these without re-stating the mechanism.
+            "sign_matches_hypothesis": c.sign_ok,
+            "expected_sign": expected_sign(c.ticker, c.target),
+            "mean_lead_corr": c.sign_stat,
         })
     return {
         "generated": run_date,
@@ -289,6 +347,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--dry-run", action="store_true",
                         help="Run the screen and print, but write nothing.")
     args = parser.parse_args(argv)
+
+    # Fail before any computation if a registered pair has no declared
+    # direction: an undeclared pair silently reports sign="n/a" and
+    # looks like it passed a check it never ran.
+    try:
+        assert_sign_coverage()
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
 
     try:
         panel = load_prices_panel()
@@ -323,8 +390,28 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     n_pass = len(selected["signals"])
     n_robust = sum(1 for s in selected["signals"]
                    if s["robust_to_2020_exclusion"])
+    n_wrong = sum(1 for s in selected["signals"]
+                  if s.get("sign_matches_hypothesis") is False)
     print(f"[screen] {base.n_tests} Granger tests, {n_pass} BH passes "
-          f"({n_robust} robust to 2020 exclusion)", file=sys.stderr)
+          f"({n_robust} robust to 2020 exclusion, "
+          f"{n_wrong} with a contradicted sign)", file=sys.stderr)
+
+    # A robust signal that moves opposite to its own mechanism is the
+    # one combination nobody should ship on autopilot: it has cleared
+    # every statistical gate the screen has while contradicting the
+    # story that justified testing it. Not auto-demoted — what counts
+    # as "robust" is a documented methodology decision, not something
+    # this script should redefine on its own — but it must never pass
+    # quietly.
+    contradicted_robust = [s for s in selected["signals"]
+                           if s["robust_to_2020_exclusion"]
+                           and s.get("sign_matches_hypothesis") is False]
+    for s in contradicted_robust:
+        print(f"::warning:: ROBUST signal contradicts its mechanism: "
+              f"{s['ticker']} → {s['target']} lag={s['granger_lags']} "
+              f"expected {s['expected_sign']:+d}, mean lead r="
+              f"{s['mean_lead_corr']:+.3f}. Do NOT promote to a feature "
+              f"channel without re-stating the mechanism.", file=sys.stderr)
     top = sorted(
         (c for c in base.candidates if c.granger),
         key=lambda c: c.granger.p_value)[:10]
