@@ -175,6 +175,14 @@ jobs:
           # weekly grain); aggregated here to calendar-month means.
           uv run python -m census_forecaster.scripts.refresh_ui_claims
 
+      - name: Refresh Hawaii FRED + BTS indicators
+        run: |
+          # No API key required. HIPHCI (Philadelphia Fed Hawaii coincident
+          # index) and HIBPPRIV (Hawaii permit UNIT counts) via keyless FRED
+          # CSV; BTS T-100 HNL enplanements/departures via Socrata. Each
+          # source degrades with a ::warning and keeps previous values.
+          uv run python -m census_forecaster.scripts.refresh_hawaii_indicators
+
       - name: Refresh DOTAX monthly tax collections
         run: |
           # No API key required (needs openpyxl — see the --extra dotax on

@@ -95,6 +95,29 @@ HAWAII_PREDICTORS: dict[str, str] = {
     # household survey; payroll changes plausibly lead measured
     # unemployment.
     "HI_PAYROLLS": "SMS15000000000000001",
+    # Philadelphia Fed Hawaii coincident index — a composite of payrolls,
+    # unemployment, manufacturing hours and deflated wages, i.e. a
+    # purpose-built "state of the Hawaii economy" number. The only
+    # composite in the panel; everything else is a single raw series.
+    "HI_COINCIDENT": "HIPHCI",
+    # BTS T-100 enplanements FROM Honolulu — airline operations data,
+    # independent of the survey-based DBEDT/HTA visitor counts, so it
+    # tests the tourism channel from the supply side.
+    "HI_AIR_PAX": "BTS_HNL_PASSENGERS",
+    # Statewide visitor SPENDING (DBEDT MEI). Arrivals count heads;
+    # this counts dollars, which is the quantity tourism-dependent
+    # employment and tax receipts actually track.
+    "HI_VISITOR_SPEND": "DBEDT_VISITOR_SPEND_STATEWIDE",
+    # Tourism-exposed payrolls: accommodation + food services. The
+    # employment link the JETS→arrivals→jobs chain has been arguing
+    # about, now measured directly rather than via aggregate slack.
+    "HI_JOBS_ACCOM": "DBEDT_JOBS_ACCOM_STATEWIDE",
+    # Housing transaction VOLUME (single-family resales). Turnover
+    # typically leads price: sales dry up before prices roll over.
+    "HI_SF_SALES": "DBEDT_SF_SALES_STATEWIDE",
+    # Housing permits as UNIT COUNTS (FRED/Census), distinct from
+    # DBEDT's permit VALUE in dollars.
+    "HI_PERMIT_UNITS": "HIBPPRIV",
 }
 
 # National-macro monthly PREDICTORS (predictor_name → macro_monthly.json
@@ -135,6 +158,42 @@ HYPOTHESIS_PAIRS: tuple[tuple[str, str], ...] = (
     ("HI_UI_CLAIMS", "HI_UNEMPLOYMENT"),
     # Establishment hiring → household-survey unemployment.
     ("HI_PAYROLLS", "HI_UNEMPLOYMENT"),
+    # --- 2026-08-06 intake: Hawaii-specific monthly indicators ---
+    # Deliberately a SHORT list. 51 new series landed in macro_monthly,
+    # but the multiple-testing budget is the scarce resource here (BH-FDR
+    # is applied across every pair x transform x lag actually run), so
+    # only hypotheses with a written mechanism get registered — the same
+    # discipline universe.py imposes on tickers.
+    #
+    # Air traffic → visitor arrivals: airline capacity/enplanements are
+    # booked weeks ahead, so supply-side operations should precede the
+    # survey-measured arrival counts.
+    ("HI_AIR_PAX", "HI_VISITORS"),
+    # Visitor SPENDING → tourism-exposed employment. Spending is what
+    # actually funds those payrolls; heads-through-the-door need not.
+    ("HI_VISITOR_SPEND", "HI_UNEMPLOYMENT"),
+    # Housing turnover → prices. Volume conventionally leads price in
+    # residential real estate; this tests it on Hawaii data.
+    ("HI_SF_SALES", "HONOLULU_ZHVI"),
+    # Permit UNITS → home values: new supply pipeline vs price.
+    ("HI_PERMIT_UNITS", "HONOLULU_ZHVI"),
+    #
+    # NOT REGISTERED, deliberately:
+    #
+    # ("HI_COINCIDENT", "HI_UNEMPLOYMENT") — CIRCULAR. The Philadelphia
+    # Fed builds HIPHCI from four inputs, and the state unemployment RATE
+    # is one of them, so "does HIPHCI predict unemployment" is partly
+    # asking whether a number predicts its own ingredient. A trial run on
+    # 2026-08-06 duly returned r=-0.934 at lag 0 with a 2020-robust flag
+    # — a result that looks spectacular and means almost nothing. HIPHCI
+    # stays bundled in macro_monthly for descriptive/nowcast use; if it
+    # is ever screened, the target must be something outside its
+    # construction (e.g. HONOLULU_ZHVI or HI_VISITORS).
+    #
+    # ("HI_JOBS_ACCOM", "HI_UNEMPLOYMENT") — same defect, milder:
+    # accommodation payrolls are a component of the employment level the
+    # unemployment rate is computed against. Zero BH passes on the trial
+    # run anyway.
     ("XLRE", "HONOLULU_ZHVI"),
     ("XLRE", "HONOLULU_ZORI"),
     ("VNQ", "HONOLULU_ZHVI"),

@@ -67,12 +67,40 @@ GEOS: dict[str, str] = {
     "hawaii": "HAWAII",
 }
 
-#: series-name fragment (matched case-insensitively on the header row)
-#: → emitted series-id prefix.
-SERIES: dict[str, str] = {
-    "visitor arrivals by air": "DBEDT_ARRIVALS_",
-    "private building permits": "DBEDT_PERMITS_",
+#: (header fragment, which occurrence) → emitted series-id prefix.
+#:
+#: Fragments are matched case-insensitively as substrings of the row-3
+#: header. The occurrence index exists because MEI reuses one label for
+#: two different series: "Inventory (aver. units on market)" appears at
+#: BOTH the single-family block (col 43) and the condo block (col 46).
+#: A first-match-wins lookup would silently keep one and mislabel it, so
+#: every entry states which occurrence it wants (0-based) and the parser
+#: refuses to guess.
+SERIES: dict[tuple[str, int], str] = {
+    # --- tourism demand (the JETS/arrivals mechanism chain) ---
+    ("visitor arrivals by air", 0): "DBEDT_ARRIVALS_",
+    ("total visitor days by air", 0): "DBEDT_VISITOR_DAYS_",
+    ("visitor expenditures by air", 0): "DBEDT_VISITOR_SPEND_",
+    # --- tourism-exposed employment (the labour side of that chain) ---
+    ("accommodation", 0): "DBEDT_JOBS_ACCOM_",
+    ("food services & drinking places", 0): "DBEDT_JOBS_FOOD_",
+    # --- construction activity ---
+    ("private building permits", 0): "DBEDT_PERMITS_",
+    ("nat. resources, mining, constr", 0): "DBEDT_JOBS_CONSTR_",
+    # --- housing transactions (real sales, unlike Zillow's index) ---
+    ("single-family home resales", 0): "DBEDT_SF_SALES_",
+    ("median selling price", 0): "DBEDT_SF_MEDIAN_",
+    ("inventory (aver. units on market)", 0): "DBEDT_SF_INVENTORY_",
+    ("condo/apt/townhouse units resales", 0): "DBEDT_CONDO_SALES_",
+    ("median price", 0): "DBEDT_CONDO_MEDIAN_",
+    ("inventory (aver. units on market)", 1): "DBEDT_CONDO_INVENTORY_",
 }
+
+#: Deliberately NOT taken from MEI: the tax-revenue rows (general fund,
+#: GE&Use, individual withholding, TAT, county surcharge). DOTAX's own
+#: monthly collection reports cover the same ground at finer granularity
+#: with explicit revision tracking — see refresh_dotax_collections.py.
+#: Two sources for one quantity invites silent divergence.
 
 
 def discover_workbooks(page_url: str = MEI_PAGE,
@@ -111,12 +139,30 @@ def parse_mei_workbook(content: bytes) -> dict[str, list[dict]]:
         raise ValueError("workbook too short to be an MEI table")
 
     headers = grid[2]  # row 3: series names
-    col_for_prefix: dict[str, int] = {}
+
+    # Column index of every occurrence of each wanted fragment, in sheet
+    # order — so ("inventory ...", 0) and ("inventory ...", 1) resolve to
+    # the single-family and condo columns respectively rather than
+    # colliding on the first hit.
+    # Scan UNIQUE fragments: two SERIES entries share the "inventory ..."
+    # fragment (nth=0 and nth=1), and iterating raw dict keys would append
+    # each matching column once per entry — [42, 42, 45, 45] instead of
+    # [42, 45] — collapsing both occurrences onto the same column.
+    fragments = {fragment for fragment, _ in SERIES}
+    occurrences: dict[str, list[int]] = {}
     for idx, name in enumerate(headers):
         label = str(name or "").strip().lower()
-        for fragment, prefix in SERIES.items():
-            if fragment in label and prefix not in col_for_prefix:
-                col_for_prefix[prefix] = idx
+        if not label:
+            continue
+        for fragment in fragments:
+            if fragment in label:
+                occurrences.setdefault(fragment, []).append(idx)
+
+    col_for_prefix: dict[str, int] = {}
+    for (fragment, nth), prefix in SERIES.items():
+        cols = occurrences.get(fragment, [])
+        if nth < len(cols):
+            col_for_prefix[prefix] = cols[nth]
     if not col_for_prefix:
         raise ValueError(
             f"no wanted series found; header sample: "

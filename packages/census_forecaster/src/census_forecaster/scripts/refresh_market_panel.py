@@ -227,22 +227,52 @@ def zillow_monthly_series(monthly_by_geoid: dict[str, dict[str, float]],
     return rows
 
 
+_MACRO_LIMITATIONS = [
+    "Monthly cadence throughout; BLS unemployment is seasonally "
+    "adjusted, Zillow indexes are smoothed + seasonally adjusted "
+    "(ZHVI) / smoothed (ZORI).",
+    "Zillow monthly values are subject to revision; final value "
+    "settles ~1 year after first print.",
+    "ZORI history starts 2015.",
+]
+
+
 def build_macro_payload(series: dict[str, list[dict]],
-                        sources: dict[str, str]) -> dict:
-    return {
-        "version": 1,
-        "fetch_date": date.today().isoformat(),
-        "series": series,
-        "sources": sources,
-        "limitations": [
-            "Monthly cadence throughout; BLS unemployment is seasonally "
-            "adjusted, Zillow indexes are smoothed + seasonally adjusted "
-            "(ZHVI) / smoothed (ZORI).",
-            "Zillow monthly values are subject to revision; final value "
-            "settles ~1 year after first print.",
-            "ZORI history starts 2015.",
-        ],
-    }
+                        sources: dict[str, str],
+                        existing_path: Optional[Path] = None) -> dict:
+    """Merge this run's series into the existing macro_monthly.json.
+
+    MUST merge, never replace. This function used to return a payload
+    containing only the series THIS script fetched, which made the write
+    a full overwrite of a file that five other refresh scripts also
+    contribute to (national-macro, EIA, DBEDT, HTA, UI-claims). Because
+    this script runs FIRST in the workflow, every downstream script was
+    re-adding its own series to an emptied file — and any series whose
+    downstream fetch failed that run was silently deleted from committed
+    history rather than merely going stale.
+
+    That is not hypothetical: the 2026-08-06 run lost MORTGAGE30US,
+    DGS10, RRVRUSQ156N and RHORUSQ156N when their FRED fetches timed
+    out. Their handler logs "keeping previous", which was true of its
+    own merge step but false in effect, because this write had already
+    removed the previous values. Merging here makes that message honest.
+    """
+    payload: dict = {"version": 1, "series": {}, "sources": {},
+                     "limitations": []}
+    if existing_path is not None and existing_path.exists():
+        with open(existing_path) as f:
+            payload = json.load(f)
+        payload.setdefault("series", {})
+        payload.setdefault("sources", {})
+        payload.setdefault("limitations", [])
+
+    payload["series"].update(series)
+    payload["sources"].update(sources)
+    payload["fetch_date"] = date.today().isoformat()
+    for note in _MACRO_LIMITATIONS:
+        if note not in payload["limitations"]:
+            payload["limitations"].append(note)
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -419,7 +449,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if macro_series:
             _atomic_write_json(
                 args.out / "macro_monthly.json",
-                build_macro_payload(macro_series, macro_sources),
+                build_macro_payload(macro_series, macro_sources,
+                                    existing_path=args.out / "macro_monthly.json"),
             )
             print(f"[macro] wrote macro_monthly.json "
                   f"({len(macro_series)} series)", file=sys.stderr)

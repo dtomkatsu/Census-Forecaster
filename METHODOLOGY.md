@@ -1314,6 +1314,90 @@ registries `ml_features.py` actually reads. It has passed statistical
 discovery but was never wired to a feature. No ablation is possible
 until that promotion happens; this is intentional, not an oversight.
 
+### macro_monthly.json write semantics — data-loss bug (2026-08-06)
+
+**`refresh_market_panel` was silently deleting other scripts' series.**
+Six scripts now contribute to `data/markets/macro_monthly.json`, but
+`build_macro_payload` returned a payload containing only the series
+*that script* fetched, and the write was a full overwrite. Because
+market-panel runs FIRST in the CI workflow, every downstream script was
+re-adding its series to an emptied file — so any series whose downstream
+fetch failed that run was **removed from committed history**, not merely
+left stale.
+
+Observed, not hypothetical: the 2026-08-06 scheduled run hit transient
+FRED read-timeouts on `MORTGAGE30US` and `DGS10`. Their handler logs
+`keeping previous` — true of its own merge step, false in effect, since
+the upstream write had already deleted the previous values. The loss
+removed three 2020-robust rate → home-value findings
+(`US_MORTGAGE30 → HONOLULU_ZHVI` at lags 6/12, `US_DGS10` at lag 12)
+from the causal screen, which initially looked like a statistical
+effect of adding new candidates and was not.
+
+`build_macro_payload` now takes `existing_path` and merges: this run's
+series win on overlap, everything else is preserved, and the standard
+limitation notes are added once rather than duplicated. Pinned by
+`tests/census_forecaster/test_macro_monthly_merge.py`. The two lost
+series were restored from `12f8415` and re-fetched.
+
+Not affected: `RRVRUSQ156N` / `RHORUSQ156N` (HVS vacancy and
+homeownership) are **quarterly**, and `_SCREEN_CADENCES` deliberately
+excludes quarterly from `macro_monthly.json` — they live in
+`national_macro.json` as annual feature-channel inputs and were never
+part of this file.
+
+### Hawaii indicator intake, round 3 (2026-08-06)
+
+**DBEDT MEI expanded from 2 series to 13 per geography** (65 series
+across statewide + 4 counties). The workbook carries ~52 columns and
+only arrivals/permits were being read. Added: visitor days, visitor
+expenditures, accommodation and food-service payrolls, construction
+payrolls, single-family and condo resale counts / median prices /
+inventory. Tax-revenue rows were deliberately NOT taken — DOTAX's own
+monthly reports cover collections at finer granularity with explicit
+revision tracking, and two sources for one quantity invites divergence.
+
+*Parser hazard fixed en route:* MEI reuses one label for two different
+series — `Inventory (aver. units on market)` appears at both the
+single-family and condo blocks. `SERIES` keys are now
+`(fragment, occurrence)` and the column scan iterates **unique**
+fragments; iterating raw dict keys double-counted matches
+(`[42, 42, 45, 45]`) and collapsed both occurrences onto the first
+column, which produced identical SF and condo inventory values.
+
+**Three new sources** (`refresh_hawaii_indicators.py`, all keyless):
+
+| series | what | span |
+|---|---|---|
+| `HIPHCI` | Philadelphia Fed Hawaii coincident index — the only composite in the panel | 1979-01 → 2026-06 |
+| `HIBPPRIV` | Hawaii housing UNITS authorized (counts; DBEDT permits are dollar VALUE) | 1988-01 → 2026-06 |
+| `BTS_HNL_PASSENGERS` / `_DEPARTURES` | T-100 origin-airport enplanements/departures from HNL | 2014-01 → 2026-04 |
+
+`HONO115BPPRIV` (Honolulu MSA permits) is the better geographic match
+and was the first choice, but it is **discontinued — ends 2013-12**, as
+does its SA twin; the statewide series is the only current one. The
+Socrata endpoint returns an empty body to requests without a
+browser-like User-Agent.
+
+**Screen effect: 79 → 90 tests, robust survivors unchanged at 12.** No
+new robust findings; `HI_VISITOR_SPEND → HI_UNEMPLOYMENT` passes BH at
+all three lags (p=1.5e-13 at lag 12) but dies on 2020 exclusion, and
+`HI_SF_SALES → HONOLULU_ZHVI` passes weakly at lag 12 (p=0.020,
+r=+0.087). `HI_AIR_PAX → HI_VISITORS` and
+`HI_PERMIT_UNITS → HONOLULU_ZHVI` get zero passes. Informative nulls,
+and the data is bundled regardless of screen outcome.
+
+**Two circular pairings were tried and withdrawn.** `HIPHCI` is built
+from four inputs *including the state unemployment rate*, so
+`HI_COINCIDENT → HI_UNEMPLOYMENT` asks whether a number predicts its own
+ingredient; a trial run returned r=−0.934 at lag 0 with a 2020-robust
+flag — spectacular-looking and near-meaningless. `HI_JOBS_ACCOM →
+HI_UNEMPLOYMENT` has the same defect more mildly (accommodation payrolls
+are a component of the employment level the rate is computed against).
+Both are documented as deliberately-unregistered in `HYPOTHESIS_PAIRS`
+and pinned by tests. If HIPHCI is ever screened, the target must sit
+outside its construction.
+
 ### Experimental: search-attention terms (`markets/attention.py`, July 2026)
 
 Google Trends terms as *demand-side* screen candidates — search embeds

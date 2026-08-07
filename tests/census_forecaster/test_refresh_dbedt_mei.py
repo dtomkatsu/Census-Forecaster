@@ -104,3 +104,30 @@ def test_screen_repointed_to_current_series():
     assert HAWAII_PREDICTORS["HI_VISITORS_ARRIVALS"] == "DBEDT_ARRIVALS_STATEWIDE"
     emitted = {p + g for p in mei.SERIES.values() for g in mei.GEOS.values()}
     assert MONTHLY_TARGETS["HI_VISITORS"][0] in emitted
+
+
+def test_duplicate_label_resolves_to_distinct_columns():
+    """MEI reuses one label for two series: 'Inventory (aver. units on
+    market)' appears at BOTH the single-family and condo blocks. A
+    first-match-wins lookup silently keeps one and mislabels it; an
+    occurrence scan that iterates raw SERIES keys instead of unique
+    fragments double-counts columns and collapses both onto the first.
+    Both bugs were hit during development — this pins the fix."""
+    headers = ["Single-family home resales", "Inventory (aver. units on market)",
+               "Condo/Apt/Townhouse units resales",
+               "Inventory (aver. units on market)"]
+    out = mei.parse_mei_workbook(_workbook(headers, [
+        (datetime(2026, 6, 1), [270, 781, 397, 2525]),
+    ]))
+    sf = out["DBEDT_SF_INVENTORY_"][0]["value"]
+    condo = out["DBEDT_CONDO_INVENTORY_"][0]["value"]
+    assert (sf, condo) == (781.0, 2525.0), "occurrences collapsed onto one column"
+
+
+def test_tax_rows_deliberately_not_taken():
+    """DOTAX's own reports cover collections at finer granularity with
+    revision tracking; two sources for one quantity invites divergence."""
+    fragments = {f for f, _ in mei.SERIES}
+    for banned in ("general excise", "transient accommodations tax",
+                   "state general fund", "wh tax on wages"):
+        assert not any(banned in f for f in fragments)
