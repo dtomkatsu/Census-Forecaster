@@ -183,6 +183,18 @@ jobs:
           # source degrades with a ::warning and keeps previous values.
           uv run python -m census_forecaster.scripts.refresh_hawaii_indicators
 
+      - name: Refresh Realtor.com Hawaii listing metrics
+        run: |
+          # No API key required. County listing-side indicators (days on
+          # market, price-cut share, pending ratio, active/new counts) —
+          # the only series in the panel measured while a home is still
+          # on the market rather than at closing.
+          #
+          # Streams a ~100 MB national CSV and keeps the 4 Hawaii
+          # counties; nothing that large is written to disk. Merge
+          # semantics, so it must stay AFTER refresh_market_panel.
+          uv run python -m census_forecaster.scripts.refresh_realtor_inventory
+
       - name: Refresh DOTAX monthly tax collections
         run: |
           # No API key required (needs openpyxl — see the --extra dotax on

@@ -1398,6 +1398,98 @@ Both are documented as deliberately-unregistered in `HYPOTHESIS_PAIRS`
 and pinned by tests. If HIPHCI is ever screened, the target must sit
 outside its construction.
 
+### Listing-side intake, round 4 (2026-08-06)
+
+**Redfin was the first choice and was rejected: the feed is frozen.**
+Its county tracker reaches back to 2012 and carries `months_of_supply`
+and `avg_sale_to_list`, which nothing else here has. But every export in
+the bucket — national, metro, county, state, zip — returns an identical
+`Last-Modified` of 2026-06-02 with data ending 2026-05: no update in
+over two months, verified 2026-08-06. A source that has stopped
+advancing cannot do the nowcast job this intake exists for. Its Honolulu
+single-family sale counts match DBEDT's to within ~2% where they overlap
+(264/259, 279/276, 262/261 for recent months), so it is a sound archival
+cross-check if the 2012-2016 backfill is ever wanted — it is just not
+worth a 241 MB monthly download to re-fetch a series that no longer
+moves. Recorded here so the next person does not re-research it.
+
+**Realtor.com replaced it** (`refresh_realtor_inventory.py`, 36 series:
+9 metrics × 4 counties, monthly 2016-07 →, ~1-month lag). Refreshed
+2026-08-04 with 2026-07 data — currently the freshest housing series in
+the panel, ahead of DBEDT's 2026-06. Keyless. Kalawao (15005, pop ~80)
+is unpublished; the other four counties are 121/121 complete on every
+metric taken.
+
+Why it matters: every housing series already here — DBEDT resale counts
+and medians, ZHVI, permit units — is recorded at or after closing, which
+in Hawaii is 30-60 days after the price was agreed. These are measured
+while the home is still listed, so they are the panel's only candidates
+for genuinely *leading* prices rather than re-describing them.
+
+**A model-free price target was added alongside them.**
+`HONOLULU_SF_MEDIAN` (`DBEDT_SF_MEDIAN_HONOLULU`) is the median of
+prices actually recorded on closed transactions. It exists because
+`HONOLULU_ZHVI` is computed from Zestimates, and Zillow documents
+on-market data — list price and days on market among it — as Zestimate
+inputs. Screening listing-derived predictors against ZHVI therefore
+risks the HIPHCI defect in diluted form. The dilution is real (ZHVI
+values every home, ~97% of which are unlisted in a given month) and this
+is nothing like HIPHCI's arithmetic circularity — but "diluted" is not
+"absent", so the uncontaminated control was built before the screen ran.
+
+**The control immediately earned its keep.**
+
+| pair | full run | 2020 excluded | robust |
+|---|---|---|---|
+| `HI_PRICE_CUTS → HONOLULU_SF_MEDIAN` | p=0.0085 (lag 3), 0.0017 (lag 6) | p=0.0168 (lag 3) | **yes** |
+| `HI_DOM → HONOLULU_ZHVI` | p=0.0163 (lag 3), 0.0317 (lag 6) | p=0.0056 (lag 3) | **yes, but see below** |
+| `HI_DOM → HONOLULU_SF_MEDIAN` | p=0.219 | p=0.567 | no |
+| `HI_PENDING_RATIO → HONOLULU_SF_MEDIAN` | p=0.333 | p=0.734 | no |
+
+`HI_PRICE_CUTS` is a genuine find, and the cross-correlation profile
+says so independently of the F-test: against recorded sale prices it is
+*positive* at lead 0 (+0.195), crosses over, and peaks negative at lead
+3 (−0.272). No contemporaneous relationship, a clean peak at exactly the
+lag the mechanism predicts — a listing cut today goes pending in ~30-60
+days and closes ~30 after that. The share of sellers cutting their
+asking price is measured the day the decision is made; a closed-sale
+index only learns about it once the discounted sale settles.
+
+`HI_DOM → HONOLULU_ZHVI` is treated as an **artifact of ZHVI's
+construction**, not evidence about housing. It clears BH on ZHVI while
+the same predictor against recorded sale prices does not (p=0.567), and
+the profiles explain why: against `SF_MEDIAN`, DOM peaks at lead 0
+(−0.290) and collapses to +0.021 by lead 1 — coincident with the market,
+no predictive content — whereas against ZHVI it peaks at lead 1 and
+decays smoothly, which is what a shared input smeared through a smoothed
+index looks like. *"`SF_MEDIAN` is merely noisier" does not explain the
+asymmetry*: `HI_PRICE_CUTS` cleared BH against that same noisy target,
+so it demonstrably has power to detect an effect of this size. The pair
+stays registered because the contrast is the informative part and
+deleting it would hide the finding, but it carries an explicit
+do-not-promote note: it must not become a `signals.py` feature channel
+without first reproducing on a model-free target. It cannot reach the
+forecast today regardless — `CHANNELS` is keyed on tickers only.
+
+**Deliberately not screened**, all documented inline: `RDC_LIST_PRICE_*`
+and `RDC_LIST_PPSF_*` (asking price is an acknowledged Zestimate input,
+and against a median *sale* price it is near-tautological — two
+measurements of one number separated by the negotiating discount);
+`RDC_PRICE_HIKES_*` (`price_increased_share` is exactly 0.0 in 40
+county-months, which `log_diff` drops, leaving a gapped series — and in
+a softening market the informative direction is cuts); `RDC_ACTIVE_*`,
+`RDC_NEW_LISTINGS_*`, `RDC_PENDING_*` levels (multiple-testing budget
+only — `RDC_PENDING_RATIO` already carries supply/demand balance
+scale-free). All are bundled in `macro_monthly.json` for descriptive use.
+
+Source months flagged `quality_flag=1` (thin volume or pandemic-era
+disruption; for Honolulu these cluster from 2020-03) are **retained, not
+dropped** — silently removing months would change series composition in
+a way no downstream consumer could audit, and the screen already re-runs
+with 2020 excluded. Net effect on the screen: 98 Granger tests, 61 BH
+passes, robust survivors 12 → 14, with **no previously-robust finding
+displaced**.
+
 ### Experimental: search-attention terms (`markets/attention.py`, July 2026)
 
 Google Trends terms as *demand-side* screen candidates — search embeds

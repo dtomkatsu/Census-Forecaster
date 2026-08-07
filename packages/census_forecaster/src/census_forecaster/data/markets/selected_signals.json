@@ -1,5 +1,5 @@
 {
-  "candidates_tested": 90,
+  "candidates_tested": 98,
   "generated": "2026-08-06",
   "limitations": "Granger != causation; selection is FDR-controlled predictive precedence on monthly data. Only signals passing the Phase-3 forecaster ablation may influence forecasts.",
   "q_fdr": 0.1,
@@ -315,6 +315,54 @@
       "robust_to_2020_exclusion": false,
       "target": "HONOLULU_ZHVI",
       "ticker": "HI_SF_SALES",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 3,
+      "best_xcorr_r": -0.30020244418341213,
+      "granger_lags": 3,
+      "granger_p": 0.008530102176387572,
+      "n_obs": 116,
+      "name": "hi_price_cuts_log_return_honolulu_sf_median_lag3",
+      "robust_to_2020_exclusion": true,
+      "target": "HONOLULU_SF_MEDIAN",
+      "ticker": "HI_PRICE_CUTS",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 3,
+      "best_xcorr_r": -0.30020244418341213,
+      "granger_lags": 6,
+      "granger_p": 0.0017348282542102278,
+      "n_obs": 113,
+      "name": "hi_price_cuts_log_return_honolulu_sf_median_lag6",
+      "robust_to_2020_exclusion": false,
+      "target": "HONOLULU_SF_MEDIAN",
+      "ticker": "HI_PRICE_CUTS",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 1,
+      "best_xcorr_r": -0.2800338239807776,
+      "granger_lags": 3,
+      "granger_p": 0.016272567996575817,
+      "n_obs": 116,
+      "name": "hi_dom_log_return_honolulu_zhvi_lag3",
+      "robust_to_2020_exclusion": true,
+      "target": "HONOLULU_ZHVI",
+      "ticker": "HI_DOM",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 1,
+      "best_xcorr_r": -0.2800338239807776,
+      "granger_lags": 6,
+      "granger_p": 0.031671811632889055,
+      "n_obs": 113,
+      "name": "hi_dom_log_return_honolulu_zhvi_lag6",
+      "robust_to_2020_exclusion": false,
+      "target": "HONOLULU_ZHVI",
+      "ticker": "HI_DOM",
       "transform": "log_return"
     },
     {

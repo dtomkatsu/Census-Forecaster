@@ -211,6 +211,47 @@ payroll series failed the same tests (it moves *with* unemployment,
 not ahead of it) and was kept on the books as a documented negative
 result.
 
+**A third worked example (August 2026): checking a source against
+itself.** Every housing number the system had — sale counts, median
+prices, Zillow's home-value index — is recorded *at or after closing*,
+which in Hawaii happens a month or two after buyer and seller actually
+agreed on the price. So we added the other side of the market:
+Realtor.com's county listing data, which measures what is happening
+while homes are still for sale — how long they sit, how many sellers
+cut their asking price, how much is under contract.
+
+The catch is that Zillow's home-value index is produced by a model, and
+that model reads listing data as one of its inputs. So "listings
+predict Zillow's index" could just mean "Zillow's index is partly made
+of listings" — the same trap the system hit earlier with a Federal
+Reserve index that was literally built out of the unemployment rate it
+appeared to predict. To settle it, a second price target was added
+first: the median price of homes that actually sold, a plain average of
+recorded transactions with no model anywhere in it.
+
+That precaution paid off immediately. **Price cuts passed both tests** —
+when more sellers cut their asking price, actual recorded sale prices
+are lower about three months later, which is roughly how long a cut
+listing takes to go under contract and close. That is a real
+early-warning signal, and it now has the cleanest supporting evidence of
+any housing indicator here.
+
+**Days-on-market passed only against the model.** It appeared to predict
+Zillow's index but had no relationship at all with recorded sale prices
+one month out. The natural objection is that recorded sale prices are a
+noisier measure, so maybe the test just wasn't sensitive enough — but
+price cuts had *already* passed against that same noisy measure, which
+shows the sensitivity was there. The most likely explanation is the
+uninteresting one: days-on-market helps predict Zillow's index partly
+because Zillow's index is built using days-on-market. It was kept in the
+records, clearly labelled, and blocked from ever feeding a forecast
+unless someone can reproduce it against real transaction prices.
+
+There is a broader point here worth keeping. A source going stale is
+easy to catch; a source that is *circular* looks like a success. The
+only reliable defence is to decide in advance what an uncontaminated
+version of the test would look like, and run it at the same time.
+
 **Survivors get compressed into three simple, national numbers, updated
 once a year:** an energy signal, a shipping signal, and a real-estate
 signal — each just "how much did the relevant stock(s) move over the

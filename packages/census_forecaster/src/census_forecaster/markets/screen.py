@@ -74,6 +74,28 @@ MONTHLY_TARGETS: dict[str, tuple[str, str]] = {
     # HTA_VISITORS_* stays bundled as the archival cross-check while
     # this target gets the current-through-today series.
     "HI_VISITORS":          ("DBEDT_ARRIVALS_STATEWIDE", "log_diff"),
+    # Honolulu single-family median RESALE price (DBEDT, 1990+). A
+    # model-free house-price target: it is the median of prices actually
+    # recorded on closed transactions, with no estimator in the loop.
+    #
+    # That property is why it exists here. HONOLULU_ZHVI is Zillow's
+    # index, computed from Zestimates, and Zillow documents on-market
+    # data — list price and days on market among it — as Zestimate
+    # inputs. Screening listing-derived predictors (RDC_* below) against
+    # ZHVI therefore risks the HIPHCI defect in diluted form: partly
+    # asking whether a number predicts something built from it. The
+    # dilution is real (ZHVI values every home, and ~97% of them are not
+    # listed in any given month, so their Zestimates carry no current
+    # on-market signal) — this is nothing like HIPHCI's arithmetic
+    # circularity — but "diluted" is not "absent". This target is the
+    # uncontaminated control: a listing indicator that leads BOTH series
+    # is telling us about housing, not about Zillow's model.
+    #
+    # Noisier than ZHVI by construction (a raw median over ~200-300
+    # sales/month moves with the composition of what sold, which is
+    # exactly the smoothing ZHVI exists to provide), so treat it as the
+    # robustness check and ZHVI as the operative target, not vice versa.
+    "HONOLULU_SF_MEDIAN":   ("DBEDT_SF_MEDIAN_HONOLULU", "log_diff"),
 }
 
 #: Hawaii monthly PREDICTORS (screen name → macro_monthly.json series id).
@@ -118,6 +140,48 @@ HAWAII_PREDICTORS: dict[str, str] = {
     # Housing permits as UNIT COUNTS (FRED/Census), distinct from
     # DBEDT's permit VALUE in dollars.
     "HI_PERMIT_UNITS": "HIBPPRIV",
+    # --- Realtor.com listing-side indicators (2026-08-06 intake) ---
+    # Everything else in the housing panel is measured at or after
+    # closing, which in Hawaii is 30-60 days after the price was agreed.
+    # These three are measured while the home is still on the market, so
+    # they are the panel's only candidates for genuinely LEADING the
+    # price series rather than re-describing it.
+    #
+    # Median days on market. Duration, not a price: when demand softens
+    # homes sit longer before going under contract, and that shows up
+    # before any closed-sale statistic moves.
+    "HI_DOM": "RDC_DOM_HONOLULU",
+    # Share of active listings that cut their asking price — direct
+    # measurement of seller capitulation. Arguably the cleanest leading
+    # indicator in the file: a price cut is a decision, recorded the day
+    # it happens, whereas a closed-sale index only learns about it once
+    # the discounted sale settles months later.
+    "HI_PRICE_CUTS": "RDC_PRICE_CUTS_HONOLULU",
+    # Pending / active listings. A tightness ratio, scale-free (so it is
+    # not dragged around by Oahu's market size) and forward-looking:
+    # pending contracts are next month's and the month after's closings.
+    "HI_PENDING_RATIO": "RDC_PENDING_RATIO_HONOLULU",
+    #
+    # NOT registered as predictors, deliberately:
+    #
+    # RDC_LIST_PRICE_* / RDC_LIST_PPSF_* — asking prices. Against ZHVI
+    # this is the sharpest form of the Zestimate-input problem described
+    # in the HONOLULU_SF_MEDIAN note (list price is an acknowledged
+    # Zestimate input), and against HONOLULU_SF_MEDIAN it is close to
+    # tautological: the median list price and the median sale price of
+    # the same market in the same month are two measurements of one
+    # number, separated mostly by the negotiating discount. Bundled in
+    # macro_monthly for descriptive and nowcast use; not screened.
+    #
+    # RDC_PRICE_HIKES_* — price_increased_share hits exactly 0.0 in 40
+    # county-months, which log_diff drops, leaving a gapped series. The
+    # informative direction in a softening market is cuts, not hikes.
+    #
+    # RDC_ACTIVE_* / RDC_NEW_LISTINGS_* / RDC_PENDING_* (levels) —
+    # inventory and flow counts. Held back purely on multiple-testing
+    # budget: RDC_PENDING_RATIO already carries the supply/demand
+    # balance in scale-free form, and DBEDT_SF_INVENTORY_HONOLULU covers
+    # the stock. Available in the bundle if a written mechanism appears.
 }
 
 # National-macro monthly PREDICTORS (predictor_name → macro_monthly.json
@@ -177,6 +241,39 @@ HYPOTHESIS_PAIRS: tuple[tuple[str, str], ...] = (
     ("HI_SF_SALES", "HONOLULU_ZHVI"),
     # Permit UNITS → home values: new supply pipeline vs price.
     ("HI_PERMIT_UNITS", "HONOLULU_ZHVI"),
+    # --- 2026-08-06 intake: listing-side leading indicators ---
+    # Tested against HONOLULU_SF_MEDIAN, the model-free recorded-sale
+    # target, NOT against ZHVI — see that target's note. All three ask
+    # the same question from different angles: does what happens to a
+    # home while it is still listed tell us where closed prices go next?
+    ("HI_DOM", "HONOLULU_SF_MEDIAN"),           # homes sit longer → prices soften
+    ("HI_PRICE_CUTS", "HONOLULU_SF_MEDIAN"),    # sellers capitulate → prices soften
+    ("HI_PENDING_RATIO", "HONOLULU_SF_MEDIAN"), # tightness → prices firm
+    # ...and days-on-market additionally against the operative ZHVI
+    # target, because ZHVI is what the annual forecaster actually
+    # consumes. Registered as ONE pair rather than three so the
+    # contaminated target does not dominate the testing budget; read any
+    # pass here against its HONOLULU_SF_MEDIAN counterpart above, which
+    # is the uncontaminated version of the same question.
+    #
+    # OUTCOME (2026-08-06), and it is why the control was built: this
+    # pair PASSES (p=0.0056 at lag 3, 2020 excluded) while the same
+    # predictor against recorded sale prices does NOT (p=0.567). The
+    # cross-correlation profiles say why. Against SF_MEDIAN, DOM peaks
+    # at lead 0 (-0.29) and collapses to +0.02 by lead 1 — coincident
+    # with the market, no predictive content. Against ZHVI it peaks at
+    # lead 1 and decays smoothly, which is what a shared input smeared
+    # through a smoothed index looks like.
+    #
+    # "SF_MEDIAN is just noisier" does not explain it: HI_PRICE_CUTS
+    # cleared BH against that same noisy target, so the target has power
+    # to detect an effect of this size. DOM's apparent lead on ZHVI is
+    # therefore treated as an artifact of ZHVI's construction, not
+    # evidence about housing. Kept registered — the contrast is the
+    # informative part and deleting it would hide the finding — but this
+    # signal MUST NOT be promoted into a feature channel (signals.py
+    # CHANNELS) without first reproducing it on a model-free target.
+    ("HI_DOM", "HONOLULU_ZHVI"),
     #
     # NOT REGISTERED, deliberately:
     #

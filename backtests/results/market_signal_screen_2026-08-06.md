@@ -1,6 +1,6 @@
 # Market-signal screen — 2026-08-06
 
-Pre-registered ticker→target hypotheses (35 pairs), Granger F-tests on monthly log-returns at lags 3/6/12, BH-FDR q=0.1. 90 tests run.
+Pre-registered ticker→target hypotheses (39 pairs), Granger F-tests on monthly log-returns at lags 3/6/12, BH-FDR q=0.1. 98 tests run.
 
 **Granger ≠ causation.** A pass means the ticker's past adds predictive content beyond the target's own past. Confounders survive this screen; the Phase-3 forecaster ablation is the final arbiter. mom12 rows are descriptive cross-correlations only (overlapping windows invalidate the F-test).
 
@@ -64,6 +64,22 @@ Pre-registered ticker→target hypotheses (35 pairs), Granger F-tests on monthly
 | HI_PERMIT_UNITS | log_return | HONOLULU_ZHVI | 6 | 1.50 | 0.1771 | 311 | +0.039@6m | no |  |
 | HI_PERMIT_UNITS | log_return | HONOLULU_ZHVI | 12 | 0.83 | 0.6163 | 305 | +0.039@6m | no |  |
 | HI_PERMIT_UNITS | mom12 | HONOLULU_ZHVI | — | — | — | — | +0.202@6m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
+| HI_DOM | log_return | HONOLULU_SF_MEDIAN | 3 | 1.50 | 0.2191 | 116 | -0.310@0m | no |  |
+| HI_DOM | log_return | HONOLULU_SF_MEDIAN | 6 | 1.28 | 0.2728 | 113 | -0.310@0m | no |  |
+| HI_DOM | log_return | HONOLULU_SF_MEDIAN | 12 | — | — | — | -0.310@0m | no | insufficient aligned months |
+| HI_DOM | mom12 | HONOLULU_SF_MEDIAN | — | — | — | — | +0.141@11m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
+| HI_PRICE_CUTS | log_return | HONOLULU_SF_MEDIAN | 3 | 4.09 | 0.0085 | 116 | -0.300@3m | **YES** |  |
+| HI_PRICE_CUTS | log_return | HONOLULU_SF_MEDIAN | 6 | 3.84 | 0.0017 | 113 | -0.300@3m | **YES** |  |
+| HI_PRICE_CUTS | log_return | HONOLULU_SF_MEDIAN | 12 | — | — | — | -0.300@3m | no | insufficient aligned months |
+| HI_PRICE_CUTS | mom12 | HONOLULU_SF_MEDIAN | — | — | — | — | -0.160@3m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
+| HI_PENDING_RATIO | log_return | HONOLULU_SF_MEDIAN | 3 | 1.15 | 0.3334 | 116 | +0.159@2m | no |  |
+| HI_PENDING_RATIO | log_return | HONOLULU_SF_MEDIAN | 6 | 0.78 | 0.5863 | 113 | +0.159@2m | no |  |
+| HI_PENDING_RATIO | log_return | HONOLULU_SF_MEDIAN | 12 | — | — | — | +0.159@2m | no | insufficient aligned months |
+| HI_PENDING_RATIO | mom12 | HONOLULU_SF_MEDIAN | — | — | — | — | +0.150@2m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
+| HI_DOM | log_return | HONOLULU_ZHVI | 3 | 3.58 | 0.0163 | 116 | -0.280@1m | **YES** |  |
+| HI_DOM | log_return | HONOLULU_ZHVI | 6 | 2.42 | 0.0317 | 113 | -0.280@1m | **YES** |  |
+| HI_DOM | log_return | HONOLULU_ZHVI | 12 | — | — | — | -0.280@1m | no | insufficient aligned months |
+| HI_DOM | mom12 | HONOLULU_ZHVI | — | — | — | — | -0.632@0m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
 | XLRE | log_return | HONOLULU_ZHVI | 3 | 3.71 | 0.0136 | 125 | +0.194@5m | **YES** |  |
 | XLRE | log_return | HONOLULU_ZHVI | 6 | 3.46 | 0.0036 | 122 | +0.194@5m | **YES** |  |
 | XLRE | log_return | HONOLULU_ZHVI | 12 | — | — | — | +0.194@5m | no | insufficient aligned months |
@@ -149,7 +165,7 @@ Pre-registered ticker→target hypotheses (35 pairs), Granger F-tests on monthly
 | US_EMPPOP | log_return | HI_UNEMPLOYMENT | 12 | 8.85 | 0.0000 | 236 | -0.961@0m | **YES** |  |
 | US_EMPPOP | mom12 | HI_UNEMPLOYMENT | — | — | — | — | -0.288@0m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
 
-## 2020 excluded (COVID sensitivity) — 83 tests
+## 2020 excluded (COVID sensitivity) — 87 tests
 
 A signal that only exists because of the 2020 crash is a one-event artifact, not a relationship.
 
@@ -211,6 +227,22 @@ A signal that only exists because of the 2020 crash is a one-event artifact, not
 | HI_PERMIT_UNITS | log_return | HONOLULU_ZHVI | 6 | 1.08 | 0.3725 | 292 | +0.033@6m | no |  |
 | HI_PERMIT_UNITS | log_return | HONOLULU_ZHVI | 12 | 0.63 | 0.8202 | 280 | +0.033@6m | no |  |
 | HI_PERMIT_UNITS | mom12 | HONOLULU_ZHVI | — | — | — | — | +0.204@6m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
+| HI_DOM | log_return | HONOLULU_SF_MEDIAN | 3 | 0.68 | 0.5668 | 100 | -0.290@0m | no |  |
+| HI_DOM | log_return | HONOLULU_SF_MEDIAN | 6 | — | — | — | -0.290@0m | no | insufficient aligned months |
+| HI_DOM | log_return | HONOLULU_SF_MEDIAN | 12 | — | — | — | -0.290@0m | no | insufficient aligned months |
+| HI_DOM | mom12 | HONOLULU_SF_MEDIAN | — | — | — | — | +0.207@11m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
+| HI_PRICE_CUTS | log_return | HONOLULU_SF_MEDIAN | 3 | 3.58 | 0.0168 | 100 | +0.322@12m | **YES** |  |
+| HI_PRICE_CUTS | log_return | HONOLULU_SF_MEDIAN | 6 | — | — | — | +0.322@12m | no | insufficient aligned months |
+| HI_PRICE_CUTS | log_return | HONOLULU_SF_MEDIAN | 12 | — | — | — | +0.322@12m | no | insufficient aligned months |
+| HI_PRICE_CUTS | mom12 | HONOLULU_SF_MEDIAN | — | — | — | — | -0.137@13m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
+| HI_PENDING_RATIO | log_return | HONOLULU_SF_MEDIAN | 3 | 0.43 | 0.7338 | 100 | -0.187@4m | no |  |
+| HI_PENDING_RATIO | log_return | HONOLULU_SF_MEDIAN | 6 | — | — | — | -0.187@4m | no | insufficient aligned months |
+| HI_PENDING_RATIO | log_return | HONOLULU_SF_MEDIAN | 12 | — | — | — | -0.187@4m | no | insufficient aligned months |
+| HI_PENDING_RATIO | mom12 | HONOLULU_SF_MEDIAN | — | — | — | — | +0.084@15m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
+| HI_DOM | log_return | HONOLULU_ZHVI | 3 | 4.47 | 0.0056 | 100 | -0.388@13m | **YES** |  |
+| HI_DOM | log_return | HONOLULU_ZHVI | 6 | — | — | — | -0.388@13m | no | insufficient aligned months |
+| HI_DOM | log_return | HONOLULU_ZHVI | 12 | — | — | — | -0.388@13m | no | insufficient aligned months |
+| HI_DOM | mom12 | HONOLULU_ZHVI | — | — | — | — | -0.678@0m | no | descriptive xcorr only (overlapping-window transform; no Granger test) |
 | XLRE | log_return | HONOLULU_ZHVI | 3 | 2.97 | 0.0352 | 109 | +0.191@5m | no |  |
 | XLRE | log_return | HONOLULU_ZHVI | 6 | — | — | — | +0.191@5m | no | insufficient aligned months |
 | XLRE | log_return | HONOLULU_ZHVI | 12 | — | — | — | +0.191@5m | no | insufficient aligned months |
