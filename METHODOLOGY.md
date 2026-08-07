@@ -1482,6 +1482,70 @@ a softening market the informative direction is cuts); `RDC_ACTIVE_*`,
 only — `RDC_PENDING_RATIO` already carries supply/demand balance
 scale-free). All are bundled in `macro_monthly.json` for descriptive use.
 
+### Fuel cost and business formation — two nulls (2026-08-07)
+
+Both added as one-line entries to the keyless FRED fetcher, deliberately
+*not* to `refresh_national_macro.py`: that script is driven by
+`acs.ml_features.NATIONAL_SERIES`, so registering there would inject an
+ungated channel into the ACS feature panel.
+
+**Source audit first.** Hawaii-specific jet fuel is dead — EIA's
+state-level refiner price has 34 non-null observations ever, ending
+2013-09, and the entire refiner-survey jet fuel family (every state plus
+the national total) stops at 2022-03. The live series is the US Gulf
+Coast spot benchmark, `MJFUELUSGULF`, monthly 1990-04 →. Identity was
+verified **by value, not by title**: all six most recent months match
+EIA's `EER_EPJK_PF4_RGC_DPG` exactly. That check is not ceremonial —
+this repo shipped `CUURS49ASA0` as "Honolulu CPI" for months when it is
+Los Angeles.
+
+Hawaii DCCA publishes business registrations **only as HTML search
+forms** — no CSV, no API, no series (`opendata.hawaii.gov` lists 6 DCCA
+entries, all search UIs). Census BFS via `BABATOTALSAHI` is therefore
+the only route, and it is monthly/SA/2004-07 → current, contradicting an
+earlier note in this repo that BFS was too lagged to use.
+
+**Both hypotheses failed, in the same way.**
+
+| pair | full sample | 2020 excluded |
+|---|---|---|
+| `US_JETFUEL → HI_VISITORS` | p=0.0103 / 0.0138 / 0.0009 (all 3 lags) | p=0.244 / 0.219 / 0.537 (all fail) |
+| `HI_BIZ_APPS → HI_UNEMPLOYMENT` | p=0.0045 / 0.0334 / 0.0186 (all 3 lags) | p=0.421 / 0.540 / 0.608 (all fail) |
+
+Textbook one-event artifacts: 2020 collapsed fuel prices, arrivals and
+business formation while spiking unemployment, so everything correlates
+with everything. This is precisely what the 2020-exclusion gate exists
+to catch, and the robust count stayed at **14, unchanged**.
+
+**The fuel pair additionally has the wrong sign**, which is the more
+useful lesson. The mechanism predicts negative — fuel up, long-haul
+capacity cut, fewer arrivals. The data give **+0.204** at lead 0 on the
+full sample and **+0.179** at lead 9 without 2020. Positive is what the
+global demand cycle produces (a strong world economy lifts both fuel
+prices and travel), so even the full-sample "pass" was never evidence
+for the stated channel. **A sign check against the written mechanism is
+cheaper than an F-test and would have caught this first** — worth doing
+routinely before reading any p-value here.
+
+`HI_BIZ_APPS` keeps the right sign throughout (−0.147 at lead 1: more
+formations, less slack), so its mechanism is not contradicted, only
+undetectable outside the pandemic. Retest is reasonable later — 2020
+exclusion still leaves ~236 usable months, so the binding constraint is
+effect size, not sample size, and Hawaii forms businesses below its
+population share (0.30% of US applications vs 0.43% of population).
+
+Both pairs stay registered, following the `HE → HI_UNEMPLOYMENT`
+precedent: a documented null is worth more than a deleted one, because
+the next reader will otherwise re-propose the same idea.
+
+*Process note.* An intermediate check during this work compared the
+count of entries in `selected_signals.json` before and after and read
+"+2" as "two new robust findings". That file holds **all 67 BH passes**
+with a `robust_to_2020_exclusion` flag, not the robust subset — the
+correct check is that flag (or the screen's own "N robust" line), not
+the array length. The earlier round-4 conclusions were verified against
+the report table and the robust count independently and are unaffected.
+
 Source months flagged `quality_flag=1` (thin volume or pandemic-era
 disruption; for Honolulu these cluster from 2020-03) are **retained, not
 dropped** — silently removing months would change series composition in

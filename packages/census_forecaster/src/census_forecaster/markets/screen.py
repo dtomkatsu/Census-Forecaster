@@ -161,6 +161,13 @@ HAWAII_PREDICTORS: dict[str, str] = {
     # not dragged around by Oahu's market size) and forward-looking:
     # pending contracts are next month's and the month after's closings.
     "HI_PENDING_RATIO": "RDC_PENDING_RATIO_HONOLULU",
+    # Census BFS business applications, Hawaii, SA (2004-07+). A filing
+    # precedes hiring, leasing and equipment purchase, so formations
+    # lead labour demand rather than recording it. The only route to
+    # this signal: Hawaii DCCA publishes registrations exclusively as
+    # HTML search forms — no CSV, no API, no series (verified
+    # 2026-08-06).
+    "HI_BIZ_APPS": "BABATOTALSAHI",
     #
     # NOT registered as predictors, deliberately:
     #
@@ -199,6 +206,12 @@ NATIONAL_PREDICTORS: dict[str, str] = {
     "US_JOLTS":      "JTS000000000000000JOR", # job openings rate
     "US_MORTGAGE30": "MORTGAGE30US",          # 30-yr mortgage rate (FRED)
     "US_DGS10":      "DGS10",                 # 10-yr Treasury yield (FRED)
+    # US Gulf Coast kerosene-type jet fuel spot, $/gal (1990-04+).
+    # Fetched by refresh_hawaii_indicators.py rather than
+    # refresh_national_macro.py — the latter is driven by
+    # acs.ml_features.NATIONAL_SERIES, so registering it there would
+    # inject an ungated channel into the ACS feature panel.
+    "US_JETFUEL":    "MJFUELUSGULF",
 }
 
 # Pre-registered predictor → monthly-target pairs. Tickers map ACS-cell
@@ -274,6 +287,61 @@ HYPOTHESIS_PAIRS: tuple[tuple[str, str], ...] = (
     # signal MUST NOT be promoted into a feature channel (signals.py
     # CHANNELS) without first reproducing it on a model-free target.
     ("HI_DOM", "HONOLULU_ZHVI"),
+    # --- 2026-08-06 intake: fuel cost + business formation ---
+    # Jet fuel -> arrivals. Fuel is ~25-30% of airline operating cost,
+    # and EVERY visitor to Hawaii arrives on a 2,500+ mile flight, so
+    # the state's exposure to fuel is structural in a way no mainland
+    # destination's is: when fuel spikes, long-haul leisure capacity is
+    # what gets cut. Registered ALONGSIDE the existing JETS->HI_VISITORS
+    # pair rather than instead of it, because they are not the same
+    # quantity: JETS is a diversified airline EQUITY index dominated by
+    # domestic short-haul (and prices in hedging, balance sheets and
+    # regulatory risk), while this is the raw input COST. If the fuel
+    # channel is real, this should be the cleaner expression of it.
+    #
+    # OUTCOME (2026-08-07): NULL, and doubly so.
+    # (a) It clears BH at all three lags on the full sample (p=0.0103 /
+    #     0.0138 / 0.0009) and then fails ALL THREE with 2020 excluded
+    #     (p=0.244 / 0.219 / 0.537). Textbook one-event artifact: 2020
+    #     collapsed jet fuel and Hawaii arrivals in the same quarter, so
+    #     any estimator sees a relationship that is really one shock.
+    # (b) The SIGN is wrong for the mechanism regardless of the p-value.
+    #     The hypothesis predicts NEGATIVE (fuel up -> long-haul
+    #     capacity cut -> fewer arrivals); the data give +0.204 at lead
+    #     0 on the full sample and +0.179 at lead 9 without 2020. A
+    #     positive relationship is what the global demand cycle produces
+    #     — a strong world economy lifts both fuel prices and travel —
+    #     so even the full-sample "pass" is not evidence for the stated
+    #     channel. Sign checks are cheap and would have caught this
+    #     before the F-test did.
+    # Kept registered: the null is informative and the mechanism is a
+    # natural thing for a future reader to re-propose.
+    ("US_JETFUEL", "HI_VISITORS"),
+    # Business formation -> labour-market slack. An application is filed
+    # before anyone is hired, a lease signed or equipment bought, so
+    # formations lead employment rather than recording it.
+    #
+    # Not circular: BFS counts IRS EIN applications, an administrative
+    # filing series with no input from the household survey the
+    # unemployment rate is computed from — unlike HIPHCI, which is
+    # built from that rate (see the note below).
+    #
+    # OUTCOME (2026-08-07): NULL. Same shape as US_JETFUEL above —
+    # clears BH at all three lags on the full sample (p=0.0045 / 0.0334
+    # / 0.0186), fails all three with 2020 excluded (p=0.421 / 0.540 /
+    # 0.608). Unlike the fuel pair the SIGN is right throughout
+    # (-0.147 at lead 1: more formations, less slack), so the mechanism
+    # is not contradicted — it is simply not detectable outside the
+    # pandemic, when formations and unemployment moved together because
+    # one shock moved everything.
+    #
+    # Worth a retest later rather than deletion: the series is SA and
+    # starts 2004-07, so excluding 2020 leaves ~236 usable months —
+    # ample n. The constraint is effect size, not sample size, and
+    # Hawaii's formation rate runs below its population share (0.30% of
+    # US applications vs 0.43% of population), so the signal may simply
+    # be small here.
+    ("HI_BIZ_APPS", "HI_UNEMPLOYMENT"),
     #
     # NOT REGISTERED, deliberately:
     #

@@ -1,6 +1,6 @@
 {
-  "candidates_tested": 98,
-  "generated": "2026-08-06",
+  "candidates_tested": 104,
+  "generated": "2026-08-07",
   "limitations": "Granger != causation; selection is FDR-controlled predictive precedence on monthly data. Only signals passing the Phase-3 forecaster ablation may influence forecasts.",
   "q_fdr": 0.1,
   "screen_version": 1,
@@ -363,6 +363,78 @@
       "robust_to_2020_exclusion": false,
       "target": "HONOLULU_ZHVI",
       "ticker": "HI_DOM",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 0,
+      "best_xcorr_r": 0.20366026913559293,
+      "granger_lags": 3,
+      "granger_p": 0.010345013070964096,
+      "n_obs": 431,
+      "name": "us_jetfuel_log_return_hi_visitors_lag3",
+      "robust_to_2020_exclusion": false,
+      "target": "HI_VISITORS",
+      "ticker": "US_JETFUEL",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 0,
+      "best_xcorr_r": 0.20366026913559293,
+      "granger_lags": 6,
+      "granger_p": 0.013780627453530151,
+      "n_obs": 428,
+      "name": "us_jetfuel_log_return_hi_visitors_lag6",
+      "robust_to_2020_exclusion": false,
+      "target": "HI_VISITORS",
+      "ticker": "US_JETFUEL",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 0,
+      "best_xcorr_r": 0.20366026913559293,
+      "granger_lags": 12,
+      "granger_p": 0.0009002491717935338,
+      "n_obs": 422,
+      "name": "us_jetfuel_log_return_hi_visitors_lag12",
+      "robust_to_2020_exclusion": false,
+      "target": "HI_VISITORS",
+      "ticker": "US_JETFUEL",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 1,
+      "best_xcorr_r": -0.14715633737350578,
+      "granger_lags": 3,
+      "granger_p": 0.004512836616185541,
+      "n_obs": 250,
+      "name": "hi_biz_apps_log_return_hi_unemployment_lag3",
+      "robust_to_2020_exclusion": false,
+      "target": "HI_UNEMPLOYMENT",
+      "ticker": "HI_BIZ_APPS",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 1,
+      "best_xcorr_r": -0.14715633737350578,
+      "granger_lags": 6,
+      "granger_p": 0.0334300943512489,
+      "n_obs": 244,
+      "name": "hi_biz_apps_log_return_hi_unemployment_lag6",
+      "robust_to_2020_exclusion": false,
+      "target": "HI_UNEMPLOYMENT",
+      "ticker": "HI_BIZ_APPS",
+      "transform": "log_return"
+    },
+    {
+      "best_xcorr_lead_months": 1,
+      "best_xcorr_r": -0.14715633737350578,
+      "granger_lags": 12,
+      "granger_p": 0.01860278914734926,
+      "n_obs": 236,
+      "name": "hi_biz_apps_log_return_hi_unemployment_lag12",
+      "robust_to_2020_exclusion": false,
+      "target": "HI_UNEMPLOYMENT",
+      "ticker": "HI_BIZ_APPS",
       "transform": "log_return"
     },
     {

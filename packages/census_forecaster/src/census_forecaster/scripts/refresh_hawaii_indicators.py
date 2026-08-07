@@ -66,6 +66,41 @@ FRED_CSV_TMPL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}"
 FRED_SERIES: dict[str, str] = {
     "HIPHCI": "HIPHCI",
     "HIBPPRIV": "HIBPPRIV",
+    # Census Business Formation Statistics — business applications,
+    # Hawaii, seasonally adjusted (monthly 2004-07+, ~1-month lag).
+    # A filing precedes hiring, leasing and equipment purchase, so
+    # formations are a forward-looking read on local activity that no
+    # payroll or household survey can give.
+    #
+    # SA on purpose: the NSA twin is dominated by calendar seasonality
+    # (the DBEDT tourism series in this panel lose ~75% of their m/m
+    # variance to it), which the screen's log_diff transform cannot
+    # remove and which degrades the Granger test for no gain.
+    #
+    # This is the ONLY route to Hawaii business formation. Hawaii DCCA
+    # publishes registrations as HTML search forms only — no CSV, no
+    # API, no time series (opendata.hawaii.gov lists 6 DCCA entries,
+    # all search UIs; verified 2026-08-06).
+    "BABATOTALSAHI": "BABATOTALSAHI",
+    # US Gulf Coast kerosene-type jet fuel spot price, FOB $/gal
+    # (monthly 1990-04+). NATIONAL, not Hawaii — the exception to this
+    # module's name, kept here because it is a keyless FRED CSV like
+    # its neighbours. It deliberately does NOT go in
+    # refresh_national_macro.py: that script is driven by
+    # acs.ml_features.NATIONAL_SERIES, so adding it there would inject
+    # an ungated channel into the ACS feature panel. Screen input only.
+    #
+    # Identity verified 2026-08-06 by value, not by title: all six most
+    # recent months match the EIA API's EER_EPJK_PF4_RGC_DPG exactly
+    # (3.403, 3.042, 3.943, 3.928, 3.697, 2.262). Worth doing — this
+    # repo has shipped a mislabelled FRED series before (CUURS49ASA0
+    # was Los Angeles, not Honolulu).
+    #
+    # NOT the Hawaii-specific jet fuel series: EIA's state-level
+    # refiner prices for Hawaii died in 2013-09 (34 non-null
+    # observations ever), and the entire refiner-survey jet fuel
+    # family — every state and the national total — stops at 2022-03.
+    "MJFUELUSGULF": "MJFUELUSGULF",
 }
 
 BTS_URL = "https://data.transportation.gov/resource/r495-tyji.json"
@@ -164,7 +199,13 @@ def merge_into_macro_monthly(series_by_id: dict[str, list[dict]],
         "HIBPPRIV is Hawaii housing UNITS authorized (counts) — distinct "
         "from DBEDT_PERMITS_* which is permit VALUE in dollars. "
         "BTS_HNL_* are T-100 origin-airport departures/enplanements FROM "
-        "HNL (not total airport throughput), ~4-month lag, and revised."
+        "HNL (not total airport throughput), ~4-month lag, and revised. "
+        "BABATOTALSAHI is Census BFS business APPLICATIONS (filings, not "
+        "confirmed business starts — many never become employers) and is "
+        "seasonally adjusted, unlike most series in this file. "
+        "MJFUELUSGULF is a NATIONAL Gulf Coast benchmark, not a Hawaii "
+        "price: Hawaii-specific jet fuel ended 2013-09 and the whole EIA "
+        "refiner-survey jet fuel family ended 2022-03."
     )
     lims = payload.setdefault("limitations", [])
     if note not in lims:

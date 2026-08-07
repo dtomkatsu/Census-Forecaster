@@ -104,6 +104,27 @@ def test_uses_current_permit_series_not_discontinued_one():
     assert "HONO115BPPRIV" not in hi.FRED_SERIES
 
 
+def test_jet_fuel_and_business_formation_wired():
+    """Both ride this keyless FRED fetcher rather than
+    refresh_national_macro, which is driven by ml_features.
+    NATIONAL_SERIES and would inject an ungated feature channel."""
+    from census_forecaster.markets.screen import NATIONAL_PREDICTORS
+    assert "MJFUELUSGULF" in hi.FRED_SERIES
+    assert "BABATOTALSAHI" in hi.FRED_SERIES
+    assert NATIONAL_PREDICTORS["US_JETFUEL"] == "MJFUELUSGULF"
+    assert HAWAII_PREDICTORS["HI_BIZ_APPS"] == "BABATOTALSAHI"
+    assert ("US_JETFUEL", "HI_VISITORS") in HYPOTHESIS_PAIRS
+    assert ("HI_BIZ_APPS", "HI_UNEMPLOYMENT") in HYPOTHESIS_PAIRS
+
+
+def test_uses_national_jet_fuel_not_dead_hawaii_series():
+    """EIA's Hawaii jet fuel ended 2013-09 and the whole refiner-survey
+    jet fuel family ended 2022-03 (verified 2026-08-07). The Gulf Coast
+    spot benchmark is the only live one — pinned so nobody 'upgrades'
+    to the better-sounding Hawaii series and silently gets a stub."""
+    assert not any(s.startswith("EMA_EPJK") for s in hi.FRED_SERIES)
+
+
 def test_screen_wiring_and_circularity_exclusions():
     assert HAWAII_PREDICTORS["HI_COINCIDENT"] == "HIPHCI"
     assert HAWAII_PREDICTORS["HI_AIR_PAX"] == "BTS_HNL_PASSENGERS"
