@@ -1482,6 +1482,11 @@ class TaxUnitConstructor:
             if dep_id_str not in hh_members.index:
                 continue
             d = hh_members.loc[dep_id_str]
+            _pw = d.get('PWGTP', 0.0)
+            try:
+                _pw = float(_pw) if _pw is not None and not pd.isna(_pw) else 0.0
+            except (TypeError, ValueError):
+                _pw = 0.0
             details.append({
                 'age': _safe_int(d.get('AGEP', 0)),
                 'relationship': _safe_int(d.get('RELSHIPP', 0)),
@@ -1489,6 +1494,12 @@ class TaxUnitConstructor:
                 'months_in_home': 12,  # PUMS has no sub-year residency data
                 'school_level': _safe_int(d.get('SCHL', 0)),
                 'disabled': _safe_int(d.get('DIS', 2), default=2) == 1,
+                # The dependent's OWN person weight. The tax unit's `weight` is a
+                # filing-status-calibrated hybrid (WGTP x DOTAX share factors) —
+                # correct for revenue, WRONG for counting people. Consumers that
+                # need a demographic headcount (e.g. the RxKids birth driver)
+                # must weight by this, not by the unit weight.
+                'pwgtp': _pw,
             })
         return details
 

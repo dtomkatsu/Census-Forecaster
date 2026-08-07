@@ -1,0 +1,13 @@
+scenario,label,county,cost_total,cost_prenatal,cost_postnatal,cost_se,recipients
+statutory_6mo,Statutory (Medicaid OR ≤300% FPL) · 6-mo postnatal,Hawaii,5430664.0,1711031.0,3719633.0,1839250.0,2381.0
+statutory_6mo,Statutory (Medicaid OR ≤300% FPL) · 6-mo postnatal,Honolulu,27447245.0,8647762.0,18799483.0,5125954.0,12032.0
+statutory_6mo,Statutory (Medicaid OR ≤300% FPL) · 6-mo postnatal,Kauai,2840841.0,895059.0,1945781.0,1637854.0,1245.0
+statutory_6mo,Statutory (Medicaid OR ≤300% FPL) · 6-mo postnatal,Maui,1792119.0,564640.0,1227479.0,885533.0,786.0
+universal_6mo,Universal · 6-mo postnatal,Hawaii,5430664.0,1711031.0,3719633.0,1839250.0,2381.0
+universal_6mo,Universal · 6-mo postnatal,Honolulu,49381897.0,15558680.0,33823217.0,7648020.0,21647.0
+universal_6mo,Universal · 6-mo postnatal,Kauai,2840841.0,895059.0,1945781.0,1637854.0,1245.0
+universal_6mo,Universal · 6-mo postnatal,Maui,6221529.0,1960208.0,4261321.0,3130447.0,2727.0
+universal_12mo,Universal · 12-mo postnatal,Hawaii,9150297.0,1711031.0,7439265.0,3099010.0,2381.0
+universal_12mo,Universal · 12-mo postnatal,Honolulu,83205115.0,15558680.0,67646435.0,12886389.0,21647.0
+universal_12mo,Universal · 12-mo postnatal,Kauai,4786622.0,895059.0,3891562.0,2759671.0,1245.0
+universal_12mo,Universal · 12-mo postnatal,Maui,10482851.0,1960208.0,8522643.0,5274590.0,2727.0

@@ -133,9 +133,66 @@ HI_BIRTHS_BY_YEAR = {
     2021: 15620,
     2022: 15535,
     2023: 14643,
+    2024: 14917,  # NVSR 75-02 (Jun 9 2026), Table 5, by place of residence
 }
 # PUMS construction / birth-observation base year (matches PUMS_CONSTRUCTION_YEAR).
 BIRTH_BASE_YEAR = 2022
+
+# ---------------------------------------------------------------------------
+# Hawaiʻi DOH preliminary vital statistics — nowcast for the post-NVSR gap
+# ---------------------------------------------------------------------------
+# NVSR "Births: Final Data" runs ~18 months behind (2024 final published Jun
+# 2026), so without a nowcast the series dead-ends at 2024 and the 2028
+# projection extrapolates a 4-year gap blind. Hawaiʻi DOH (Office of Health
+# Status Monitoring) publishes preliminary births MONTHLY by county at ~5 weeks'
+# lag — https://health.hawaii.gov/vitalstatistics/ — which closes that gap.
+#
+# TWO corrections are required before DOH can join the NVSR series; neither is
+# optional, and the first is NOT a fixed constant:
+#
+# 1. OCCURRENCE -> RESIDENCE. DOH counts births *occurring* in Hawaiʻi
+#    (including to non-residents); NVSR counts births to Hawaiʻi *residents*
+#    (including those occurring out of state). RxKids eligibility is a
+#    residency question, so NVSR is the correct basis. The DOH/NVSR ratio is
+#    strongly time-varying — it tracks travel volume, because the wedge is
+#    largely non-resident births:
+#        2018 1.1054 | 2019 1.0928 | 2020 1.0051 | 2021 1.0023
+#        2022 1.0023 | 2023 1.0142 | 2024 1.0037
+#    Pre-COVID it ran ~1.10; the travel collapse drove it to ~1.00 and it has
+#    only partially recovered. We therefore calibrate on the post-COVID regime
+#    ONLY (2020-2024) and carry its dispersion into the MOE rather than
+#    pretending the factor is known. A pre-COVID-style recovery toward 1.10 is
+#    the main directional risk and would make these nowcasts too HIGH.
+# 2. TRAILING-MONTH INCOMPLETENESS. Birth certificates register with a lag, so
+#    the newest month(s) in any snapshot are structurally short (in the
+#    2026-07-06 pull, June reads 777 against a ~1,200 run-rate: ~65% complete).
+#    Months within DOH_MATURATION_MONTHS of the snapshot are dropped, and a
+#    partial year is annualised from the historical share of the retained
+#    months — with the annualisation variance propagated into the MOE.
+#
+# Snapshot is pinned (not live-fetched) to keep runs byte-reproducible, the same
+# discipline the anchor-source bundles use. Re-pull and bump DOH_SNAPSHOT when
+# refreshing; drop any year that NVSR has since finalised (NVSR always wins).
+DOH_SNAPSHOT = "2026-07-06"
+DOH_SNAPSHOT_MONTH = 7
+# Statewide births by month of OCCURRENCE, as published at DOH_SNAPSHOT.
+HI_DOH_BIRTHS_MONTHLY = {
+    2018: [1411, 1277, 1412, 1413, 1498, 1389, 1407, 1441, 1493, 1454, 1395, 1437],
+    2019: [1391, 1342, 1353, 1337, 1449, 1338, 1448, 1480, 1443, 1417, 1431, 1403],
+    2020: [1350, 1292, 1356, 1304, 1337, 1206, 1327, 1332, 1336, 1386, 1322, 1263],
+    2021: [1205, 1118, 1417, 1272, 1291, 1272, 1356, 1424, 1385, 1338, 1263, 1315],
+    2022: [1360, 1274, 1361, 1204, 1213, 1260, 1337, 1316, 1329, 1322, 1278, 1316],
+    2023: [1321, 1167, 1241, 1197, 1213, 1235, 1218, 1325, 1222, 1284, 1217, 1211],
+    2024: [1239, 1225, 1211, 1220, 1252, 1177, 1208, 1285, 1287, 1333, 1254, 1281],
+    2025: [1282, 1112, 1130, 1211, 1299, 1206, 1203, 1207, 1229, 1185, 1197, 1318],
+    2026: [1289, 1070, 1194, 1151, 1244, 777, 0, 0, 0, 0, 0, 0],
+}
+# Months nearer the snapshot than this are treated as not yet fully registered.
+# 2 is empirical: in the 2026-07-06 pull May (2 months out) sits on the run-rate
+# while June (1 month out) is ~35% short.
+DOH_MATURATION_MONTHS = 2
+# Years whose DOH/NVSR ratio defines the current (post-travel-collapse) regime.
+DOH_RATIO_YEARS = (2020, 2021, 2022, 2023, 2024)
 
 # Default administrative-load fraction. Program cost in this model is pure
 # benefit dollars (cash out the door); a real appropriation also carries
@@ -207,6 +264,10 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
                    help="Hold the birth cohort at the base-year level instead of "
                         "projecting it to --tax-year with the damped-trend ensemble. "
                         "Still calibrates the observed infant count to vital stats.")
+    p.add_argument("--no-doh-nowcast", action="store_true", default=False,
+                   help="Drop the Hawaiʻi DOH preliminary-births nowcast and project "
+                        "from CDC NVSR final data only. NVSR lags ~18 months, so this "
+                        "leaves the post-final years unobserved (see RXKIDS_METHODOLOGY.md §3).")
     p.add_argument("--use-proxy-births", action="store_true", default=False,
                    help="Use the legacy num_dependents × child_under_age_share birth "
                         "proxy instead of observed (age-0 dependent) infant counts. "
@@ -256,7 +317,25 @@ def _observed_births(base_units: pd.DataFrame, out_col: str = "observed_births")
     arms, replacing the ``num_dependents × child_under_age_share`` proxy. The
     proxy multiplies an all-dependents count (older kids, students, adult
     dependents) by a children-only-calibrated rate, overstating births
-    materially; the weighted observed count matches CDC NVSR within ~1%.
+    materially.
+
+    PERSON-WEIGHT BASIS (fixed 2026-08-06). Everything downstream multiplies a
+    per-unit quantity by the unit's ``weight``, but that weight is a
+    filing-status-calibrated hybrid — the household weight (WGTP) scaled by
+    factors that force the tax-unit mix onto DOTAX's TY2022 filing-status shares
+    (``_calculate_hybrid_weight``). That is the right basis for *revenue* and the
+    wrong basis for *counting babies*: it both substitutes WGTP for the infant's
+    own PWGTP and then applies a HoH/MFS/single adjustment that has nothing to do
+    with demography. Weighting infants that way undercounted them ~7% and, worse,
+    tilted the mix toward HoH units (factor 1.30) — i.e. toward lower-income
+    single-parent families, biasing the eligible share upward.
+
+    So we emit an **effective** count, ``Σ PWGTP(age-0 deps) / unit_weight``,
+    chosen so that ``observed_births × weight`` reproduces the infants' own
+    person-weighted total exactly. Every downstream consumer (cost, county rows,
+    quintiles) keeps multiplying by ``weight`` unchanged and silently gets the
+    right demographic basis. The raw integer head-count is preserved alongside as
+    ``observed_births_n`` for reporting/QA.
     """
     if "dependents_details" not in base_units.columns:
         LOG.warning(
@@ -266,16 +345,55 @@ def _observed_births(base_units: pd.DataFrame, out_col: str = "observed_births")
         )
         return base_units
 
-    def _count_infants(details) -> int:
+    def _infants(details) -> list:
         if not isinstance(details, (list, tuple)):
-            return 0
-        return sum(
-            1 for d in details
+            return []
+        return [
+            d for d in details
             if isinstance(d, dict) and _safe_age(d.get("age")) == 0
-        )
+        ]
+
+    def _count_infants(details) -> int:
+        return len(_infants(details))
+
+    def _infant_pwgtp(details) -> float:
+        total = 0.0
+        for d in _infants(details):
+            try:
+                v = float(d.get("pwgtp", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                v = 0.0
+            total += max(v, 0.0)
+        return total
 
     out = base_units.copy()
-    out[out_col] = out["dependents_details"].apply(_count_infants).astype(int)
+    counts = out["dependents_details"].apply(_count_infants).astype(int)
+    out["observed_births_n"] = counts
+
+    if "weight" not in out.columns:
+        LOG.warning("_observed_births: no 'weight' column; falling back to the "
+                    "raw head-count basis (unit-weighted, not person-weighted).")
+        out[out_col] = counts
+        return out
+
+    pw = out["dependents_details"].apply(_infant_pwgtp).astype(float)
+    w = pd.to_numeric(out["weight"], errors="coerce").fillna(0.0).astype(float)
+
+    if pw.sum() <= 0:
+        # Frames built before 'pwgtp' was carried (or synthetic fixtures) —
+        # keep the legacy head-count basis rather than silently zeroing births.
+        LOG.warning("_observed_births: dependents_details carry no 'pwgtp'; "
+                    "using the legacy unit-weighted head-count basis.")
+        out[out_col] = counts
+        return out
+
+    eff = np.where(w > 0, pw.to_numpy(float) / np.where(w > 0, w.to_numpy(float), 1.0), 0.0)
+    out[out_col] = eff
+    unit_basis = float((counts * w).sum())
+    LOG.info("_observed_births: %d infants; person-weighted %.0f vs "
+             "legacy unit-weighted %.0f (%+.1f%%)",
+             int(counts.sum()), pw.sum(), unit_basis,
+             100.0 * (pw.sum() / max(unit_basis, 1.0) - 1.0))
     return out
 
 
@@ -288,7 +406,123 @@ def _safe_age(value) -> int:
         return -1
 
 
-def _project_births(target_year: int) -> dict:
+def _doh_ratio() -> tuple:
+    """Return (mean, sd) of the DOH-occurrence / NVSR-residence ratio.
+
+    Calibrated on ``DOH_RATIO_YEARS`` only — the pre-2020 ratio (~1.10) belongs
+    to a different travel regime and would bias the conversion badly. The sd is
+    the honest dispersion across those years and is carried into the nowcast
+    MOE; it is NOT a fixed constant we pretend to know.
+    """
+    import statistics
+
+    ratios = [
+        sum(HI_DOH_BIRTHS_MONTHLY[y]) / HI_BIRTHS_BY_YEAR[y]
+        for y in DOH_RATIO_YEARS
+        if y in HI_BIRTHS_BY_YEAR and y in HI_DOH_BIRTHS_MONTHLY
+    ]
+    if not ratios:
+        return 1.0, 0.0
+    mean = statistics.fmean(ratios)
+    sd = statistics.stdev(ratios) if len(ratios) > 1 else 0.0
+    return mean, sd
+
+
+def _doh_mature_months(year: int) -> int:
+    """How many leading months of ``year`` are old enough to be fully registered."""
+    snap_year = int(DOH_SNAPSHOT[:4])
+    if year < snap_year:
+        return 12
+    if year > snap_year:
+        return 0
+    return max(0, min(12, DOH_SNAPSHOT_MONTH - DOH_MATURATION_MONTHS))
+
+
+def _doh_nowcast_births() -> list:
+    """DOH-derived residence-basis birth nowcasts for years NVSR hasn't finalised.
+
+    Returns a list of dicts (year, estimate, moe, mature_months, raw_occurrence,
+    annualised) ready to be appended to the NVSR observation series. Each
+    estimate carries three variance components so the ensemble's
+    inverse-variance weighting can down-weight it honestly against a true NVSR
+    final: Poisson counting noise, occurrence->residence ratio uncertainty, and
+    (for partial years) annualisation uncertainty.
+    """
+    import math
+    import statistics
+
+    ratio, ratio_sd = _doh_ratio()
+    ratio_rel_var = (ratio_sd / ratio) ** 2 if ratio else 0.0
+
+    # Complete DOH years, used to learn the seasonal share of the first k months.
+    complete = [
+        y for y in sorted(HI_DOH_BIRTHS_MONTHLY)
+        if _doh_mature_months(y) == 12 and sum(HI_DOH_BIRTHS_MONTHLY[y]) > 0
+    ]
+
+    out = []
+    for year in sorted(HI_DOH_BIRTHS_MONTHLY):
+        if year in HI_BIRTHS_BY_YEAR:
+            continue  # NVSR final always wins
+        k = _doh_mature_months(year)
+        if k <= 0:
+            continue
+        months = HI_DOH_BIRTHS_MONTHLY[year][:k]
+        if not months or sum(months) <= 0:
+            continue
+        partial = float(sum(months))
+
+        if k == 12:
+            occurrence = partial
+            annual_rel_var = 0.0
+        else:
+            # Annualise on the historical share of the first k months.
+            shares = [
+                sum(HI_DOH_BIRTHS_MONTHLY[y][:k]) / sum(HI_DOH_BIRTHS_MONTHLY[y])
+                for y in complete
+            ]
+            if not shares:
+                continue
+            share = statistics.fmean(shares)
+            share_sd = statistics.stdev(shares) if len(shares) > 1 else 0.0
+            occurrence = partial / share
+            annual_rel_var = (share_sd / share) ** 2 if share else 0.0
+
+        estimate = occurrence / ratio
+        rel_var = (1.0 / estimate) + ratio_rel_var + annual_rel_var
+        out.append({
+            "year": year,
+            "estimate": estimate,
+            "moe": 1.645 * estimate * math.sqrt(rel_var),
+            "mature_months": k,
+            "raw_occurrence": partial,
+            "annualised": k < 12,
+        })
+    return out
+
+
+def _birth_nowcast_note(proj: dict) -> str:
+    """Human-readable provenance for the DOH nowcast points, for report notes."""
+    ncs = proj.get("nowcasts") or []
+    if not ncs:
+        return (f", from CDC NVSR finals through {proj.get('last_final_year')} only "
+                f"(--no-doh-nowcast)")
+    parts = []
+    for n in ncs:
+        tag = f"{n['year']}≈{n['estimate']:,.0f}"
+        if n["annualised"]:
+            tag += f" (annualised from {n['mature_months']}mo)"
+        parts.append(tag)
+    return (
+        f". NVSR finals run through {proj['last_final_year']}; later years are "
+        f"nowcast from Hawaiʻi DOH preliminary births (snapshot {proj['doh_snapshot']}) "
+        f"converted occurrence→residence at ÷{proj['doh_ratio']:.4f} "
+        f"(sd {proj['doh_ratio_sd']:.4f}, carried into their MOEs): "
+        + "; ".join(parts)
+    )
+
+
+def _project_births(target_year: int, use_doh_nowcast: bool = True) -> dict:
     """Project the Hawaiʻi birth cohort to ``target_year`` via the repo ensemble.
 
     Feeds the CDC NVSR resident-births series (``HI_BIRTHS_BY_YEAR``) to the
@@ -297,27 +531,46 @@ def _project_births(target_year: int) -> dict:
     point projection plus its 90% PI and the base-year level. Vital-statistics
     counts are near-complete, so a small nominal Poisson SE (1.645·√n) is used
     only to let the ensemble's inverse-variance weighting run.
+
+    When ``use_doh_nowcast`` (default), DOH preliminary counts extend the series
+    past the NVSR final-data wall — see ``_doh_nowcast_births``. Those points
+    carry materially wider MOEs, so the ensemble leans on them only as far as
+    their precision warrants. ``--no-doh-nowcast`` restores the NVSR-only series.
     """
     import math
 
     from census_forecaster import AcsObservation, project_acs_ensemble
 
-    obs = [
-        AcsObservation(
-            estimate=float(v), moe=1.645 * math.sqrt(v), year=y,
+    def _obs(year, est, moe):
+        return AcsObservation(
+            estimate=float(est), moe=float(moe), year=year,
             vintage="1y", geoid="15", indicator="births",
         )
+
+    obs = [
+        _obs(y, v, 1.645 * math.sqrt(v))
         for y, v in sorted(HI_BIRTHS_BY_YEAR.items())
     ]
+    nowcasts = _doh_nowcast_births() if use_doh_nowcast else []
+    obs.extend(_obs(n["year"], n["estimate"], n["moe"]) for n in nowcasts)
+    obs.sort(key=lambda o: o.year)
+
     base_level = float(HI_BIRTHS_BY_YEAR[BIRTH_BASE_YEAR])
+    ratio, ratio_sd = _doh_ratio()
+    meta = {
+        "base_level": base_level,
+        "nowcasts": nowcasts,
+        "last_final_year": max(HI_BIRTHS_BY_YEAR),
+        "doh_ratio": ratio,
+        "doh_ratio_sd": ratio_sd,
+        "doh_snapshot": DOH_SNAPSHOT if nowcasts else None,
+    }
     fp = project_acs_ensemble(obs, target_year=target_year)
     if fp is None:
         return {"point": base_level, "ci90_low": base_level,
-                "ci90_high": base_level, "base_level": base_level,
-                "projected": False}
+                "ci90_high": base_level, "projected": False, **meta}
     return {"point": float(fp.point), "ci90_low": float(fp.ci90_low),
-            "ci90_high": float(fp.ci90_high), "base_level": base_level,
-            "projected": True}
+            "ci90_high": float(fp.ci90_high), "projected": True, **meta}
 
 
 def _calibrate_births(projected: pd.DataFrame, tax_year: int, args) -> dict:
@@ -330,7 +583,9 @@ def _calibrate_births(projected: pd.DataFrame, tax_year: int, args) -> dict:
     for reporting. In ``--use-proxy-births`` mode (or when the observed column
     is absent) it is a no-op and the proxy drives both arms downstream.
     """
-    proj = _project_births(tax_year)
+    proj = _project_births(
+        tax_year, use_doh_nowcast=not getattr(args, "no_doh_nowcast", False)
+    )
     if args.use_proxy_births or "observed_births" not in projected.columns:
         return {
             "mode": "proxy", "raw_weighted": float("nan"),
@@ -1461,7 +1716,8 @@ def main(argv: Optional[list] = None) -> int:
          + (f"projected to {ty} with the repo's damped-trend ensemble "
             f"(point {birth_info['projection']['point']:,.0f}, 90% PI "
             f"[{birth_info['projection']['ci90_low']:,.0f}, "
-            f"{birth_info['projection']['ci90_high']:,.0f}])."
+            f"{birth_info['projection']['ci90_high']:,.0f}])"
+            + _birth_nowcast_note(birth_info["projection"]) + "."
             if birth_info.get("trend_applied")
             else "held at the base-year level (--no-birth-projection).")
          + " Each birth draws one prenatal + one postnatal payment. This replaces the "
@@ -1508,7 +1764,10 @@ def main(argv: Optional[list] = None) -> int:
         "",
         "Caveats: 2026-2028 FPL is CPI-projected off the 2025 HHS table. The birth "
         "cohort is projected with the ensemble (vital-statistics counts, not survey "
-        "estimates); update HI_BIRTHS_BY_YEAR as new NVSR final-data releases land.",
+        "estimates); update HI_BIRTHS_BY_YEAR as new NVSR final-data releases land, "
+        "and re-pull HI_DOH_BIRTHS_MONTHLY (bump DOH_SNAPSHOT) for the nowcast years. "
+        "The occurrence->residence factor is calibrated on the post-2020 travel "
+        "regime; a recovery toward the pre-COVID ~1.10 would make the nowcasts high.",
         "",
         "Full methodology: RXKIDS_METHODOLOGY.md (program origin, parameter sourcing, "
         "eligibility approximations, limitations).",

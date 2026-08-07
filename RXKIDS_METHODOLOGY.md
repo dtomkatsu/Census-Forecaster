@@ -29,7 +29,7 @@ A family qualifies if **either** of these is true:
 
 This is broader than a Medicaid-only program but narrower than giving cash to
 everyone. On the real Hawaiʻi data, roughly **60% of all birth families** clear
-this bar (~8,140 of ~13,632 projected 2028 births). Most of that eligibility —
+this bar (~7,944 of ~14,127 projected 2028 births). Most of that eligibility —
 about **two-thirds** — comes from families who already qualify for Medicaid; the
 300% FPL income test adds the rest. (See the decomposition in §10.)
 
@@ -51,9 +51,9 @@ scenario comparison in §0 (bottom line) and §10.
 4. **Project to 2028 and scale up to the whole state** using Census population
    weights.
 
-**Bottom line (statutory design):** about **$32 million a year** in cash benefits
-(≈$35M including 8% administrative overhead), reaching roughly **14,100 people a
-year**. The realistic uncertainty range is **$19M–$41M** — driven mostly by how
+**Bottom line (statutory design):** about **$31 million a year** in cash benefits
+(≈$34M including 8% administrative overhead), reaching roughly **13,700 people a
+year**. The realistic uncertainty range is **$19M–$40M** — driven mostly by how
 many families actually enroll, which no Hawaiʻi track record exists to pin down
 yet.
 
@@ -62,12 +62,12 @@ yet.
 
 | Design | Who qualifies | Payments | Cash cost/yr | With 8% admin | Recipients/yr |
 |---|---|---|---|---|---|
-| **Statutory · 6 mo** | Medicaid OR ≤300% FPL | $1,500 + $500×6 | **~$32M** | ~$35M | ~14,100 |
-| **Universal · 6 mo** | every birth family | $1,500 + $500×6 | **~$50M** | ~$54M | ~21,800 |
-| **Universal · 12 mo** | every birth family | $1,500 + $500×12 | **~$84M** | ~$91M | ~21,800 |
+| **Statutory · 6 mo** | Medicaid OR ≤300% FPL | $1,500 + $500×6 | **~$31M** | ~$34M | ~13,700 |
+| **Universal · 6 mo** | every birth family | $1,500 + $500×6 | **~$53M** | ~$58M | ~23,400 |
+| **Universal · 12 mo** | every birth family | $1,500 + $500×12 | **~$90M** | ~$97M | ~23,400 |
 
-Going universal at 6 months adds ~$18M (it reaches ~7,700 more families); the
-extra 6 months of payments on top adds ~$34M more (the postnatal arm doubles,
+Going universal at 6 months adds ~$22M (it reaches ~9,600 more recipients); the
+extra 6 months of payments on top adds ~$37M more (the postnatal arm doubles,
 the same families). Per-county splits for all three are in
 `reports/rxkids_2028/cost_by_county_scenarios.csv`.
 
@@ -81,16 +81,27 @@ This is the single most important input, so here is exactly how it works:
    anchor figure is **15,535 births in 2022** (report NVSR 73-02), counted by
    the mother's state of residence. The full year-by-year series we use:
 
-   | Year | Hawaiʻi resident births |
-   |---|---|
-   | 2018 | 15,404 |
-   | 2019 | 15,403 |
-   | 2020 | 15,730 |
-   | 2021 | 15,620 |
-   | 2022 | 15,535 |
-   | 2023 | 14,643 |
+   | Year | Hawaiʻi resident births | Basis |
+   |---|---|---|
+   | 2018 | 15,404 | NVSR final |
+   | 2019 | 15,403 | NVSR final |
+   | 2020 | 15,730 | NVSR final |
+   | 2021 | 15,620 | NVSR final |
+   | 2022 | 15,535 | NVSR final |
+   | 2023 | 14,643 | NVSR final |
+   | 2024 | 14,917 | NVSR final |
+   | 2025 | ~14,499 | **DOH nowcast** (see below) |
+   | 2026 | ~14,374 | **DOH nowcast**, annualised from 5 months |
 
-   *Source: CDC National Vital Statistics Reports, "Births: Final Data" series.*
+   *Sources: CDC NVSR "Births: Final Data" series — 2022 from NVSR 73-02,
+   2024 from **NVSR 75-02** (published 9 Jun 2026), Table 5, by place of
+   residence. 2025–26 are Hawaiʻi DOH preliminary counts, converted to the
+   residence basis (§3).*
+
+   **Note the 2023 dip is not a trend.** Births fell to 14,643 in 2023 and then
+   **recovered to 14,917 in 2024**. An earlier version of this model had only
+   the 2018–2023 series, so its projection extrapolated the dip and read low
+   (see §3 for the size of that correction).
 
 2. **We find those same births inside the Census data, family by family.** The
    model runs on **Census PUMS** (Public Use Microdata Sample — anonymized
@@ -106,22 +117,30 @@ This is the single most important input, so here is exactly how it works:
      undercount the year's births by about half.
 
 3. **We anchor the count to the CDC.** When we add up all the age-0 babies in
-   the Census data (using population weights), we get **~14,176** — about **9%
-   below** the CDC's 15,535 (the Census sample misses some infants). So the model
-   doesn't trust the raw Census count: it **calibrates** it up to the official
-   CDC total, then projects forward (step 4). The final birth count is therefore
-   anchored to the vital-statistics figure, not to the raw survey count.
+   the Census data (using population weights), we get **~12,755** — about **10%
+   below** the CDC's 14,917 for the same year (the ACS sample undercounts
+   infants; the raw PUMS age-0 total on this frame is 13,329). So the
+   model doesn't trust the raw Census count: it **calibrates** it up to the
+   official CDC total, then projects forward (step 4). The final birth count is
+   therefore anchored to the vital-statistics figure, not to the raw survey
+   count.
+
+   > *Corrected 2026-08-06.* This previously reported ~14,176 and a ~9%
+   > undercount. Tracing the discrepancy uncovered a **weighting bug**, now
+   > fixed — see "Birth weighting basis" in §3. The number here is the
+   > post-fix, person-weighted count.
 
 4. **We project births forward to 2028.** Because the forecast is for 2028, not
    2022, we age the birth count forward using the repo's standard trend model
-   (the same damped-trend forecaster used for income), fed the CDC year-by-year
-   series above. It projects **~13,632 births in 2028** (range ~10,500–16,800).
-   The drop from 15,535 is driven mainly by the real **2023 decline to 14,643**.
-   This is a **×0.884** adjustment on the 2022 level. (You can turn the
-   projection off with `--no-birth-projection` to hold births at the 2022 level.)
+   (the same damped-trend forecaster used for income), fed the year-by-year
+   series above. It projects **~14,127 births in 2028** (90% range
+   ~13,100–15,200) — a **×0.909** adjustment on the 2022 level. (You can turn
+   the projection off with `--no-birth-projection` to hold births at the 2022
+   level, or drop the nowcast years with `--no-doh-nowcast`.)
 
-So: **CDC tells us how many births there are; the Census data tells us which
-families they belong to; the trend model carries that forward to 2028.**
+So: **CDC tells us how many births there are; Hawaiʻi DOH tells us what has
+happened since CDC's last final release; the Census data tells us which
+families those births belong to; the trend model carries that forward to 2028.**
 
 > **Earlier method (now replaced).** A previous version estimated births
 > indirectly — multiplying each family's *total* dependent count by an average
@@ -136,7 +155,7 @@ families they belong to; the trend model carries that forward to 2028.**
 
 | Input | Value | Source |
 |---|---|---|
-| Annual births | 15,535 (2022) → ~13,632 (2028 proj.) | CDC NVSR "Births: Final Data" |
+| Annual births | 15,535 (2022) → ~14,127 (2028 proj.) | CDC NVSR finals + Hawaiʻi DOH nowcast (§3) |
 | Family records / incomes | Hawaiʻi sample | Census PUMS (ACS 2018–2022 5-yr) |
 | Payment amounts | $1,500 prenatal; $500/mo × 6 postnatal | RxKids Flint program (rxkids.org) |
 | Take-up (enrollment) | 90% newborn / 83% prenatal | RxKids Flint observed 98%/90%, set conservatively |
@@ -351,8 +370,8 @@ Both arms are driven by the same **birth events**. Two bases are supported:
   observed birth count = the number of age-0 dependents (twins → 2). The
   forecast attaches this as `observed_births` and passes it to
   `compute_rxkids_for_units(..., birth_count_col="observed_births")`. The
-  weighted observed count (~14,176 on the 2018–2022 5-yr frame) sits ~9% below
-  CDC NVSR resident births (15,535, 2022); the calibration step
+  weighted observed count (**12,755**, person-weighted) sits ~10% below CDC
+  NVSR resident births for the same frame year; the calibration step
   (`_calibrate_births`) scales it up to the vital-statistics total and then
   projects it forward, so the final cohort is anchored to NVSR, not the raw
   survey count.
@@ -377,17 +396,189 @@ The observed infant count is a *base-year* stock. Because the forecast ages
 **incomes** to the target year, the **birth cohort** is aged coherently too:
 the weighted observed count is calibrated to a single target via one scalar
 factor folding in (1) the PUMS→vital-statistics base correction and (2) the
-base-year→target-year trend. The trend comes from running the CDC NVSR
-resident-birth series (`HI_BIRTHS_BY_YEAR`, by state of residence) through the
+base-year→target-year trend. The trend comes from running the resident-birth
+series (`HI_BIRTHS_BY_YEAR` + DOH nowcasts, by state of residence) through the
 package's own damped-trend + AR(1) ensemble (`project_acs_ensemble`, φ=0.85/yr
 annual cadence — the same machinery the income forecast uses). For TY2028 the
-ensemble projects **~13,632 births** (90% PI ~[10,500, 16,800]) from a 2022
-base of 15,535 — a **×0.878 vital-statistics trend**, driven mainly by the 2023
-drop to 14,643 in an otherwise flat 2018–2022 series. Combined with the
-PUMS→vital base correction (raw weighted ~14,176 scaled up to the 15,535 NVSR
-level, since the survey undercounts infants ~9%), the single scalar actually
-applied to `observed_births` is **×0.962** (14,176 → 13,632). Pass
+ensemble projects **~14,127 births** (90% PI ~[13,071, 15,183]) from a 2022
+base of 15,535 — a **×0.909 vital-statistics trend**. Combined with the
+PUMS→vital base correction (raw weighted **12,755** scaled up to the NVSR
+level, since the survey undercounts infants ~10%), the single scalar actually
+applied to `observed_births` is **×1.108** (12,755 → 14,127). Pass
 `--no-birth-projection` to hold the cohort at the base-year level instead.
+
+#### Birth weighting basis — person weight, not the hybrid unit weight
+
+**Fixed 2026-08-06. This was a real bug and it moved the headline.**
+
+Investigating the drifting raw-birth count (15,419 → 14,176 → 12,339 across
+successive refresh notes, never explained) found the cause: `_observed_births`
+counted infants per tax unit and then let everything downstream multiply by the
+unit's **`weight`** — but that weight is not a demographic weight at all. Per
+`_calculate_hybrid_weight` (`units/constructor.py`) it is:
+
+* the **household** weight `WGTP` for any multi-person unit — and every unit
+  carrying an infant is multi-person — not the infant's own person weight
+  `PWGTP`; then
+* multiplied by **DOTAX filing-status calibration factors** that force the
+  tax-unit mix onto DOTAX's TY2022 filing-status shares: single 0.82, MFJ 1.00,
+  **HoH 1.30**, MFS 1.35.
+
+Both steps are correct for their intended purpose (revenue estimation on a
+filer population) and wrong for counting babies. Measured on the 2024 1-year
+frame:
+
+| Basis | Weighted age-0 | vs correct |
+|---|---|---|
+| Raw PUMS age-0, `PWGTP` (**correct**) | 13,329 | — |
+| Same infants, `WGTP` substituted | 11,959 | −10.3% |
+| × DOTAX filing-status factors (**old code**) | 12,339 | −7.4% |
+| Person-weighted, claimed infants (**new code**) | 12,755 | −4.3% † |
+
+† the residual is 4 infants (532 weighted, ~4%) living in households where no
+tax unit claims an age-0 dependent — a separate dependent-assignment gap, not a
+weighting one. The calibration scalar absorbs it.
+
+**Why the drift.** The factors are periodically re-derived. Commit `661ca38`
+(2026-06-11) corrected them after the B2–B5 construction fixes — **HoH fell
+1.88 → 1.30**. Since ~19% of infants sit in HoH units, every infant in those
+units instantly lost 31% of its weight, mechanically dropping the birth count
+with no demographic change whatsoever. Re-running today's frame with the old
+factors returns 13,660 (vs 12,339 with current factors), which brackets the
+documented 14,176 once the construction changes in the same commit are allowed
+for. The birth count was, in effect, a hostage of a tax-administration
+calibration.
+
+**Why it mattered — the eligible share was biased, and so was the cost.**
+The distortion is not neutral across income: HoH filers are disproportionately
+lower-income single parents, so the ×1.30 over-weighted exactly the birth
+families most likely to pass a means test. Correcting the basis:
+
+| | Old (unit weight) | Fixed (person weight) | Δ |
+|---|---|---|---|
+| Eligible share of births | ~60% | **~56%** | **−3.4pp** |
+| Statutory 6-mo cost | $33.2M | **$31.3M** | **−5.7%** |
+| Universal 6-mo cost | $52.3M | **$53.3M** | **+1.9%** |
+| Q1 (poorest fifth) share of benefit | 8.2% | **5.3%** | −2.9pp |
+
+The means-tested design fell while the **universal** design *rose* — the
+signature of a low-income tilt being removed rather than a level change. A pure
+level error would have moved both the same way; only a distributional error
+moves them in opposite directions. That is the confirmation that the eligible
+share, not just the count, was wrong.
+
+**The fix.** `_observed_births` now emits an *effective* count,
+`Σ PWGTP(age-0 deps) / unit_weight`, so that `observed_births × weight`
+reproduces the infants' own person-weighted total exactly. Every downstream
+consumer (cost, county rows, quintiles) keeps multiplying by `weight` unchanged
+and silently gets the right basis; the raw head-count survives as
+`observed_births_n` for QA. This required carrying each dependent's `pwgtp`
+through `_build_dependent_details`. Regression tests pin the invariant, the
+absent-`pwgtp` fallback, and the constructor field.
+
+> **Generalisation worth heeding.** `weight` on a tax unit is a *filer* weight,
+> calibrated to a tax-administration target. Any consumer counting **people**
+> (births, children, household members) must weight by `PWGTP`, not by it.
+> The RxKids birth driver was the one place this had leaked; other demographic
+> consumers should be audited against the same rule.
+
+#### Data-source audit: DOH vs CDC (2026-08-06)
+
+The birth series is the least externally-anchored input in this model — unlike
+income or rent, it has **no entry in the repo's anchor-source registry**
+(`acs/sources/base.py`), so it gets no macro anchor, no ML leading-indicator
+feature, and no v3 bias/κ calibration. It is a bare series run through two trend
+models. That makes the quality of the series itself the whole ballgame. Two
+problems were found and fixed:
+
+**Problem 1 — the series was a year stale, and stale in the worst place.**
+`HI_BIRTHS_BY_YEAR` ended at 2023 (14,643), the bottom of a one-year dip. CDC
+had since published **NVSR 75-02 (9 Jun 2026), "Births: Final Data for 2024"**,
+showing Hawaiʻi **recovered to 14,917**. Projecting from the dip alone
+understated the cohort and produced an implausibly wide interval.
+
+**Problem 2 — an 18-month hole with nothing in it.** NVSR final data lags
+~18 months (2024 final arrived mid-2026), so even after adding 2024 the model
+jumped from a 2024 observation straight to a 2028 target with **four unobserved
+years** in between. Hawaiʻi DOH (Office of Health Status Monitoring) publishes
+preliminary births **monthly, by county, at ~5 weeks' lag**
+(<https://health.hawaii.gov/vitalstatistics/>), which covers exactly that hole.
+
+DOH is *upstream* of CDC — the state registers the certificates and transmits
+them to NCHS — so it is not a competing estimate, it is the same data seen
+earlier and with less processing. That cuts both ways, and two corrections are
+mandatory before DOH can join the NVSR series:
+
+**(a) Occurrence vs. residence — a time-varying wedge, not a constant.**
+DOH counts births *occurring* in Hawaiʻi (including to non-residents); NVSR
+counts births to Hawaiʻi *residents* (including those occurring out of state).
+RxKids eligibility is a residency test, so **NVSR is the correct basis** and DOH
+must be converted onto it. The ratio is emphatically **not** stable:
+
+| Year | DOH (occurrence) | NVSR (residence) | ratio |
+|---|---|---|---|
+| 2018 | 17,027 | 15,404 | 1.1054 |
+| 2019 | 16,832 | 15,403 | 1.0928 |
+| 2020 | 15,811 | 15,730 | 1.0051 |
+| 2021 | 15,656 | 15,620 | 1.0023 |
+| 2022 | 15,570 | 15,535 | 1.0023 |
+| 2023 | 14,851 | 14,643 | 1.0142 |
+| 2024 | 14,972 | 14,917 | 1.0037 |
+
+The wedge is largely **non-resident births, and it tracks travel volume**: ~10%
+pre-COVID, collapsing to ~0.2% in 2021–22, only partly recovered since. We
+therefore calibrate on the **post-2020 regime only** (2020–24: mean **1.0055**,
+sd **0.0050**) and carry that dispersion into the nowcast MOE rather than
+treating the factor as known. **A single all-years average would be badly
+wrong**, and a return toward the pre-COVID ~1.10 is the main directional risk —
+it would make these nowcasts too *high*.
+
+**(b) Trailing months are structurally incomplete.** Birth certificates register
+with a lag, so the newest months of any snapshot are short. In the 2026-07-06
+pull, June reads **777** against a ~1,200 run-rate (~65% complete) while May
+(1,244) sits on trend. Months within `DOH_MATURATION_MONTHS = 2` of the snapshot
+are dropped; a partial year is annualised on the historical share of the
+retained months, with the annualisation variance propagated into the MOE.
+
+Each nowcast therefore carries three variance components — Poisson counting
+noise, occurrence→residence ratio uncertainty, and (partial years only)
+annualisation uncertainty — so the ensemble's inverse-variance weighting
+down-weights them against true NVSR finals automatically, with no hand-set
+weight. Resulting points: **2025 ≈ 14,499 ± 231** (all 12 months mature) and
+**2026 ≈ 14,374 ± 365** (annualised from 5 mature months).
+
+**Effect on the TY2028 projection.** The two fixes move the point estimate
+modestly in *opposite* directions but both sharply tighten the interval:
+
+| Series | 2028 point | 90% PI | PI width |
+|---|---|---|---|
+| Before (NVSR ≤2023, no nowcast) | 13,632 | [10,502, 16,761] | 6,258 |
+| + 2024 NVSR final | 14,453 | [12,736, 16,169] | 3,433 |
+| **+ DOH nowcast (current default)** | **14,127** | **[13,071, 15,183]** | **2,112** |
+
+Adding 2024 pushes the cohort **up** (+6.0%) by removing the dip-extrapolation;
+the DOH nowcasts then pull it back **down** (−2.3%), because 2025–26 are running
+below 2024 — i.e. the nowcast stops the model over-reading the 2024 rebound just
+as the old series over-read the 2023 dip. Net **+3.6%** on the point, and a
+**66% reduction in interval width**. The old ±23% interval was largely an
+artifact of extrapolating six points ending on an outlier.
+
+**Snapshot discipline.** DOH counts are pinned in-code
+(`HI_DOH_BIRTHS_MONTHLY`, `DOH_SNAPSHOT`) rather than live-fetched, matching the
+byte-reproducibility rule the anchor bundles follow. On refresh: bump
+`DOH_SNAPSHOT`, re-pull the monthly table, and **delete any year NVSR has since
+finalised** — NVSR always wins, and `_doh_nowcast_births()` enforces this by
+skipping any year already present in `HI_BIRTHS_BY_YEAR`.
+
+**What was ruled out.** Med-QUEST / DHS annual reports were examined as a source
+for the Medicaid-financed-birth share (§2) and do **not** carry one: the CMS
+MCPAR template reports perinatal *quality rates* (timeliness of prenatal care,
+postpartum care completion, contraceptive-care measures) with no births
+denominator, and the monthly enrollment reports give a point-in-time
+"04-Pregnant Women" caseload (~2,500/mo), which is a stock, not a birth flow.
+The ~40% Medicaid-financed share therefore still rests on KFF's national-average
+inference; **CDC NVSR's payment-source-for-delivery table remains the best
+unexploited upgrade** for that specific parameter.
 
 Each eligible birth draws one prenatal and one postnatal payment:
 
@@ -475,7 +666,7 @@ Projected Hawaii impact under default Medicaid-targeted parameters:
 |---|---|---|
 | Take-up | 98% | 0.90 postnatal / 0.83 prenatal (default) |
 | Avg disbursement / recipient | ~$3,505 (rolling) | ~$2,280 (prenatal+postnatal mix) |
-| Reach | 10,774 families (cumulative) | ~14,100 recipients/yr (~6,740 pregnancies + ~7,326 infants) |
+| Reach | 10,774 families (cumulative) | ~13,700 recipients/yr (~6,578 pregnancies + ~7,150 infants) |
 | Annual cost | ~$25-30M (single-city) | ~$32M benefit / ~$35M w/ admin (statutory 300%-FPL-OR-Medicaid); ~$50M (universal·6mo) / ~$84M (universal·12mo) |
 | Persons lifted out of poverty | Not yet published | Reported per `--apply-rxkids` run |
 
@@ -691,7 +882,7 @@ This headline is the **statutory 6-month** design (the first scenario in the
 | **Appropriation total (benefit + admin)** | **~$35M** |
 | Sampling 90% CI | ~$29M–$36M |
 | **Assumption band (joint corners)** | **~$19M–$41M** |
-| Expected recipients / year | ~14,100 (≈6,740 pregnancies + 7,326 infants) |
+| Expected recipients / year | ~13,700 (≈6,578 pregnancies + 7,150 infants) |
 | Avg benefit per recipient | ~$2,280 |
 | First fiscal year (launch, 12-mo ramp) | ~$13M (41% of steady) |
 | Optional +6-month postnatal (statutory) | +~$22M (12-month-design total ~$54M) |
@@ -706,8 +897,8 @@ This headline is the **statutory 6-month** design (the first scenario in the
 > (~233k), overstating total births ~1.7× and — because dependents skew toward
 > lower-income families — inflating the eligible-birth share. Switching to
 > observed births at the base-year level gives **~$37M** (−33% from the proxy);
-> the 2028 birth-cohort projection (×0.878 vital-stats trend, see below) takes
-> it to **~$32M**. The admin line is separate (the headline is benefit dollars).
+> the 2028 birth-cohort projection (×0.909 vital-stats trend, see below) takes
+> it to **~$31M**. The admin line is separate (the headline is benefit dollars).
 
 > **Baseline refresh (2026-06-22).** All figures in this doc were regenerated on
 > the current `tax_modeler` pipeline. The statutory headline moved from the
@@ -718,6 +909,26 @@ This headline is the **statutory 6-month** design (the first scenario in the
 > birth *target* (13,632) is unchanged; the raw PUMS-observed age-0 count fell
 > 15,419 → 14,176, so the calibration now scales up more (×0.962 vs ×0.884). The
 > same refresh also added the universal scenario set (above).
+
+> **Birth-series refresh (2026-08-06).** Taken alone, the data refresh moved the
+> statutory headline **~$32M → ~$33M** (before the weighting fix below, which
+> then took it to ~$31M). This *is* a data change, not
+> a parameter change: the CDC series gained its **2024 final** (NVSR 75-02,
+> 14,917 — a recovery from the 2023 dip the old series ended on), and Hawaiʻi
+> **DOH preliminary counts now nowcast 2025–26**, closing the ~18-month NVSR
+> publication hole. The 2028 birth target rose **13,632 → 14,127 (+3.6%)** and
+> its 90% PI narrowed by **66%** (width 6,258 → 2,112). Full audit, including
+> the time-varying occurrence→residence correction, in §3.
+>
+> **Birth weighting fix (same date).** Tracing the unexplained drift in the raw
+> PUMS age-0 count (the 14,176 recorded above) found a genuine bug: infants were
+> weighted by the tax unit's DOTAX-calibrated hybrid weight instead of their own
+> `PWGTP`. Because that calibration up-weights HoH units (×1.30) — i.e.
+> lower-income single parents — it inflated the **eligible share ~60% → ~56%**
+> and the statutory headline **$33.2M → $31.3M (−5.7%)**, while the *universal*
+> design rose slightly. Full decomposition in §3 ("Birth weighting basis").
+> Net of both changes on the same day, the statutory headline moves
+> **~$32M → ~$31M**.
 
 Take-up is **arm-specific** (see §2): postnatal/newborn **0.90**, prenatal
 **0.83** (0.92 × postnatal, from Flint's ~90% prenatal vs ~98% newborn). So
@@ -743,12 +954,12 @@ two policy levers — the **eligibility gate** and the **postnatal duration**:
 
 | Scenario (`key`) | Eligibility | Postnatal | $/birth | Cash cost | Appropriation | Recipients/yr | Assumption band |
 |---|---|---|---|---|---|---|---|
-| `statutory_6mo` | Medicaid OR ≤300% FPL | 6 mo | $4,500 | **~$32M** | ~$35M | ~14,100 | ~$19M–$41M |
-| `universal_6mo` | universal (no test) | 6 mo | $4,500 | **~$50M** | ~$54M | ~21,800 | ~$30M–$63M |
-| `universal_12mo` | universal (no test) | 12 mo | $7,500 | **~$84M** | ~$91M | ~21,800 | ~$50M–$107M |
+| `statutory_6mo` | Medicaid OR ≤300% FPL | 6 mo | $4,500 | **~$31M** | ~$34M | ~13,700 | ~$19M–$40M |
+| `universal_6mo` | universal (no test) | 6 mo | $4,500 | **~$53M** | ~$58M | ~23,400 | ~$32M–$68M |
+| `universal_12mo` | universal (no test) | 12 mo | $7,500 | **~$90M** | ~$97M | ~23,400 | ~$54M–$115M |
 
 - **Universal eligibility** (`income_fpl_cap=100.0`, ≈ no income/Medicaid test)
-  reaches essentially every birth family — ~21,800 recipients vs ~14,100 under
+  reaches essentially every birth family — ~23,400 recipients vs ~13,700 under
   the statutory gate. Going universal at 6 months adds **~$18M** in cash cost
   (it pulls in the ~7,700 birth families above the statutory gate).
 - **The extra 6 months** (`postnatal_months=12`) doubles the postnatal arm and
@@ -765,15 +976,15 @@ behavioral response). Two Flint-observed assumptions raise it:
 
 | Sensitivity | Take-up (post/pre) | Fertility | Steady-state cost | Band |
 |---|---|---|---|---|
-| Conservative (default) | 0.90 / 0.83 | — | **~$32M** | ~$19–41M |
-| **Flint-equivalent** | 0.98 / 0.90 | +10% | **~$38M** | ~$23–49M |
+| Conservative (default) | 0.90 / 0.83 | — | **~$31M** | ~$19–40M |
+| **Flint-equivalent** | 0.98 / 0.90 | +10% | **~$38M** | ~$23–48M |
 
 `--takeup-rate 0.98 --fertility-response 0.10` produces the Flint scenario —
 which sets postnatal take-up to 0.98 and prenatal to 0.98 × 0.92 ≈ 0.90,
 recovering Flint's *observed* arm rates exactly. The **fertility response**
 (`_apply_fertility`) models the ~10% post-launch birth rise documented in the
 *Rx Kids Flint Birth Report (2026)* as a uniform +10% on eligible births
-(×1.10 on both arms): ~$32M × (0.98/0.90 take-up lift) × 1.10 ≈ $38M.
+(×1.10 on both arms): ~$31M × (0.98/0.90 take-up lift) × 1.10 ≈ $38M.
 It is a real upside risk a static model would miss, but **off by default**:
 Flint's rise may blend a conception response with in-migration of pregnant
 residents into eligible areas, and Hawaiʻi's island geography would see far
@@ -782,9 +993,9 @@ fertility levers compose with any of the three scenario designs above.)
 
 ### Eligible base vs recipients
 
-"Eligible families" (~8,200 weighted on the observed basis — families with an
+"Eligible families" (~7,340 weighted on the observed basis — families with an
 **observed birth** clearing the income/Medicaid test) is NOT the recipient
-count. Actual **expected recipients** (pregnancies + infants) are ~14,100/yr,
+count. Actual **expected recipients** (pregnancies + infants) are ~13,700/yr,
 recovered by dividing each arm's expected-dollar column by its full
 per-recipient payment ($1,500 prenatal, $3,000 postnatal). Report recipients,
 not the eligible base. (Under the legacy proxy the eligible base was ~100k —
@@ -802,9 +1013,9 @@ universe, which overcounted pregnancies ~2× and required a runtime
 
 ### Eligible-birth cross-check
 
-On the **observed** basis the model implies **~8,140 eligible births** (=
-~7,326 infant recipients ÷ 0.90 take-up) out of the ~13,632 projected 2028
-births = **~60% of births eligible**, on the MAGI-household grain.
+On the **observed** basis the model implies **~7,944 eligible births** (=
+~7,150 infant recipients ÷ 0.90 take-up) out of the ~14,127 projected 2028
+births = **~56% of births eligible**, on the MAGI-household grain.
 
 - **External anchor:** Hawaii Medicaid-financed births ≈ 40% (~6,200) — a
   *floor* (the pregnancy-Medicaid pathway sits at 196% FPL). The model's 60%
@@ -813,13 +1024,13 @@ births = **~60% of births eligible**, on the MAGI-household grain.
 - **Which clause drives eligibility (approximate decomposition).** The model
   computes only the *combined* eligible share (~60%); it does not separately
   report a clause-1-vs-clause-2 split. But we can decompose it against the
-  external Medicaid floor. On the projected 2028 base of ~13,632 births:
+  external Medicaid floor. On the projected 2028 base of ~14,127 births:
 
   | Source | Eligible births | Share of births |
   |---|---|---|
   | Clause 1 — Medicaid families (≈40% floor, scaled to 2028) | ~5,450 | ~40% |
   | Clause 2 — income-only (≤300% FPL, **not** on Medicaid) | ~2,690 | ~20% |
-  | **Combined eligible (model output)** | **~8,140** | **~60%** |
+  | **Combined eligible (model output)** | **~7,944** | **~56%** |
 
   So roughly **two-thirds of eligibility is the Medicaid clause**, with the
   300% FPL income test adding the remaining ~third on top. This is a useful
@@ -904,8 +1115,8 @@ is reported).
   re-run on the current pipeline.
 - The birth cohort is **projected to 2028** with the package's damped-trend
   ensemble off the CDC NVSR resident-birth series (`HI_BIRTHS_BY_YEAR`), so the
-  demographic driver is aged coherently with income (×0.878 vital-stats trend;
-  the single scalar applied to `observed_births` is ×0.962 once the PUMS→vital
+  demographic driver is aged coherently with income (×0.909 vital-stats trend;
+  the single scalar applied to `observed_births` is ×1.108 once the PUMS→vital
   base correction is folded in — see §3). Update `HI_BIRTHS_BY_YEAR` as new NVSR
   final-data releases land; pass `--no-birth-projection` to hold the cohort at
   the base-year level.

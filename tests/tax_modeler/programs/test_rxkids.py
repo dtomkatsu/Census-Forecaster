@@ -595,3 +595,159 @@ def test_forecast_county_rows_sum_to_state():
         fc._weighted_cost(frame, "rxkids_prenatal_amount"), abs=len(rows) + 1)
     assert sum(r["cost_postnatal"] for r in rows) == pytest.approx(
         fc._weighted_cost(frame, "rxkids_postnatal_amount"), abs=len(rows) + 1)
+
+
+# ---------------------------------------------------------------------------
+# DOH preliminary-births nowcast (closes the NVSR final-data publication gap)
+# ---------------------------------------------------------------------------
+
+
+def test_doh_ratio_uses_post_covid_regime_only():
+    """The occurrence->residence ratio must be calibrated on the post-2020
+    travel regime. Including 2018-19 (ratio ~1.10, driven by non-resident
+    births that the travel collapse erased) would bias every nowcast low."""
+    fc = _forecast_module()
+    mean, sd = fc._doh_ratio()
+    # Post-COVID regime sits just above 1.0; pre-COVID was ~1.10.
+    assert 1.0 < mean < 1.02, f"ratio {mean} looks like it swept in pre-COVID years"
+    assert sd > 0.0, "dispersion must be carried into the nowcast MOE, not dropped"
+    for year in fc.DOH_RATIO_YEARS:
+        assert year >= 2020
+
+
+def test_doh_maturation_drops_unregistered_trailing_months():
+    """Months within DOH_MATURATION_MONTHS of the snapshot are not yet fully
+    registered and must be excluded (in the 2026-07-06 pull June is ~35% short)."""
+    fc = _forecast_module()
+    snap_year = int(fc.DOH_SNAPSHOT[:4])
+    assert fc._doh_mature_months(snap_year - 1) == 12      # prior year fully mature
+    assert fc._doh_mature_months(snap_year + 1) == 0       # future year has nothing
+    partial = fc._doh_mature_months(snap_year)
+    assert partial == fc.DOH_SNAPSHOT_MONTH - fc.DOH_MATURATION_MONTHS
+    assert 0 < partial < 12
+
+
+def test_nvsr_final_always_wins_over_doh_nowcast():
+    """A year NVSR has finalised must never be nowcast from DOH."""
+    fc = _forecast_module()
+    nowcast_years = {n["year"] for n in fc._doh_nowcast_births()}
+    assert not (nowcast_years & set(fc.HI_BIRTHS_BY_YEAR))
+
+
+def test_doh_nowcast_widens_moe_for_annualised_years():
+    """A partial year annualised from k<12 months carries annualisation variance
+    on top of Poisson + ratio noise, so its relative MOE must exceed a complete
+    year's. Without this the ensemble would over-trust a 5-month extrapolation."""
+    fc = _forecast_module()
+    ncs = {n["year"]: n for n in fc._doh_nowcast_births()}
+    complete = [n for n in ncs.values() if not n["annualised"]]
+    annualised = [n for n in ncs.values() if n["annualised"]]
+    if not (complete and annualised):
+        pytest.skip("snapshot has no complete/annualised nowcast pair to compare")
+    rel = lambda n: n["moe"] / n["estimate"]
+    assert rel(annualised[0]) > rel(complete[0])
+
+
+def test_doh_nowcast_extends_series_and_tightens_projection():
+    """The nowcast must add post-NVSR observations and, by closing the ~18-month
+    publication gap, produce a tighter interval than NVSR-only extrapolation."""
+    fc = _forecast_module()
+    with_doh = fc._project_births(2028, use_doh_nowcast=True)
+    without = fc._project_births(2028, use_doh_nowcast=False)
+
+    assert with_doh["nowcasts"], "expected DOH nowcast points past the NVSR wall"
+    assert without["nowcasts"] == []
+    assert all(n["year"] > without["last_final_year"] for n in with_doh["nowcasts"])
+
+    width = lambda p: p["ci90_high"] - p["ci90_low"]
+    assert width(with_doh) < width(without)
+    # Sanity: the projected cohort stays in a plausible band for Hawaiʻi.
+    assert 10_000 < with_doh["point"] < 18_000
+
+
+def test_birth_nowcast_note_reports_provenance_both_ways():
+    """Report notes must disclose the conversion factor and the snapshot when
+    nowcasting, and say so plainly when running NVSR-only."""
+    fc = _forecast_module()
+    note = fc._birth_nowcast_note(fc._project_births(2028, use_doh_nowcast=True))
+    assert fc.DOH_SNAPSHOT in note and "occurrence" in note
+    off = fc._birth_nowcast_note(fc._project_births(2028, use_doh_nowcast=False))
+    assert "--no-doh-nowcast" in off
+
+
+# ---------------------------------------------------------------------------
+# Birth weighting basis — person weight, not the filing-status hybrid weight
+# ---------------------------------------------------------------------------
+
+
+def _unit_with_deps(weight, dep_ages_pwgtp, filing_status="married_filing_jointly"):
+    """One tax-unit row whose dependents_details carry (age, pwgtp) pairs."""
+    return {
+        "weight": weight,
+        "filing_status": filing_status,
+        "num_dependents": len(dep_ages_pwgtp),
+        "dependents_details": [
+            {"age": a, "relationship": 25, "citizenship": 1,
+             "months_in_home": 12, "school_level": 0, "disabled": False,
+             "pwgtp": pw}
+            for a, pw in dep_ages_pwgtp
+        ],
+    }
+
+
+def test_observed_births_uses_person_weight_not_unit_weight():
+    """`observed_births x weight` must reproduce the infants' OWN person-weighted
+    total. The unit weight is a DOTAX filing-status-calibrated hybrid (WGTP x
+    share factors) — right for revenue, wrong for counting babies. Weighting
+    infants by it undercounted them and tilted the mix toward HoH (factor 1.30),
+    i.e. toward lower-income families, inflating the eligible share."""
+    fc = _forecast_module()
+    df = pd.DataFrame([
+        _unit_with_deps(100.0, [(0, 150.0)]),                      # infant PWGTP > unit weight
+        _unit_with_deps(200.0, [(0, 180.0), (0, 190.0)]),          # twins
+        _unit_with_deps(50.0, [(3, 60.0)]),                        # no infant
+        _unit_with_deps(80.0, [(0, 95.0)], "head_of_household"),
+    ])
+    out = fc._observed_births(df)
+
+    # Head-count is preserved for reporting...
+    assert out["observed_births_n"].tolist() == [1, 2, 0, 1]
+    # ...but the effective count is person-weight-consistent.
+    weighted = float((out["observed_births"] * out["weight"]).sum())
+    assert weighted == pytest.approx(150.0 + 180.0 + 190.0 + 95.0)
+
+    # The legacy head-count basis would have given a different (wrong) answer.
+    legacy = float((out["observed_births_n"] * out["weight"]).sum())
+    assert legacy != pytest.approx(weighted)
+
+
+def test_observed_births_falls_back_when_pwgtp_absent():
+    """Frames built before 'pwgtp' was carried (or synthetic fixtures) must fall
+    back to the head-count basis rather than silently producing zero births."""
+    fc = _forecast_module()
+    df = pd.DataFrame([{
+        "weight": 100.0,
+        "num_dependents": 1,
+        "dependents_details": [
+            {"age": 0, "relationship": 25, "citizenship": 1,
+             "months_in_home": 12, "school_level": 0, "disabled": False},
+        ],
+    }])
+    out = fc._observed_births(df)
+    assert out["observed_births"].tolist() == [1]
+    assert out["observed_births_n"].tolist() == [1]
+
+
+def test_dependent_details_carry_person_weight():
+    """The constructor must record each dependent's own PWGTP so demographic
+    consumers can weight people correctly."""
+    from tax_modeler.units.constructor import TaxUnitConstructor
+    hh = pd.DataFrame(
+        {"AGEP": [30, 0], "RELSHIPP": [20, 25], "CIT": [1, 1],
+         "SCHL": [21, 0], "DIS": [2, 2], "PWGTP": [110.0, 125.0]},
+        index=["p1", "p2"],
+    )
+    details = TaxUnitConstructor._build_dependent_details(["p2"], hh)
+    assert len(details) == 1
+    assert details[0]["age"] == 0
+    assert details[0]["pwgtp"] == pytest.approx(125.0)
