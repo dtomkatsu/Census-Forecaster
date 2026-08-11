@@ -51,9 +51,9 @@ scenario comparison in §0 (bottom line) and §10.
 4. **Project to 2028 and scale up to the whole state** using Census population
    weights.
 
-**Bottom line (statutory design):** about **$31 million a year** in cash benefits
-(≈$34M including 8% administrative overhead), reaching roughly **13,800 people a
-year**. The realistic uncertainty range is **$19M–$40M** — driven mostly by how
+**Bottom line (statutory design):** about **$21 million a year** in cash benefits
+(≈$22M including 8% administrative overhead), serving roughly **7,969 births a
+year**. The realistic uncertainty range is **$12M–$26M** — driven mostly by how
 many families actually enroll, which no Hawaiʻi track record exists to pin down
 yet.
 
@@ -62,14 +62,44 @@ yet.
 
 | Design | Who qualifies | Payments | Cash cost/yr | With 8% admin | Recipients/yr |
 |---|---|---|---|---|---|
-| **Statutory · 6 mo** | Medicaid OR ≤300% FPL | $1,500 + $500×6 | **~$31M** | ~$34M | ~13,800 |
-| **Universal · 6 mo** | every birth family | $1,500 + $500×6 | **~$52M** | ~$56M | ~22,900 |
-| **Universal · 12 mo** | every birth family | $1,500 + $500×12 | **~$88M** | ~$95M | ~22,900 |
+| **Statutory · 3 mo (default)** | Medicaid OR ≤300% FPL | $1,500 + $500×3 | **~$21M** | ~$22M | **7,969 births** |
+| Statutory · 6 mo | Medicaid OR ≤300% FPL | $1,500 + $500×6 | ~$31M | ~$34M | 7,969 births |
+| **Universal · 6 mo** | every birth family | $1,500 + $500×6 | **~$52M** | ~$56M | 13,225 births |
+| **Universal · 12 mo** | every birth family | $1,500 + $500×12 | **~$88M** | ~$95M | 13,225 births |
 
 Going universal at 6 months adds ~$22M (it reaches ~9,600 more recipients); the
 extra 6 months of payments on top adds ~$37M more (the postnatal arm doubles,
 the same families). Per-county splits for all three are in
 `reports/rxkids_2028/cost_by_county_scenarios.csv`.
+
+### Payment design and what "people affected" means
+
+**Headline design (`statutory_3mo`, default since 2026-08-10):** a one-time
+**$1,500** prenatal payment plus **three monthly $500** payments —
+**$3,000 per birth**. The prenatal leg was always a single payment
+(`prenatal_months=1`); only the postnatal window changed, 6 → 3.
+
+**Shortening the postnatal window is a pure cost lever — it does not reduce
+reach.** The same families qualify and enrol; they simply receive fewer
+instalments. Births served is *identical* (7,969) under the 3- and 6-month
+designs, while cost falls **$31.4M → $20.7M (−34%)**. What changes is depth per
+family: average benefit drops from ~$4,280 to **$2,814**.
+
+**"People affected" = BIRTHS SERVED.** Three different numbers could answer that
+question and they are not interchangeable — the model now reports births served
+first, in the console, workbook, PDF, `cost_by_state.csv` and
+`cost_by_county.csv`:
+
+| Metric | 2028 value | What it counts |
+|---|---|---|
+| **Births served** | **7,969** | **The headline. Births actually drawing benefits.** |
+| Eligible families | 7,340 | Families clearing the income/Medicaid test — most have no birth in a given year |
+| Recipient-payments | 13,771 | ~2× births: each served birth draws one prenatal + one postnatal payment. **Not people.** |
+
+Births served is derived from the postnatal arm (`infant recipients ÷ postnatal
+take-up`), because every served birth draws exactly one postnatal entitlement —
+which is what makes it invariant to the length of the payment window. A
+regression test pins that invariance.
 
 ### How the number of births is calculated — and where the data comes from
 
@@ -840,7 +870,7 @@ Projected Hawaii impact under default Medicaid-targeted parameters:
 |---|---|---|
 | Take-up | 98% | 0.90 postnatal / 0.83 prenatal (default) |
 | Avg disbursement / recipient | ~$3,505 (rolling) | ~$2,280 (prenatal+postnatal mix) |
-| Reach | 10,774 families (cumulative) | ~13,800 recipients/yr (~6,598 pregnancies + ~7,172 infants) |
+| Reach | 10,774 families (cumulative) | **7,969 births served/yr** (13,771 recipient-payments: ~6,598 prenatal + ~7,172 postnatal) |
 | Annual cost | ~$25-30M (single-city) | ~$32M benefit / ~$35M w/ admin (statutory 300%-FPL-OR-Medicaid); ~$50M (universal·6mo) / ~$84M (universal·12mo) |
 | Persons lifted out of poverty | Not yet published | Reported per `--apply-rxkids` run |
 
@@ -1057,7 +1087,8 @@ This headline is the **statutory 6-month** design (the first scenario in the
 | **Appropriation total (benefit + admin)** | **~$35M** |
 | Sampling 90% CI | ~$29M–$36M |
 | **Assumption band (joint corners)** | **~$19M–$41M** |
-| Expected recipients / year | ~13,800 (≈6,598 pregnancies + 7,172 infants) |
+| **Births served / year (people affected)** | **7,969** |
+| Recipient-payments / year | ~13,771 (≈6,598 prenatal + 7,172 postnatal; ~2 per birth) |
 | Avg benefit per recipient | ~$2,280 |
 | First fiscal year (launch, 12-mo ramp) | ~$13M (41% of steady) |
 | Optional +6-month postnatal (statutory) | +~$22M (12-month-design total ~$54M) |
@@ -1119,6 +1150,20 @@ This headline is the **statutory 6-month** design (the first scenario in the
 > already-eligible units, not a change in who qualifies). `--no-doh-county-shares`
 > restores the raw PUMS split.
 
+> **Headline design change (2026-08-10).** The default scenario is now
+> **`statutory_3mo`**: $1,500 one-time prenatal + **3** × $500 monthly =
+> **$3,000 per birth**, down from the 6-month/$4,500 design. Cost falls
+> **$31.4M → $20.7M (−34%)** with **no change in reach** — births served is
+> 7,969 either way, because the same families qualify and enrol and only the
+> number of instalments differs. Average benefit per family drops $4,280 →
+> $2,814. The old 6-month design remains priced as `statutory_6mo`.
+>
+> The reach metric also changed: **"people affected" now means BIRTHS SERVED**,
+> reported first in the console, workbook, PDF and both CSVs. It had been easy
+> to quote *recipient-payments* (13,771) as people, which double-counts —
+> each served birth draws one prenatal and one postnatal payment. See
+> "Payment design and what people affected means" in §0.
+
 > **Series correction + projector switch (2026-08-07, later same day).** An
 > audit of the projection mechanism found the **NVSR series itself was wrong**
 > in four of seven years (2018/2019 by ~9%), corrected against CDC WONDER — and
@@ -1174,12 +1219,13 @@ two policy levers — the **eligibility gate** and the **postnatal duration**:
 
 | Scenario (`key`) | Eligibility | Postnatal | $/birth | Cash cost | Appropriation | Recipients/yr | Assumption band |
 |---|---|---|---|---|---|---|---|
-| `statutory_6mo` | Medicaid OR ≤300% FPL | 6 mo | $4,500 | **~$31M** | ~$34M | ~13,800 | ~$19M–$40M |
+| **`statutory_3mo` (default)** | Medicaid OR ≤300% FPL | 3 mo | **$3,000** | **~$21M** | ~$22M | 7,969 births | ~$12M–$26M |
+| `statutory_6mo` | Medicaid OR ≤300% FPL | 6 mo | $4,500 | ~$31M | ~$34M | 7,969 births | ~$19M–$40M |
 | `universal_6mo` | universal (no test) | 6 mo | $4,500 | **~$52M** | ~$56M | ~22,900 | ~$31M–$66M |
 | `universal_12mo` | universal (no test) | 12 mo | $7,500 | **~$88M** | ~$95M | ~22,900 | ~$53M–$112M |
 
 - **Universal eligibility** (`income_fpl_cap=100.0`, ≈ no income/Medicaid test)
-  reaches essentially every birth family — ~22,900 recipients vs ~13,800 under
+  reaches essentially every birth family — 13,225 births served vs 7,969 under
   the statutory gate. Going universal at 6 months adds **~$18M** in cash cost
   (it pulls in the ~7,700 birth families above the statutory gate).
 - **The extra 6 months** (`postnatal_months=12`) doubles the postnatal arm and
@@ -1215,7 +1261,8 @@ fertility levers compose with any of the three scenario designs above.)
 
 "Eligible families" (~7,340 weighted on the observed basis — families with an
 **observed birth** clearing the income/Medicaid test) is NOT the recipient
-count. Actual **expected recipients** (pregnancies + infants) are ~13,800/yr,
+count, and neither is **births served** (7,969 — the headline reach figure).
+Actual **recipient-payments** (prenatal + postnatal) are ~13,771/yr,
 recovered by dividing each arm's expected-dollar column by its full
 per-recipient payment ($1,500 prenatal, $3,000 postnatal). Report recipients,
 not the eligible base. (Under the legacy proxy the eligible base was ~100k —
@@ -1356,7 +1403,7 @@ adds two cross-scenario files:
   recipients.
 - `cost_by_county.csv` — per-county statutory cost + expected recipients.
 - **`cost_by_scenario.csv`** — state-level comparison of all priced scenarios
-  (statutory_6mo / universal_6mo / universal_12mo): cost, arms, CI, assumption
+  (statutory_3mo / statutory_6mo / universal_6mo / universal_12mo): cost, arms, CI, assumption
   band, admin, appropriation, recipients, avg benefit, first-year.
 - **`cost_by_county_scenarios.csv`** — per-county cost + recipients for **every**
   scenario (tidy long format: one row per county × scenario).

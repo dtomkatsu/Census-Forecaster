@@ -13,22 +13,28 @@ follows a draft Hawaiʻi statute: a family qualifies if it **(1) qualifies for
 the State's Medicaid program, OR (2) has family income ≤ 300% of the federal
 poverty level**, including the expected unborn child.
 
-**Headline (TY2028, statutory design — the default):** ~**$31M/yr** in benefit
-dollars (~$34M with 8% admin), reaching ~**13,800 recipients** across ~7,340
-eligible families. Assumption band ~**$19M–$40M**. A Flint-equivalent scenario
-(98% take-up, +10% fertility) is ~**$38M**. The estimate is dominated by
+**Headline (TY2028, statutory design — the default):** ~**$21M/yr** in benefit
+dollars (~$22M with 8% admin), serving **7,969 births** across ~7,340 eligible
+families. Assumption band ~**$12M–$26M**. Design: **$1,500 one-time prenatal +
+3 × $500 monthly = $3,000 per birth**. The estimate is dominated by
 *specification* uncertainty, not sampling — see §6.
 
-**Which scenario is "the headline" matters — it is `statutory_6mo`**
+**Which scenario is "the headline" matters — it is `statutory_3mo`**
 (`DEFAULT_SCENARIO_KEY` in `forecast_rxkids_2028.py`): Medicaid OR ≤300% FPL,
-6-month postnatal window. The model also prices two **universal** designs (no
-income or Medicaid test), which cost substantially more:
+**3-month** postnatal window. The model also prices a 6-month variant and two
+**universal** designs (no income or Medicaid test), which all cost more but —
+for the 6-month variant — serve exactly the same births:
 
-| Design | Benefit cost | With 8% admin | Recipients/yr | Flint-equivalent |
+| Design | $/birth | Benefit cost | With 8% admin | **Births served/yr** |
 |---|---|---|---|---|
-| **`statutory_6mo` (default)** | **~$31M** | ~$34M | ~13,800 | ~$38M |
-| `universal_6mo` | ~$52M | ~$56M | ~22,900 | ~$62M |
-| `universal_12mo` | ~$88M | ~$95M | ~22,900 | ~$105M |
+| **`statutory_3mo` (default)** | **$3,000** | **~$21M** | ~$22M | **7,969** |
+| `statutory_6mo` | $4,500 | ~$31M | ~$34M | 7,969 |
+| `universal_6mo` | $4,500 | ~$52M | ~$56M | 13,225 |
+| `universal_12mo` | $7,500 | ~$88M | ~$95M | 13,225 |
+
+Note the first two rows: **halving the postnatal window cuts cost 34% and
+serves the identical number of births.** Window length is a pure cost lever;
+only the *depth* per family changes ($4,280 → $2,814 average benefit).
 
 *Figures re-derived from live runs on 2026-08-07, after the county-split fix,
 the NVSR series correction, and the switch to the Kalman projector (all in
@@ -39,9 +45,11 @@ the "conservative default" — those were the **universal 6-month** figures
 (and ~24,000 was recipients, not births), so the guide was advertising the
 most expensive means-test-free design as if it were the statutory one.*
 
-**The 2028 birth cohort is ~13,842**, not ~24,000 — recipients exceed births
-because each eligible birth draws both a prenatal and a postnatal payment, so
-one birth can generate two recipients (§10 of the methodology).
+**"People affected" means BIRTHS SERVED — 7,969.** Two other numbers get
+confused with it: *eligible families* (7,340 — families clearing the test, most
+with no birth this year) and *recipient-payments* (13,771 — roughly 2× births,
+since each served birth draws one prenatal and one postnatal payment). The 2028
+birth cohort is ~13,842, so the program reaches ~58% of all Hawaiʻi births.
 
 **The one open question to know about:** "family income" is modeled as **MAGI
 at the tax-unit (MAGI-household) grain**, because the statute anchors clause 1
@@ -63,7 +71,7 @@ uv sync --package census-forecaster --extra dev   # creates .venv with all deps
 ## 3. Run it yourself
 
 ```bash
-# Statutory default — statutory_6mo (real Hawaiʻi PUMS, committed in the repo):
+# Statutory default — statutory_3mo, $1,500 + 3x$500 (real PUMS, committed):
 uv run python forecast_rxkids_2028.py \
     --tax-year 2028 \
     --pums-data-dir packages/data/raw/pums_2024_1yr \
@@ -98,7 +106,7 @@ launch-year ramp, 12-month-extension, etc.).
 ## 5. Check it yourself
 
 ```bash
-# The eligibility/benefit rules, as ~35 fast tests:
+# The eligibility/benefit rules, as ~56 fast tests:
 uv run pytest tests/tax_modeler/programs/test_rxkids.py -v
 
 # The whole suite (excluding tests that need large external data):
@@ -145,7 +153,7 @@ why the honest MOE is ±30–40%:
 | Eligibility gate | Medicaid OR ≤300% FPL | The statutory design. Dropping the test entirely (universal) is ~+$22M — the single largest lever in the model |
 | Fertility response | 0 (off) | Flint saw ~+10% births; a real upside risk, off by default |
 | "Family income" grain | MAGI household | Legal-definitional (see §1); ~15–20% lever, not CLI-exposed |
-| Payment design / 6-vs-12 mo | $1,500 + $500×6 | Policy choices; not yet fixed in a bill. The 12-month variant roughly doubles the postnatal arm |
+| Payment design / postnatal window | $1,500 + $500×3 (default) | Policy choice; not fixed in a bill. Window length is a pure cost lever — 6-mo and 12-mo variants cost more but serve the **same** births |
 
 There is **no administrative caseload** to calibrate against (RxKids doesn't
 exist in Hawaiʻi yet), so these are judgment calls, transparently parameterized

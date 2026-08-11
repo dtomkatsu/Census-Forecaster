@@ -97,6 +97,16 @@ PRENATAL_TAKEUP_RATIO = 0.92
 UNIVERSAL_FPL_CAP = 100.0  # ≈ no income test (every birth family qualifies)
 SCENARIOS = [
     {
+        # $1,500 one-time prenatal + 3 x $500 monthly = $3,000 per birth.
+        # Requested design (2026-08-10): half the postnatal window of the
+        # 6-month variant, same prenatal payment. Prenatal is already a single
+        # $1,500 payment (prenatal_months=1), so only the postnatal count moves.
+        "key": "statutory_3mo",
+        "label": "Statutory (Medicaid OR <=300% FPL) - 3-mo postnatal",
+        "eligibility": "Medicaid OR <=300% FPL",
+        "overrides": {"income_fpl_cap": 3.00, "postnatal_months": 3},
+    },
+    {
         "key": "statutory_6mo",
         "label": "Statutory (Medicaid OR ≤300% FPL) · 6-mo postnatal",
         "eligibility": "Medicaid OR ≤300% FPL",
@@ -118,7 +128,12 @@ SCENARIOS = [
 SCENARIO_BY_KEY = {s["key"]: s for s in SCENARIOS}
 # The statutory 6-month design is the headline that drives the existing detailed
 # Summary tab / PDF / cost_by_state.csv / cost_by_county.csv (unchanged outputs).
-DEFAULT_SCENARIO_KEY = "statutory_6mo"
+# The headline design: $1,500 one-time prenatal + 3 x $500 monthly = $3,000
+# per birth. Changed from statutory_6mo on 2026-08-10. Shortening the postnatal
+# window is a pure cost lever -- the same families qualify and enrol, so BIRTHS
+# SERVED is identical across the 3- and 6-month designs; only the number of
+# instalments (and therefore the dollars) differs.
+DEFAULT_SCENARIO_KEY = "statutory_3mo"
 
 # Hawaiʻi resident births by year — CDC NVSR "Births: Final Data" series, by
 # mother's state of residence (the same basis as the 15,535 figure cited in
@@ -970,6 +985,26 @@ def _reached(frame: pd.DataFrame, amount_col: str, weight_col: str = "weight") -
     return float(w[a > 0].sum())
 
 
+def _births_served(rec_infants: float, base_takeup: float) -> float:
+    """Weighted count of BIRTHS actually served in a year — the headline
+    "people affected" figure.
+
+    Each served birth generates TWO recipient-payments (one prenatal, one
+    postnatal), so ``expected_recipients`` roughly doubles this and should not
+    be quoted as people. Eligible *families* is a third, different number: it
+    counts every family clearing the income/Medicaid test, most of which have
+    no birth in a given year.
+
+    Derived from the postnatal arm because every served birth draws exactly one
+    postnatal entitlement: births = infant recipients / postnatal take-up.
+    Invariant to the length of the postnatal window — a 3-month and a 6-month
+    design serve the same births, at different cost.
+    """
+    if base_takeup <= 0:
+        return 0.0
+    return rec_infants / base_takeup
+
+
 def _expected_recipients(
     frame: pd.DataFrame, *, pre_payment: float, post_payment: float,
     weight_col: str = "weight",
@@ -1303,7 +1338,8 @@ def _assumption_band(
 # ---------------------------------------------------------------------------
 
 
-def _county_rows(frame: pd.DataFrame, *, pre_payment: float, post_payment: float) -> list[dict]:
+def _county_rows(frame: pd.DataFrame, *, pre_payment: float, post_payment: float,
+                 base_takeup: float = 0.0) -> list[dict]:
     """Per-county cost rows for an SPM-grain frame (one row per county).
 
     Splits the scenario's program outlay (= dollars disbursed) and expected
@@ -1324,12 +1360,18 @@ def _county_rows(frame: pd.DataFrame, *, pre_payment: float, post_payment: float
         _, _, grp_rec = _expected_recipients(
             grp, pre_payment=pre_payment, post_payment=post_payment,
         )
+        _, grp_inf, _ = _expected_recipients(
+            grp, pre_payment=pre_payment, post_payment=post_payment,
+        )
         rows.append({
             "county": county,
             "cost_total": round(c_total, 0),
             "cost_prenatal": round(_weighted_cost(grp, "rxkids_prenatal_amount"), 0),
             "cost_postnatal": round(_weighted_cost(grp, "rxkids_postnatal_amount"), 0),
             "cost_se": round(c_se, 0),
+            # Headline reach metric — see _births_served. Listed before
+            # recipients so the county CSV leads with people, not payments.
+            "births_served": round(_births_served(grp_inf, base_takeup), 0),
             "recipients": round(grp_rec, 0),
         })
     return rows
@@ -1388,7 +1430,8 @@ def _run_scenario(
     quintiles = _benefits_by_quintile(
         frame, pre_payment=pre_payment, post_payment=post_payment,
     )
-    county_rows = _county_rows(frame, pre_payment=pre_payment, post_payment=post_payment)
+    county_rows = _county_rows(frame, pre_payment=pre_payment,
+                               post_payment=post_payment, base_takeup=base_takeup)
 
     band = None
     if with_band:
@@ -1409,6 +1452,7 @@ def _run_scenario(
         "admin_cost": admin_cost, "appropriation_total": appropriation_total,
         "eligible_families": eligible_families, "rec_total": rec_total,
         "rec_pregnancies": rec_pre, "rec_infants": rec_inf,
+        "births_served": _births_served(rec_inf, base_takeup),
         "avg_benefit": avg_benefit, "band": band, "first_year": first_year,
         "quintiles": quintiles, "county_rows": county_rows,
         "frame": frame, "units": units,
@@ -1436,6 +1480,7 @@ def _scenario_summary_row(res: dict, *, tax_year: int) -> dict:
         "admin_cost_$": round(res["admin_cost"], 0),
         "appropriation_total_$": round(res["appropriation_total"], 0),
         "eligible_families": round(res["eligible_families"], 0),
+        "births_served": round(res["births_served"], 0),
         "expected_recipients": round(res["rec_total"], 0),
         "expected_pregnancies": round(res["rec_pregnancies"], 0),
         "expected_infants": round(res["rec_infants"], 0),
@@ -1524,6 +1569,7 @@ def _write_workbook(path: Path, *, ctx: dict) -> None:
         ("  Year-1 if ramp = 18mo (slow)", ctx["ramp_sensitivity"][18], money_fmt),
         ("", None, None),
         ("HOUSEHOLD REACH", None, None),
+        ("Births served / year (people affected)", ctx["births_served"], money_fmt),
         ("Eligible families (weighted)", ctx["eligible_families"], money_fmt),
         ("Expected recipients / year", ctx["rec_total"], money_fmt),
         ("  Expected pregnancies (prenatal)", ctx["rec_pregnancies"], money_fmt),
@@ -1840,6 +1886,7 @@ def _write_pdf(path: Path, *, ctx: dict) -> None:
     pdf.ln(1)
 
     section("Household reach")
+    kv("Births served / year (people affected)", f"{ctx['births_served']:,.0f}")
     kv("Eligible families (weighted)", f"{ctx['eligible_families']:,.0f}")
     kv("Expected recipients / year", f"{ctx['rec_total']:,.0f}")
     kv("Expected pregnancies / infants",
@@ -1971,6 +2018,7 @@ def main(argv: Optional[list] = None) -> int:
     total_cost, total_se, moe = base_res["cost_total"], base_res["cost_se"], base_res["moe"]
     prenatal_cost, postnatal_cost = base_res["cost_prenatal"], base_res["cost_postnatal"]
     eligible_families = base_res["eligible_families"]
+    births_served = base_res["births_served"]
     rec_pregnancies = base_res["rec_pregnancies"]
     rec_infants, rec_total = base_res["rec_infants"], base_res["rec_total"]
     avg_benefit = base_res["avg_benefit"]
@@ -2145,6 +2193,7 @@ def main(argv: Optional[list] = None) -> int:
         "additional_cost": additional_cost,
         "first_year": first_year, "ramp_sensitivity": ramp_sensitivity,
         "eligible_families": eligible_families,
+        "births_served": births_served,
         "rec_total": rec_total, "rec_pregnancies": rec_pregnancies,
         "rec_infants": rec_infants, "avg_benefit": avg_benefit,
         "quintiles": quintiles, "band": band, "county_rows": county_rows,
@@ -2187,6 +2236,9 @@ def main(argv: Optional[list] = None) -> int:
         "first_year_postnatal_$": round(first_year["postnatal"], 0),
         "first_year_pct_of_steady": round(100 * first_year["pct_of_steady"], 1),
         "eligible_families": round(eligible_families, 0),
+        # Headline reach metric ("people affected"). Recipients below is ~2x
+        # this — one prenatal + one postnatal payment per served birth.
+        "births_served": round(births_served, 0),
         "expected_recipients": round(rec_total, 0),
         "expected_pregnancies": round(rec_pregnancies, 0),
         "expected_infants": round(rec_infants, 0),
@@ -2224,9 +2276,12 @@ def main(argv: Optional[list] = None) -> int:
           f"{first_year['operating_months']}mo op, {first_year['ramp_months']}mo ramp)")
     print(f"    ramp 6/12/18mo           : ${ramp_sensitivity[6]:,.0f} / "
           f"${ramp_sensitivity[12]:,.0f} / ${ramp_sensitivity[18]:,.0f}")
+    print(f"  BIRTHS SERVED / year       : {births_served:>16,.0f}"
+          f"  <- people affected")
     print(f"  Eligible families          : {eligible_families:>16,.0f}")
-    print(f"  Expected recipients/year   : {rec_total:>16,.0f}"
-          f"  ({rec_pregnancies:,.0f} preg + {rec_infants:,.0f} infants)")
+    print(f"  Expected recipient-payments: {rec_total:>16,.0f}"
+          f"  ({rec_pregnancies:,.0f} preg + {rec_infants:,.0f} infants;"
+          f" ~2 per birth, NOT people)")
     print(f"  Avg benefit per recipient  : ${avg_benefit:>15,.0f}")
     print("\n  Benefit received by income quintile:")
     for row in quintiles:

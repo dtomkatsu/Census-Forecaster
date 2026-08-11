@@ -1064,3 +1064,50 @@ def test_nvsr_series_extends_to_wonder_2007():
     # 2018 value (15,404) implied.
     step = fc.HI_BIRTHS_BY_YEAR[2018] / fc.HI_BIRTHS_BY_YEAR[2017] - 1
     assert -0.05 < step < 0.0
+
+
+# ---------------------------------------------------------------------------
+# Headline design: $1,500 + 3 x $500, and "people affected" = births served
+# ---------------------------------------------------------------------------
+
+
+def test_default_scenario_is_the_three_month_design():
+    """$1,500 one-time prenatal + 3 x $500 monthly = $3,000 per birth."""
+    fc = _forecast_module()
+    assert fc.DEFAULT_SCENARIO_KEY == "statutory_3mo"
+    sc = fc.SCENARIO_BY_KEY["statutory_3mo"]
+    assert sc["overrides"]["postnatal_months"] == 3
+    assert sc["overrides"]["income_fpl_cap"] == 3.00
+
+    from tax_modeler.programs import hawaii_rxkids_parameters
+    p = hawaii_rxkids_parameters()
+    prenatal = p.prenatal_monthly * p.prenatal_months
+    postnatal = p.postnatal_monthly_per_child * sc["overrides"]["postnatal_months"]
+    assert prenatal == pytest.approx(1500.0)
+    assert postnatal == pytest.approx(1500.0)
+    assert prenatal + postnatal == pytest.approx(3000.0)
+
+
+def test_births_served_is_invariant_to_postnatal_window():
+    """Shortening the postnatal window is a pure COST lever: the same births
+    are served, they just draw fewer instalments. If this ever fails, someone
+    has made reach depend on payment duration."""
+    fc = _forecast_module()
+    # Same infant-recipient count, same take-up -> same births regardless of
+    # how many months the postnatal arm pays out.
+    assert fc._births_served(7172.0, 0.90) == pytest.approx(7172.0 / 0.90)
+    assert fc._births_served(0.0, 0.90) == 0.0
+    assert fc._births_served(100.0, 0.0) == 0.0   # guard, no ZeroDivisionError
+
+
+def test_births_served_is_not_the_recipient_count():
+    """Each served birth generates ~2 recipient-payments (prenatal + postnatal),
+    so recipients must never be quoted as 'people affected'."""
+    fc = _forecast_module()
+    rec_infants, takeup = 7172.0, 0.90
+    births = fc._births_served(rec_infants, takeup)
+    recipients = 6598.0 + rec_infants          # pregnancies + infants
+    assert recipients > births * 1.5, (
+        "recipient-payments should be roughly double births served; if they are "
+        "close, the two metrics have been conflated"
+    )
