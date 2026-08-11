@@ -32,6 +32,12 @@ dependencies = [
     "joblib>=1.3",
     "statsmodels>=0.14",
     "pyyaml>=6.0",
+    # reporting.brief imports both eagerly (charts.py -> matplotlib,
+    # pdf_renderer.py -> fpdf). Not optional: `from tax_modeler.reporting.brief
+    # import ...` fails at import time without them, which breaks pytest
+    # collection for the whole suite.
+    "matplotlib>=3.7",
+    "fpdf2>=2.7",
     "census-common",
     "census-forecaster",
     "pums-estimator",
