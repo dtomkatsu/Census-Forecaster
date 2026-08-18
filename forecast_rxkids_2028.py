@@ -1406,15 +1406,32 @@ def _county_rows(frame: pd.DataFrame, *, pre_payment: float, post_payment: float
         _, grp_inf, _ = _expected_recipients(
             grp, pre_payment=pre_payment, post_payment=post_payment,
         )
+        # Real (microdata) Medicaid-vs-income-only clause split, same basis
+        # as the state-level split in _run_scenario — see
+        # RXKIDS_CLAUSE_SPLIT_COLS. Only present on the frame when the
+        # caller's aggregate_to_spm_units call included those columns in
+        # sum_cols; falls back to 0.0 (via _weighted_cost/_infant_recipients)
+        # if absent rather than raising, so callers on an unsplit frame still
+        # get the rest of the row.
+        grp_inf_medicaid = _infant_recipients(
+            grp, "rxkids_postnatal_medicaid_amount", post_payment=post_payment,
+        )
+        grp_inf_income_only = _infant_recipients(
+            grp, "rxkids_postnatal_income_only_amount", post_payment=post_payment,
+        )
         rows.append({
             "county": county,
             "cost_total": round(c_total, 0),
             "cost_prenatal": round(_weighted_cost(grp, "rxkids_prenatal_amount"), 0),
             "cost_postnatal": round(_weighted_cost(grp, "rxkids_postnatal_amount"), 0),
             "cost_se": round(c_se, 0),
+            "cost_medicaid": round(_weighted_cost(grp, "rxkids_medicaid_amount"), 0),
+            "cost_income_only": round(_weighted_cost(grp, "rxkids_income_only_amount"), 0),
             # Headline reach metric — see _births_served. Listed before
             # recipients so the county CSV leads with people, not payments.
             "births_served": round(_births_served(grp_inf, base_takeup), 0),
+            "births_served_medicaid": round(_births_served(grp_inf_medicaid, base_takeup), 0),
+            "births_served_income_only": round(_births_served(grp_inf_income_only, base_takeup), 0),
             "recipients": round(grp_rec, 0),
         })
     return rows
@@ -1716,13 +1733,18 @@ def _write_workbook(path: Path, *, ctx: dict) -> None:
     ws2 = wb.create_sheet("By county")
     headers = [
         "County", "Cost total ($)", "Cost prenatal ($)", "Cost postnatal ($)",
-        "Cost SE ($)", "Expected recipients",
+        "Cost SE ($)", "  via Medicaid ($)", "  via income-only ($)",
+        "Births served", "  via Medicaid", "  via income-only",
+        "Expected recipients",
     ]
     _style_header_row(ws2, headers)
     for i, row in enumerate(ctx["county_rows"], start=2):
         vals = [
             row["county"], row["cost_total"], row["cost_prenatal"],
-            row["cost_postnatal"], row["cost_se"], row["recipients"],
+            row["cost_postnatal"], row["cost_se"],
+            row["cost_medicaid"], row["cost_income_only"],
+            row["births_served"], row["births_served_medicaid"],
+            row["births_served_income_only"], row["recipients"],
         ]
         for j, v in enumerate(vals, start=1):
             c = ws2.cell(row=i, column=j, value=v)
@@ -1786,22 +1808,32 @@ def _write_workbook(path: Path, *, ctx: dict) -> None:
         wsc = wb.create_sheet("County x scenario")
         cheaders = [
             "Scenario", "County", "Cost total ($)", "Cost prenatal ($)",
-            "Cost postnatal ($)", "Cost SE ($)", "Expected recipients",
+            "Cost postnatal ($)", "Cost SE ($)", "  via Medicaid ($)",
+            "  via income-only ($)", "Births served", "  via Medicaid",
+            "  via income-only", "Expected recipients",
         ]
         _style_header_row(wsc, cheaders)
         for i, row in enumerate(ctx["county_scenario_rows"], start=2):
             vals = [
                 row["label"], row["county"], row["cost_total"],
                 row["cost_prenatal"], row["cost_postnatal"], row["cost_se"],
-                row["recipients"],
+                row["cost_medicaid"], row["cost_income_only"],
+                row["births_served"], row["births_served_medicaid"],
+                row["births_served_income_only"], row["recipients"],
             ]
             for j, v in enumerate(vals, start=1):
                 c = wsc.cell(row=i, column=j, value=v)
                 c.border = border
                 if j >= 3 and v is not None:
                     c.number_format = money_fmt
-        wsc.column_dimensions["A"].width = 30
-        for j in range(2, len(cheaders) + 1):
+        # Column A holds the full descriptive scenario label (up to 51
+        # chars, e.g. "Statutory (Medicaid OR <=300% FPL) - 3-mo
+        # postnatal") — same overflow hazard as the "By scenario" tab's
+        # column A (see its comment); B always has content so Excel clips
+        # rather than spills.
+        wsc.column_dimensions["A"].width = 54
+        wsc.column_dimensions["B"].width = 14
+        for j in range(3, len(cheaders) + 1):
             wsc.column_dimensions[get_column_letter(j)].width = 18
 
     # ---- Assumptions ----
@@ -2052,11 +2084,15 @@ def _write_pdf(path: Path, *, ctx: dict) -> None:
         section("Cost by county")
         _pdf_table(
             pdf,
-            headers=["County", "Cost total", "Prenatal", "Postnatal", "Recipients"],
-            widths_frac=[0.30, 0.18, 0.17, 0.17, 0.18],
+            headers=["County", "Cost total", "Prenatal", "Postnatal",
+                     "Births served", "Recipients", "Medicaid %"],
+            widths_frac=[0.12, 0.15, 0.15, 0.15, 0.16, 0.13, 0.14],
             rows=[[
                 r["county"], money(r["cost_total"]), money(r["cost_prenatal"]),
-                money(r["cost_postnatal"]), f"{r['recipients']:,.0f}",
+                money(r["cost_postnatal"]), f"{r['births_served']:,.0f}",
+                f"{r['recipients']:,.0f}",
+                (f"{100 * r['births_served_medicaid'] / r['births_served']:.0f}%"
+                 if r["births_served"] > 0 else "-"),
             ] for r in ctx["county_rows"]],
         )
         pdf.ln(3)
