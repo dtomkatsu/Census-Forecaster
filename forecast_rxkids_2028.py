@@ -1743,6 +1743,11 @@ def _write_workbook(path: Path, *, ctx: dict) -> None:
             "Cost total ($)", "Prenatal ($)", "Postnatal ($)",
             "Admin ($)", "Appropriation ($)", "Band low ($)", "Band high ($)",
             "Expected recipients", "Avg benefit ($)", "First-year ($)",
+            # Real (microdata) Medicaid-vs-income-only clause split — see
+            # RXKIDS_CLAUSE_SPLIT_COLS. Trivial (100%/0%) at the statutory
+            # default; only diverges under the universal scenarios.
+            "Eligible families", "  via Medicaid", "  via income-only",
+            "Births served", "  via Medicaid", "  via income-only",
         ]
         for j, h in enumerate(sheaders, start=1):
             c = wss.cell(row=2, column=j, value=h)
@@ -1758,13 +1763,20 @@ def _write_workbook(path: Path, *, ctx: dict) -> None:
                 row["appropriation_total_$"], row["assumption_band_low_$"],
                 row["assumption_band_high_$"], row["expected_recipients"],
                 row["avg_benefit_per_recipient_$"], row["first_year_total_$"],
+                row["eligible_families"], row["eligible_families_medicaid"],
+                row["eligible_families_income_only"],
+                row["births_served"], row["births_served_medicaid"],
+                row["births_served_income_only"],
             ]
             for j, v in enumerate(vals, start=1):
                 c = wss.cell(row=i, column=j, value=v)
                 c.border = border
                 if j >= 4 and isinstance(v, (int, float)):
                     c.number_format = money_fmt
-        wss.column_dimensions["A"].width = 34
+        # 34 clips the longest label ("Statutory (Medicaid OR <=300% FPL) -
+        # 3-mo postnatal", 51 chars) since column B always has content and
+        # Excel only lets an overflowing cell spill into an empty neighbor.
+        wss.column_dimensions["A"].width = 54
         wss.column_dimensions["B"].width = 30
         for j in range(3, len(sheaders) + 1):
             wss.column_dimensions[get_column_letter(j)].width = 16
@@ -1855,6 +1867,13 @@ def _pdf_table(pdf, *, headers, widths_frac, rows) -> None:
     pdf.set_font("Helvetica", "B", 9)
     pdf.set_fill_color(*_TEAL)
     pdf.set_text_color(255, 255, 255)
+    # A preceding multi_cell (e.g. the italic description above every table
+    # in this report) can leave x at the right edge instead of l_margin —
+    # same hazard section()/kv() already guard against. Without this, the
+    # header row (and the first data row, before the first ln() corrects it)
+    # render squeezed into a sliver at the right margin instead of spanning
+    # the table width.
+    pdf.set_x(pdf.l_margin)
     for h, w in zip(headers, widths):
         pdf.cell(w, 6, _ascii(h), fill=True, align="C")
     pdf.ln()
@@ -1862,6 +1881,7 @@ def _pdf_table(pdf, *, headers, widths_frac, rows) -> None:
     pdf.set_font("Helvetica", "", 9)
     fill = False
     for row in rows:
+        pdf.set_x(pdf.l_margin)
         pdf.set_fill_color(*_LIGHT)
         for j, (val, w) in enumerate(zip(row, widths)):
             pdf.cell(w, 6, _ascii(val), border="B", fill=fill,
@@ -1938,13 +1958,30 @@ def _write_pdf(path: Path, *, ctx: dict) -> None:
             "eligibility gate and postnatal window change. Cost = annual benefit "
             "dollars; appropriation adds the admin load."))
         pdf.set_text_color(0, 0, 0)
+        # _pdf_table's cell() draws single-line, unwrapped text: the full
+        # descriptive scenario labels (~77mm at 9pt, e.g. "Statutory
+        # (Medicaid OR <=300% FPL) - 3-mo postnatal") overflow any column
+        # width that leaves room for the 5 numeric columns too, visually
+        # colliding with the next cell's value. Short, unambiguous labels
+        # here; the full descriptive label is still used in the console,
+        # workbook "By scenario" tab, and CSVs, which have room for it.
+        pdf_scenario_label = {
+            "statutory_3mo": "Statutory - 3mo",
+            "statutory_6mo": "Statutory - 6mo",
+            "universal_6mo": "Universal - 6mo",
+            "universal_12mo": "Universal - 12mo",
+        }
         _pdf_table(
             pdf,
-            headers=["Scenario", "$/birth", "Cost", "Appropriation", "Recipients"],
-            widths_frac=[0.40, 0.13, 0.18, 0.18, 0.11],
+            headers=["Scenario", "$/birth", "Cost", "Appropriation",
+                     "Births served", "Medicaid %"],
+            widths_frac=[0.22, 0.10, 0.16, 0.18, 0.18, 0.16],
             rows=[[
-                r["label"], money(r["per_birth_$"]), money(r["cost_total_$"]),
-                money(r["appropriation_total_$"]), f"{r['expected_recipients']:,.0f}",
+                pdf_scenario_label.get(r["scenario"], r["label"]),
+                money(r["per_birth_$"]), money(r["cost_total_$"]),
+                money(r["appropriation_total_$"]), f"{r['births_served']:,.0f}",
+                (f"{r['medicaid_share_of_births_served_pct']:.0f}%"
+                 if r.get("medicaid_share_of_births_served_pct") is not None else "-"),
             ] for r in ctx["scenario_rows"]],
         )
         pdf.ln(2)
