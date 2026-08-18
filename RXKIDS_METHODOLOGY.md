@@ -28,10 +28,16 @@ A family qualifies if **either** of these is true:
    $85,000 for a family of three).
 
 This is broader than a Medicaid-only program but narrower than giving cash to
-everyone. On the real Hawaiʻi data, roughly **60% of all birth families** clear
-this bar (~7,969 of ~13,842 projected 2028 births). Most of that eligibility —
-about **two-thirds** — comes from families who already qualify for Medicaid; the
-300% FPL income test adds the rest. (See the decomposition in §10.)
+everyone. On the real Hawaiʻi data, roughly **58% of all birth families** clear
+this bar (~7,969 of ~13,842 projected 2028 births). **As of 2026-08-18 the
+model computes the Medicaid-vs-income split directly from the PUMS microdata
+(earlier versions of this document estimated it from an external, national
+statistic — see §10) — and at the statutory design, 100% of that eligibility
+currently comes from families who already qualify for Medicaid.** The 300%
+FPL income test adds **no additional** eligible births on top of what
+Medicaid already reaches, because Hawaiʻi's Medicaid children/CHIP pathway
+(313% FPL) is wider than the program's own 300% FPL test, and every birth
+family has a qualifying dependent. See the real, per-scenario split in §10.
 
 We also price two **universal** designs (cash to every birth family, no income
 or Medicaid test) — one paying through 6 months and one through 12 — so the cost
@@ -193,7 +199,8 @@ families those births belong to; the trend model carries that forward to 2028.**
 | Take-up (enrollment) | 90% newborn / 83% prenatal | RxKids Flint observed 98%/90%, set conservatively |
 | 300% FPL income line | ~$85k for family of 3 | HHS federal poverty guidelines (year-aware) |
 | Medicaid eligibility | Med-QUEST pathways (138%/196%/313% FPL) | Hawaiʻi Med-QUEST; KFF state health facts |
-| Share of births on Medicaid | ~40% (~6,200/yr) | KFF state health facts |
+| Share of births *financed* by Medicaid (context only — not used in the model; unrelated to the eligibility split below) | ~40% (~6,200/yr) | KFF state health facts |
+| Share of *RxKids-eligible* births reached via the Medicaid clause (statutory design) | **100%** — computed directly from PUMS (§10) | `forecast_rxkids_2028.py`, `cost_by_scenario.csv` |
 | Tax treatment | Non-taxable cash | Flint design; Census SPM rules (P60-280) |
 | Admin overhead | 8% | Typical cash-transfer load (5–10%) |
 
@@ -273,7 +280,13 @@ birth family clears it). See the module docstring and §10 for override recipes.
   1,486 NHPI / 2,896 White / 326 Black / 2,701 Hispanic.
 - **Births financed by Medicaid**: Hawaii estimate **~40%** (~6,200/yr)
   — Hawaii has higher employer-sponsored insurance coverage than the
-  US average (national ~42%). KFF state health facts.
+  US average (national ~42%). KFF state health facts. **This is a different
+  concept from RxKids clause-1 eligibility** (whether a family qualifies for
+  Med-QUEST on income/family-size, tested on real PUMS data) **and is not
+  used anywhere in the cost model** — it is background context only, still
+  unreplaced by a Hawaii-specific source (see "What was ruled out" below).
+  For the model's own Medicaid-vs-income-only eligibility split, computed
+  directly from the microdata, see §10.
 - **QUEST Integration income limits**: pregnant women 196% FPL,
   children 0-1 308% FPL, children 1-5 308% FPL, adults 138% FPL.
 - **Hawaii has no RxKids-equivalent pending legislation** (2025
@@ -1282,49 +1295,71 @@ universe, which overcounted pregnancies ~2× and required a runtime
 
 On the **observed** basis the model implies **~7,969 eligible births** (=
 ~7,172 infant recipients ÷ 0.90 take-up) out of the ~13,842 projected 2028
-births = **~58% of births eligible**, on the MAGI-household grain.
+births = **~58% of births eligible**, on the MAGI-household grain (eligible
+*families*, a related but different denominator, is 7,340).
 
-- **External anchor:** Hawaii Medicaid-financed births ≈ 40% (~6,200) — a
-  *floor* (the pregnancy-Medicaid pathway sits at 196% FPL). The model's 60%
-  sits above it, as it should: the gate (≤300% FPL OR Medicaid/CHIP) is
-  broader than the pregnancy threshold.
-- **Which clause drives eligibility (approximate decomposition).** The model
-  computes only the *combined* eligible share (~60%); it does not separately
-  report a clause-1-vs-clause-2 split. But we can decompose it against the
-  external Medicaid floor. On the projected 2028 base of ~13,842 births:
+- **Real clause-1-vs-clause-2 split (added 2026-08-18).** Earlier versions of
+  this section estimated the Medicaid-vs-income split indirectly, by
+  anchoring to KFF's *national* Medicaid-financed-birth rate (~40%) and
+  backing out a residual — explicitly flagged at the time as an external,
+  non-model-reported approximation ("treat the split as ±a few points, not
+  exact"). `forecast_rxkids_2028.py` now computes this directly from the
+  actual PUMS microdata instead: for every eligible family it checks whether
+  `medicaid_receives` (Hawaiʻi Med-QUEST categorical eligibility, computed on
+  that family's real income/family size — §3) alone would have qualified it,
+  versus families that clear *only* the 300% FPL income test. Real result, by
+  scenario (`cost_by_scenario.csv`, columns `eligible_families_medicaid` /
+  `eligible_families_income_only` / `births_served_medicaid` /
+  `births_served_income_only` / `cost_medicaid_$` / `cost_income_only_$`):
 
-  | Source | Eligible births | Share of births |
-  |---|---|---|
-  | Clause 1 — Medicaid families (≈40% floor, scaled to 2028) | ~5,450 | ~40% |
-  | Clause 2 — income-only (≤300% FPL, **not** on Medicaid) | ~2,690 | ~20% |
-  | **Combined eligible (model output)** | **~7,969** | **~58%** |
+  | Scenario | Eligible families | via Medicaid | via income-only | Births served | via Medicaid | via income-only |
+  |---|---|---|---|---|---|---|
+  | **Statutory · 3mo (default)** | 7,340 | **7,340 (100%)** | **0 (0%)** | 7,969 | **7,969 (100%)** | **0 (0%)** |
+  | Statutory · 6mo | 7,340 | 7,340 (100%) | 0 (0%) | 7,969 | 7,969 (100%) | 0 (0%) |
+  | Universal · 6mo | 11,521 | 7,340 (63.7%) | 4,181 (36.3%) | 13,228 | 7,969 (60.2%) | 5,259 (39.8%) |
+  | Universal · 12mo | 11,521 | 7,340 (63.7%) | 4,181 (36.3%) | 13,228 | 7,969 (60.2%) | 5,259 (39.8%) |
 
-  So roughly **two-thirds of eligibility is the Medicaid clause**, with the
-  300% FPL income test adding the remaining ~third on top. This is a useful
-  advocacy framing: most of the program's reach overlaps families the state
-  *already* identifies as low-income through Med-QUEST. Two caveats on the
-  precision: (1) the ~5,450 is derived from the **external** KFF
-  Medicaid-financed-birth rate, not a model-reported clause split; (2) clause 1
-  (`medicaid_receives`) is actually *broader* than "delivery financed by
-  Medicaid" — it also fires on the 138% adult and 313% children/CHIP pathways —
-  so the true Medicaid-clause share is likely a touch higher than ~40% and the
-  income-only residual a touch smaller. Treat the split as ±a few points, not
-  exact.
-- **Why ~60% (vs the proxy's inflated 86%)?** The proxy distributed
+  **The statutory (default) result is not an estimate — it is a structural
+  fact of the current parameter configuration, not sampling noise.** Hawaiʻi's
+  Medicaid children/CHIP pathway caps at **313% FPL**
+  (`MedicaidParameters.child_fpl_cap`), which is *wider* than RxKids's own
+  statutory income test at **300% FPL** (`RxKidsHIParams.income_fpl_cap`).
+  Every birth-driving family has ≥1 dependent (a birth is itself a
+  dependent), so the children pathway fires for any family at or below 313%
+  FPL with a dependent — a strict superset of the families the 300% income
+  clause reaches. Both tests run on the exact same family-size/income basis
+  (`_magi`/`_magi_size`, §3), so **any family that clears the statutory 300%
+  income test is, by construction, already under 313% FPL and therefore
+  already `medicaid_receives = True`.** At the statutory default, clause 2
+  currently contributes **zero** additional eligible births beyond clause 1 —
+  it only starts doing independent work once the income cap is pushed toward
+  universal (the Universal rows above use a ~100× FPL cap, which reaches
+  families well outside any Medicaid pathway). A regression test
+  (`test_rxkids_statutory_default_is_entirely_medicaid_clause` in
+  `tests/tax_modeler/programs/test_rxkids.py`) pins this; re-verify it if
+  either FPL cap is ever changed independently of the other.
+
+  This retires the "roughly two-thirds Medicaid" framing this document used
+  previously. The real number for the statutory design is both higher (100%,
+  not ~67%) and exact rather than approximate — and it is a stronger, simpler
+  advocacy line than the estimate it replaces: under the current design,
+  **every dollar of the statutory program flows to families the state already
+  recognizes as Medicaid-eligible.** The 300% income test isn't currently
+  reaching a new population — it's a second, currently-redundant door into
+  the same population Med-QUEST already serves. (For the income test to
+  meaningfully broaden reach beyond Medicaid, `income_fpl_cap` would need to
+  be set *above* 313% FPL, which at its current 300% default it narrowly does
+  not.)
+- **Why ~58% (vs the proxy's inflated 86%)?** The proxy distributed
   *fractional* births across **all** families with dependents, in proportion
   to dependent count — and larger-dependent families skew lower-income, so the
   proxy over-weighted low-income families and pushed the eligible share to 86%
   (above the ~60–65% Census-family benchmark). The **observed** births
-  are the actual joint distribution of new infants × MAGI income; ~60% of them
+  are the actual joint distribution of new infants × MAGI income; ~58% of them
   clear the gate — right in the ~60–65% Census-family benchmark range. For a
   high-cost, high-median-income state where 300% FPL for a family of 3 is ~$85k,
-  ~60% of birth families qualifying is plausible. The shift from 86% to 60% is
+  ~58% of birth families qualifying is plausible. The shift from 86% to 58% is
   the largest *qualitative* correction from the observed-births change.
-- **Nuance:** clause 1 (Medicaid) is *broader* than clause 2 here because
-  `medicaid_receives` includes the children's CHIP-equivalent pathway at
-  **313% FPL** — slightly above the 300% income clause. That residual is the
-  Medicaid clause's only marginal contribution and rests on treating
-  CHIP-313% as "Medicaid" (a policy reading; see §4).
 
 ### Launch (first fiscal year)
 

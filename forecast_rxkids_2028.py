@@ -1005,6 +1005,22 @@ def _births_served(rec_infants: float, base_takeup: float) -> float:
     return rec_infants / base_takeup
 
 
+def _infant_recipients(
+    frame: pd.DataFrame, amount_col: str, *, post_payment: float,
+    weight_col: str = "weight",
+) -> float:
+    """Weighted expected postnatal (infant) recipients from a postnatal-arm
+    dollar column. Generalizes the postnatal half of ``_expected_recipients``
+    to an arbitrary column, so a clause-split postnatal amount (e.g.
+    ``rxkids_postnatal_medicaid_amount``) can be converted to a recipient
+    count the same way the combined ``rxkids_postnatal_amount`` is."""
+    if post_payment <= 0 or amount_col not in frame.columns:
+        return 0.0
+    a = frame[amount_col].fillna(0).to_numpy(dtype=float)
+    w = frame[weight_col].fillna(0).to_numpy(dtype=float)
+    return float((a / post_payment * w).sum())
+
+
 def _expected_recipients(
     frame: pd.DataFrame, *, pre_payment: float, post_payment: float,
     weight_col: str = "weight",
@@ -1242,6 +1258,16 @@ def _attach_magi_household(units: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     return out, {"family_income_col": "_magi", "family_size_col": "_magi_size"}
 
 
+# Columns produced by _apply_rxkids's clause split (below), on top of the
+# ``rxkids_amount`` / ``rxkids_postnatal_amount`` that compute_rxkids_for_units
+# already emits. Exported so callers that re-aggregate to SPM-unit grain (e.g.
+# _run_scenario) know which extra columns to sum through aggregate_to_spm_units.
+RXKIDS_CLAUSE_SPLIT_COLS: tuple[str, ...] = (
+    "rxkids_medicaid_amount", "rxkids_income_only_amount",
+    "rxkids_postnatal_medicaid_amount", "rxkids_postnatal_income_only_amount",
+)
+
+
 def _apply_rxkids(
     units: pd.DataFrame, *, tax_year: int, overrides: Optional[dict] = None,
     birth_count_col: Optional[str] = "observed_births",
@@ -1256,6 +1282,15 @@ def _apply_rxkids(
     the observed/calibrated infant count when that column is present;
     ``compute_rxkids_for_units`` falls back to the proxy when it is absent
     (e.g. a ``--use-proxy-births`` run, where the column is never attached).
+
+    Also splits ``rxkids_amount`` and ``rxkids_postnatal_amount`` into a
+    Medicaid-clause component (units where ``medicaid_receives`` alone would
+    have qualified them) and an income-only-clause component (units that
+    only clear the 300% FPL test) — see ``RXKIDS_CLAUSE_SPLIT_COLS``. This is
+    a real per-family split on the actual PUMS microdata, unlike the
+    KFF-anchored back-of-envelope estimate in RXKIDS_METHODOLOGY.md §10.
+    The two components always sum exactly back to the un-split column, since
+    they're a mutually-exclusive partition by ``medicaid_receives``.
     """
     from tax_modeler.benefits.medicaid_hi_quest import compute_medicaid_for_units
     from tax_modeler.programs import compute_rxkids_for_units
@@ -1266,6 +1301,14 @@ def _apply_rxkids(
         out, tax_year=tax_year, overrides=overrides,
         birth_count_col=birth_count_col, **fam,
     )
+
+    via_medicaid = out["medicaid_receives"].fillna(False).to_numpy(dtype=bool)
+    combined = out["rxkids_amount"].fillna(0).to_numpy(dtype=float)
+    postnatal = out["rxkids_postnatal_amount"].fillna(0).to_numpy(dtype=float)
+    out["rxkids_medicaid_amount"] = np.where(via_medicaid, combined, 0.0)
+    out["rxkids_income_only_amount"] = np.where(~via_medicaid, combined, 0.0)
+    out["rxkids_postnatal_medicaid_amount"] = np.where(via_medicaid, postnatal, 0.0)
+    out["rxkids_postnatal_income_only_amount"] = np.where(~via_medicaid, postnatal, 0.0)
     return out
 
 
@@ -1392,7 +1435,7 @@ def _run_scenario(
     reuses the existing helpers, so a scenario is just the standard pipeline run
     under a different override dict.
     """
-    from tax_modeler.poverty.spm_aggregation import aggregate_to_spm_units
+    from tax_modeler.poverty.spm_aggregation import _SUM_COLS, aggregate_to_spm_units
     from tax_modeler.programs import hawaii_rxkids_parameters
 
     base = hawaii_rxkids_parameters()
@@ -1406,7 +1449,16 @@ def _run_scenario(
     post_payment = base.postnatal_monthly_per_child * post_months
 
     units = _apply_rxkids(projected, tax_year=tax_year, overrides=calib)
-    frame = _apply_fertility(aggregate_to_spm_units(units, persons), fert)
+    # aggregate_to_spm_units only sums its default column list; extend it with
+    # the Medicaid-vs-income-only clause split _apply_rxkids attached, so the
+    # split survives onto the SPM-grain reporting frame at the same weight as
+    # every other cost figure (see RXKIDS_CLAUSE_SPLIT_COLS).
+    frame = _apply_fertility(
+        aggregate_to_spm_units(
+            units, persons, sum_cols=(*_SUM_COLS, *RXKIDS_CLAUSE_SPLIT_COLS),
+        ),
+        fert,
+    )
 
     total_cost, total_se = _cost_with_sdr(frame, "rxkids_amount")
     prenatal_cost, _ = _cost_with_sdr(frame, "rxkids_prenatal_amount")
@@ -1418,6 +1470,22 @@ def _run_scenario(
         frame, pre_payment=pre_payment, post_payment=post_payment,
     )
     avg_benefit = (total_cost / rec_total) if rec_total > 0 else 0.0
+
+    # Real (microdata-derived) Medicaid-vs-income-only clause split — replaces
+    # the KFF-anchored back-of-envelope estimate in RXKIDS_METHODOLOGY.md §10
+    # with an actual per-family tabulation off medicaid_receives.
+    eligible_families_medicaid = _reached(frame, "rxkids_medicaid_amount")
+    eligible_families_income_only = _reached(frame, "rxkids_income_only_amount")
+    cost_medicaid = _weighted_cost(frame, "rxkids_medicaid_amount")
+    cost_income_only = _weighted_cost(frame, "rxkids_income_only_amount")
+    inf_medicaid = _infant_recipients(
+        frame, "rxkids_postnatal_medicaid_amount", post_payment=post_payment,
+    )
+    inf_income_only = _infant_recipients(
+        frame, "rxkids_postnatal_income_only_amount", post_payment=post_payment,
+    )
+    births_served_medicaid = _births_served(inf_medicaid, base_takeup)
+    births_served_income_only = _births_served(inf_income_only, base_takeup)
 
     admin_cost = total_cost * max(0.0, admin_load)
     appropriation_total = total_cost + admin_cost
@@ -1456,6 +1524,13 @@ def _run_scenario(
         "avg_benefit": avg_benefit, "band": band, "first_year": first_year,
         "quintiles": quintiles, "county_rows": county_rows,
         "frame": frame, "units": units,
+        # Medicaid-clause vs income-only-clause split (real microdata split,
+        # not the KFF-anchored estimate in the methodology doc).
+        "eligible_families_medicaid": eligible_families_medicaid,
+        "eligible_families_income_only": eligible_families_income_only,
+        "cost_medicaid": cost_medicaid, "cost_income_only": cost_income_only,
+        "births_served_medicaid": births_served_medicaid,
+        "births_served_income_only": births_served_income_only,
     }
 
 
@@ -1480,7 +1555,23 @@ def _scenario_summary_row(res: dict, *, tax_year: int) -> dict:
         "admin_cost_$": round(res["admin_cost"], 0),
         "appropriation_total_$": round(res["appropriation_total"], 0),
         "eligible_families": round(res["eligible_families"], 0),
+        # Real (microdata) Medicaid-clause vs income-only-clause split — see
+        # RXKIDS_CLAUSE_SPLIT_COLS / _apply_rxkids.
+        "eligible_families_medicaid": round(res["eligible_families_medicaid"], 0),
+        "eligible_families_income_only": round(res["eligible_families_income_only"], 0),
+        "medicaid_share_of_eligible_pct": (
+            round(100 * res["eligible_families_medicaid"] / res["eligible_families"], 1)
+            if res["eligible_families"] > 0 else None
+        ),
+        "cost_medicaid_$": round(res["cost_medicaid"], 0),
+        "cost_income_only_$": round(res["cost_income_only"], 0),
         "births_served": round(res["births_served"], 0),
+        "births_served_medicaid": round(res["births_served_medicaid"], 0),
+        "births_served_income_only": round(res["births_served_income_only"], 0),
+        "medicaid_share_of_births_served_pct": (
+            round(100 * res["births_served_medicaid"] / res["births_served"], 1)
+            if res["births_served"] > 0 else None
+        ),
         "expected_recipients": round(res["rec_total"], 0),
         "expected_pregnancies": round(res["rec_pregnancies"], 0),
         "expected_infants": round(res["rec_infants"], 0),
@@ -1570,7 +1661,11 @@ def _write_workbook(path: Path, *, ctx: dict) -> None:
         ("", None, None),
         ("HOUSEHOLD REACH", None, None),
         ("Births served / year (people affected)", ctx["births_served"], money_fmt),
+        ("  via Medicaid clause", ctx["births_served_medicaid"], money_fmt),
+        ("  via income-only clause (300% FPL)", ctx["births_served_income_only"], money_fmt),
         ("Eligible families (weighted)", ctx["eligible_families"], money_fmt),
+        ("  via Medicaid clause", ctx["eligible_families_medicaid"], money_fmt),
+        ("  via income-only clause (300% FPL)", ctx["eligible_families_income_only"], money_fmt),
         ("Expected recipients / year", ctx["rec_total"], money_fmt),
         ("  Expected pregnancies (prenatal)", ctx["rec_pregnancies"], money_fmt),
         ("  Expected infants (postnatal)", ctx["rec_infants"], money_fmt),
@@ -1887,7 +1982,11 @@ def _write_pdf(path: Path, *, ctx: dict) -> None:
 
     section("Household reach")
     kv("Births served / year (people affected)", f"{ctx['births_served']:,.0f}")
+    kv("via Medicaid clause", f"{ctx['births_served_medicaid']:,.0f}", 1)
+    kv("via income-only clause (300% FPL)", f"{ctx['births_served_income_only']:,.0f}", 1)
     kv("Eligible families (weighted)", f"{ctx['eligible_families']:,.0f}")
+    kv("via Medicaid clause", f"{ctx['eligible_families_medicaid']:,.0f}", 1)
+    kv("via income-only clause (300% FPL)", f"{ctx['eligible_families_income_only']:,.0f}", 1)
     kv("Expected recipients / year", f"{ctx['rec_total']:,.0f}")
     kv("Expected pregnancies / infants",
        f"{ctx['rec_pregnancies']:,.0f} / {ctx['rec_infants']:,.0f}", 1)
@@ -2019,6 +2118,11 @@ def main(argv: Optional[list] = None) -> int:
     prenatal_cost, postnatal_cost = base_res["cost_prenatal"], base_res["cost_postnatal"]
     eligible_families = base_res["eligible_families"]
     births_served = base_res["births_served"]
+    eligible_families_medicaid = base_res["eligible_families_medicaid"]
+    eligible_families_income_only = base_res["eligible_families_income_only"]
+    cost_medicaid, cost_income_only = base_res["cost_medicaid"], base_res["cost_income_only"]
+    births_served_medicaid = base_res["births_served_medicaid"]
+    births_served_income_only = base_res["births_served_income_only"]
     rec_pregnancies = base_res["rec_pregnancies"]
     rec_infants, rec_total = base_res["rec_infants"], base_res["rec_total"]
     avg_benefit = base_res["avg_benefit"]
@@ -2194,6 +2298,11 @@ def main(argv: Optional[list] = None) -> int:
         "first_year": first_year, "ramp_sensitivity": ramp_sensitivity,
         "eligible_families": eligible_families,
         "births_served": births_served,
+        "eligible_families_medicaid": eligible_families_medicaid,
+        "eligible_families_income_only": eligible_families_income_only,
+        "cost_medicaid": cost_medicaid, "cost_income_only": cost_income_only,
+        "births_served_medicaid": births_served_medicaid,
+        "births_served_income_only": births_served_income_only,
         "rec_total": rec_total, "rec_pregnancies": rec_pregnancies,
         "rec_infants": rec_infants, "avg_benefit": avg_benefit,
         "quintiles": quintiles, "band": band, "county_rows": county_rows,
@@ -2236,9 +2345,27 @@ def main(argv: Optional[list] = None) -> int:
         "first_year_postnatal_$": round(first_year["postnatal"], 0),
         "first_year_pct_of_steady": round(100 * first_year["pct_of_steady"], 1),
         "eligible_families": round(eligible_families, 0),
+        # Real (microdata) Medicaid-clause vs income-only-clause split —
+        # replaces the KFF-anchored back-of-envelope in
+        # RXKIDS_METHODOLOGY.md §10 with a per-family tabulation off the
+        # actual medicaid_receives flag (see RXKIDS_CLAUSE_SPLIT_COLS).
+        "eligible_families_medicaid": round(eligible_families_medicaid, 0),
+        "eligible_families_income_only": round(eligible_families_income_only, 0),
+        "medicaid_share_of_eligible_pct": (
+            round(100 * eligible_families_medicaid / eligible_families, 1)
+            if eligible_families > 0 else None
+        ),
+        "cost_medicaid_$": round(cost_medicaid, 0),
+        "cost_income_only_$": round(cost_income_only, 0),
         # Headline reach metric ("people affected"). Recipients below is ~2x
         # this — one prenatal + one postnatal payment per served birth.
         "births_served": round(births_served, 0),
+        "births_served_medicaid": round(births_served_medicaid, 0),
+        "births_served_income_only": round(births_served_income_only, 0),
+        "medicaid_share_of_births_served_pct": (
+            round(100 * births_served_medicaid / births_served, 1)
+            if births_served > 0 else None
+        ),
         "expected_recipients": round(rec_total, 0),
         "expected_pregnancies": round(rec_pregnancies, 0),
         "expected_infants": round(rec_infants, 0),
@@ -2278,7 +2405,18 @@ def main(argv: Optional[list] = None) -> int:
           f"${ramp_sensitivity[12]:,.0f} / ${ramp_sensitivity[18]:,.0f}")
     print(f"  BIRTHS SERVED / year       : {births_served:>16,.0f}"
           f"  <- people affected")
+    if births_served > 0:
+        print(f"    via Medicaid clause      : {births_served_medicaid:>16,.0f}"
+              f"  ({100 * births_served_medicaid / births_served:.0f}% of births served)")
+        print(f"    via income-only clause   : {births_served_income_only:>16,.0f}"
+              f"  ({100 * births_served_income_only / births_served:.0f}% of births served,"
+              f" 300% FPL)")
     print(f"  Eligible families          : {eligible_families:>16,.0f}")
+    if eligible_families > 0:
+        print(f"    via Medicaid clause      : {eligible_families_medicaid:>16,.0f}"
+              f"  ({100 * eligible_families_medicaid / eligible_families:.0f}%)")
+        print(f"    via income-only clause   : {eligible_families_income_only:>16,.0f}"
+              f"  ({100 * eligible_families_income_only / eligible_families:.0f}%, 300% FPL)")
     print(f"  Expected recipient-payments: {rec_total:>16,.0f}"
           f"  ({rec_pregnancies:,.0f} preg + {rec_infants:,.0f} infants;"
           f" ~2 per birth, NOT people)")

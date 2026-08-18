@@ -489,8 +489,7 @@ def test_rxkids_missing_medicaid_column_falls_back_to_clause2(caplog):
 
 
 # ---------------------------------------------------------------------------
-# Forecast scenarios: universal eligibility + postnatal-duration variants
-# (forecast_rxkids_2028.py prices statutory_6mo / universal_6mo / universal_12mo)
+# Medicaid-clause vs income-only-clause split (forecast_rxkids_2028._apply_rxkids)
 # ---------------------------------------------------------------------------
 
 
@@ -503,6 +502,110 @@ def _forecast_module():
         sys.path.insert(0, str(repo_root))
     import forecast_rxkids_2028 as fc
     return fc
+
+
+def test_rxkids_clause_split_partitions_amount_exactly():
+    """rxkids_medicaid_amount + rxkids_income_only_amount must equal
+    rxkids_amount exactly, for every unit, since it's a mutually-exclusive
+    partition by medicaid_receives — not an independent re-derivation."""
+    fc = _forecast_module()
+    units = _make_units([
+        # Medicaid-eligible (well under 138% FPL adult pathway).
+        {"num_dependents": 1, "num_qualifying_children": 1, "income": 10_000.0},
+        # Income-eligible under a permissive override but NOT Medicaid
+        # (forced medicaid_receives=False before compute_medicaid_for_units
+        # would even run — here we bypass that by testing at high income
+        # under an effectively-universal RxKids gate).
+        {"num_dependents": 1, "num_qualifying_children": 1, "income": 200_000.0},
+        # Ineligible for either.
+        {"num_dependents": 0, "num_qualifying_children": 0, "income": 500_000.0},
+    ])
+    out = fc._apply_rxkids(units, tax_year=2024, overrides={"income_fpl_cap": 100.0})
+    combined = out["rxkids_amount"].to_numpy()
+    split_sum = (
+        out["rxkids_medicaid_amount"] + out["rxkids_income_only_amount"]
+    ).to_numpy()
+    assert split_sum == pytest.approx(combined)
+    post_combined = out["rxkids_postnatal_amount"].to_numpy()
+    post_split_sum = (
+        out["rxkids_postnatal_medicaid_amount"]
+        + out["rxkids_postnatal_income_only_amount"]
+    ).to_numpy()
+    assert post_split_sum == pytest.approx(post_combined)
+    # The very-high-income, no-dependents unit clears neither clause.
+    assert float(out["rxkids_amount"].iloc[2]) == pytest.approx(0.0)
+
+
+def test_rxkids_clause_split_is_mutually_exclusive_per_unit():
+    """A unit's benefit lands entirely in ONE of the two split columns —
+    never split across both — since eligibility for a given unit is
+    determined by a single medicaid_receives boolean."""
+    fc = _forecast_module()
+    units = _make_units([
+        {"num_dependents": 1, "num_qualifying_children": 1, "income": 10_000.0},
+        {"num_dependents": 2, "num_qualifying_children": 2, "income": 45_000.0},
+    ])
+    out = fc._apply_rxkids(units, tax_year=2024, overrides={"income_fpl_cap": 100.0})
+    for i in range(len(out)):
+        med = float(out["rxkids_medicaid_amount"].iloc[i])
+        inc = float(out["rxkids_income_only_amount"].iloc[i])
+        assert med == pytest.approx(0.0) or inc == pytest.approx(0.0), (
+            "unit should not have a nonzero amount in both clause columns"
+        )
+
+
+def test_rxkids_statutory_default_is_entirely_medicaid_clause():
+    """At the DEFAULT statutory parameters (income_fpl_cap=3.00), Hawaii's
+    Medicaid children/CHIP pathway (child_fpl_cap=3.13, see
+    tax_modeler.benefits.medicaid_hi_quest.MedicaidParameters) is WIDER than
+    RxKids's own 300% FPL income test. Every birth-driving family has >=1
+    dependent (a birth is itself a dependent), so any family that clears the
+    300% income clause is, by construction, also under 313% and therefore
+    already medicaid_receives=True via the children pathway.
+
+    Net effect: for the statutory default, clause 2 (income-only) currently
+    contributes ZERO additional eligible births beyond clause 1 (Medicaid) —
+    confirmed against the real PUMS run (2026-08-18), which reports
+    eligible_families_income_only == 0 and births_served_income_only == 0.
+    This is a structural fact of the current parameter configuration, not
+    noise — if either FPL cap changes, re-verify this still holds before
+    trusting the split as a sanity check.
+    """
+    fc = _forecast_module()
+    units = _make_units([
+        {"num_dependents": 1, "num_qualifying_children": 1, "income": 10_000.0},
+        {"num_dependents": 1, "num_qualifying_children": 1, "income": 55_000.0},
+        {"num_dependents": 1, "num_qualifying_children": 1, "income": 65_000.0},  # near the 300% edge
+    ])
+    out = fc._apply_rxkids(units, tax_year=2024)  # default income_fpl_cap=3.00
+    eligible = out["rxkids_amount"] > 0
+    assert eligible.any()
+    assert (out.loc[eligible, "rxkids_income_only_amount"] == 0).all()
+    assert (out.loc[eligible, "rxkids_medicaid_amount"] > 0).all()
+
+
+def test_rxkids_universal_scenario_produces_a_real_income_only_split():
+    """Under the (near-)universal design, the income-only clause DOES pick up
+    real families — the higher the income cap, the more non-Medicaid
+    families it reaches. This is the contrast case for the statutory-default
+    test above: the split isn't dead code, it's just structurally empty at
+    the statutory default's specific FPL caps."""
+    fc = _forecast_module()
+    units = _make_units([
+        {"num_dependents": 1, "num_qualifying_children": 1, "income": 10_000.0},   # Medicaid
+        {"num_dependents": 1, "num_qualifying_children": 1, "income": 200_000.0},  # income-only, universal
+    ])
+    out = fc._apply_rxkids(units, tax_year=2024, overrides={"income_fpl_cap": 100.0})
+    assert float(out["rxkids_medicaid_amount"].iloc[0]) > 0
+    assert float(out["rxkids_income_only_amount"].iloc[0]) == pytest.approx(0.0)
+    assert float(out["rxkids_medicaid_amount"].iloc[1]) == pytest.approx(0.0)
+    assert float(out["rxkids_income_only_amount"].iloc[1]) > 0
+
+
+# ---------------------------------------------------------------------------
+# Forecast scenarios: universal eligibility + postnatal-duration variants
+# (forecast_rxkids_2028.py prices statutory_6mo / universal_6mo / universal_12mo)
+# ---------------------------------------------------------------------------
 
 
 def test_rxkids_universal_costs_at_least_statutory():
