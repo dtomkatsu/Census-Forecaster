@@ -199,7 +199,7 @@ families those births belong to; the trend model carries that forward to 2028.**
 | Take-up (enrollment) | 90% newborn / 83% prenatal | RxKids Flint observed 98%/90%, set conservatively |
 | 300% FPL income line | ~$85k for family of 3 | HHS federal poverty guidelines (year-aware) |
 | Medicaid eligibility | Med-QUEST pathways (138%/196%/313% FPL) | Hawaiʻi Med-QUEST; KFF state health facts |
-| Share of births *financed* by Medicaid (context only — not used in the model; unrelated to the eligibility split below) | ~40% (~6,200/yr) | KFF state health facts |
+| Share of births *financed* by Medicaid (context only — not used in the model; unrelated to the eligibility split below) | **34% (5,075/yr, 2024)** | KFF, "Births Financed by Medicaid" (Hawaii-specific; verified 2026-08-19) |
 | Share of *RxKids-eligible* births reached via the Medicaid clause (statutory design) | **100%** — computed directly from PUMS (§10) | `forecast_rxkids_2028.py`, `cost_by_scenario.csv` |
 | Tax treatment | Non-taxable cash | Flint design; Census SPM rules (P60-280) |
 | Admin overhead | 8% | Typical cash-transfer load (5–10%) |
@@ -278,15 +278,18 @@ birth family clears it). See the module docstring and §10 for override recipes.
 - **Annual live births (2022)**: **15,535** — CDC NVSR 73-02, Table on
   births by state by race/ethnicity. Composition: 3,854 Asian /
   1,486 NHPI / 2,896 White / 326 Black / 2,701 Hispanic.
-- **Births financed by Medicaid**: Hawaii estimate **~40%** (~6,200/yr)
-  — Hawaii has higher employer-sponsored insurance coverage than the
-  US average (national ~42%). KFF state health facts. **This is a different
-  concept from RxKids clause-1 eligibility** (whether a family qualifies for
-  Med-QUEST on income/family-size, tested on real PUMS data) **and is not
-  used anywhere in the cost model** — it is background context only, still
-  unreplaced by a Hawaii-specific source (see "What was ruled out" below).
-  For the model's own Medicaid-vs-income-only eligibility split, computed
-  directly from the microdata, see §10.
+- **Births financed by Medicaid**: **34%** (5,075 of 14,917 births, 2024)
+  — KFF's *Hawaii-specific* "Births Financed by Medicaid" table, sourced
+  from CDC WONDER natality records: https://www.kff.org/medicaid/state-indicator/births-financed-by-medicaid/
+  (verified 2026-08-19; supersedes an earlier ~40%/~6,200 figure on this
+  page — see the correction note in "What was ruled out" below). Hawaii's
+  share has sat at 33–35% every year 2018–2024 in KFF's series; it has
+  never been near 40%, and the count has never approached 6,200. **This is
+  a different concept from RxKids clause-1 eligibility** (whether a family
+  qualifies for Med-QUEST on income/family-size, tested on real PUMS data)
+  **and is not used anywhere in the cost model** — it is background context
+  only. For the model's own Medicaid-vs-income-only eligibility split,
+  computed directly from the microdata, see §10.
 - **QUEST Integration income limits**: pregnant women 196% FPL,
   children 0-1 308% FPL, children 1-5 308% FPL, adults 138% FPL.
 - **Hawaii has no RxKids-equivalent pending legislation** (2025
@@ -793,9 +796,24 @@ MCPAR template reports perinatal *quality rates* (timeliness of prenatal care,
 postpartum care completion, contraceptive-care measures) with no births
 denominator, and the monthly enrollment reports give a point-in-time
 "04-Pregnant Women" caseload (~2,500/mo), which is a stock, not a birth flow.
-The ~40% Medicaid-financed share therefore still rests on KFF's national-average
-inference; **CDC NVSR's payment-source-for-delivery table remains the best
-unexploited upgrade** for that specific parameter.
+
+> **Correction (2026-08-19).** This section previously claimed the
+> Medicaid-financed-birth share "rests on KFF's national-average inference"
+> and named CDC NVSR's payment-source-for-delivery table as "the best
+> unexploited upgrade" — implying no Hawaii-specific source existed. Both
+> claims were wrong. KFF publishes a **Hawaii-specific** "Births Financed by
+> Medicaid" table (state-by-state, not a national figure applied to every
+> state), sourced from CDC WONDER natality records — i.e. essentially the
+> NVSR-derived upgrade this section called "unexploited" was already sitting
+> in KFF's own site. Read directly (not summarized) 2026-08-19: Hawaii's
+> share was **34.0% in 2024** (5,075 births), and has run 33–35% every year
+> 2018–2024 — never near the ~40%/~6,200 figure this document previously
+> carried, which appears to have been either stale or from a different,
+> unidentified methodology. §2 now cites the verified KFF figure directly.
+> The lesson worth keeping, matching this document's other correction notes:
+> a plausible-sounding gap in the data ("no Hawaii-specific source exists")
+> went unchecked because the wrong number didn't look obviously wrong — it
+> survived being read as a summary rather than opened as a primary table.
 
 Each eligible birth draws one prenatal and one postnatal payment:
 
@@ -947,8 +965,10 @@ Key facts feeding this methodology:
   modeling via parameter override.
 - **98% take-up** of eligible newborns Jan 2024–Sept 2025 — universal
   design + hospital partnership are the take-up drivers.
-- Hawaii **15,535 annual births (2022)** with ~40% Medicaid-financed
-  → ~6,200 Medicaid births/yr. CDC NVSR resident-births series (by state of
+- Hawaii **15,535 annual births (2022)**; Medicaid-financed share is
+  **34% (2024)** → ~5,075 Medicaid births/yr — KFF's Hawaii-specific table,
+  corrected 2026-08-19 from an earlier ~40%/~6,200 figure this document
+  carried (see §3, "What was ruled out"). CDC NVSR resident-births series (by state of
   residence), used for the birth-cohort projection (`HI_BIRTHS_BY_YEAR`):
   2018 16,972 · 2019 16,797 · 2020 15,785 · 2021 15,620 · 2022 15,535 ·
   2023 14,808 · 2024 14,917 (a smooth ~12% decline; corrected against CDC
