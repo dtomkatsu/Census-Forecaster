@@ -1,6 +1,6 @@
 # Census Forecaster
 
-[![tests](https://github.com/dtomkatsu/Census-Forecaster/actions/workflows/tests.yml/badge.svg)](https://github.com/dtomkatsu/Census-Forecaster/actions/workflows/tests.yml)
+[![tests](https://github.com/Hawaii-Appleseed/Census-Forecaster/actions/workflows/tests.yml/badge.svg)](https://github.com/Hawaii-Appleseed/Census-Forecaster/actions/workflows/tests.yml)
 
 Forecast current-period values from older U.S. Census ACS estimates and BLS time series, with calibrated uncertainty.
 
@@ -163,13 +163,13 @@ python -c "from census_forecaster.backtest import run_acs_backtest; ..."
 ## Installation
 
 ```bash
-pip install git+https://github.com/dtomkatsu/Census-Forecaster.git@main
+pip install git+https://github.com/Hawaii-Appleseed/Census-Forecaster.git@main
 ```
 
 Or for development:
 
 ```bash
-git clone https://github.com/dtomkatsu/Census-Forecaster.git
+git clone https://github.com/Hawaii-Appleseed/Census-Forecaster.git
 cd Census-Forecaster
 pip install -e .[dev]
 pytest tests/
@@ -188,13 +188,13 @@ If you use this package in research, please cite:
   author = {Tom Katsumi},
   title  = {Census Forecaster: Calibrated forecasts of current-period values from older ACS and BLS data},
   year   = {2026},
-  url    = {https://github.com/dtomkatsu/Census-Forecaster},
+  url    = {https://github.com/Hawaii-Appleseed/Census-Forecaster},
 }
 ```
 
 ## See also
 
-* [Hawaii Cost-of-Living Tracker](https://github.com/dtomkatsu/Housing-Affordability-Tracker) — primary consumer of this package; shows real-world integration patterns.
+* [Hawaii Cost-of-Living Tracker](https://github.com/Hawaii-Appleseed/Cost-of-Living-Tracker) — primary consumer of this package; shows real-world integration patterns.
 * Hyndman, R. & Athanasopoulos, G. (2018). *Forecasting: Principles and Practice* (2nd ed.). — modern damped-trend treatment.
 * Cleveland Fed WP 22-38r ("New-Tenant Repeat Rent Inflation") — academic basis for the 70/30 blend pattern.
 * Wilson, T. et al. (2021). "Methods for Small Area Population Forecasts." — small-area discipline (fixed smoothing constants, etc.).

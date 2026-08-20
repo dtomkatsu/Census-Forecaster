@@ -661,7 +661,7 @@ def _render_html(data: dict) -> str:
       <p>
         <strong>Source:</strong> U.S. Census Bureau 5-Year ACS PUMS 2018-2022; Census-Forecaster tax simulation model,
         Hawaiʻi Appleseed 2026. Generated from <code>{data['tier_dir_name']}</code>.
-        <a href="https://github.com/dtomkatsu/Census-Forecaster">Source code</a>.
+        <a href="https://github.com/Hawaii-Appleseed/Census-Forecaster">Source code</a>.
       </p>
       <p>
         Hawaiʻi Appleseed Center for Law &amp; Economic Justice |

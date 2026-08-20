@@ -1990,7 +1990,7 @@ columns.
 
 ### Language and Runtime
 - **Python 3.12** via `uv` (Astral) package manager
-- All scripts run as: `cd /Users/dtomkatsu/Census-Forecaster && uv run python <script>.py`
+- All scripts run from the repo root as: `uv run python <script>.py`
 
 ### External Python Libraries
 

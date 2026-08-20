@@ -41,8 +41,8 @@ dotax = ["openpyxl>=3.1"]
 cor = ["pdfplumber>=0.11"]
 
 [project.urls]
-Homepage = "https://github.com/dtomkatsu/Census-Forecaster"
-Issues = "https://github.com/dtomkatsu/Census-Forecaster/issues"
+Homepage = "https://github.com/Hawaii-Appleseed/Census-Forecaster"
+Issues = "https://github.com/Hawaii-Appleseed/Census-Forecaster/issues"
 
 [tool.hatch.build.targets.wheel]
 # packages already ships every tracked file under src/census_forecaster,

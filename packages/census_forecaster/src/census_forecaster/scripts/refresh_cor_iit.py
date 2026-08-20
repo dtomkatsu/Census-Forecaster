@@ -60,7 +60,7 @@ from datetime import date
 from pathlib import Path
 
 COR_URL = "https://tax.hawaii.gov/useful/a9_1cor/"
-USER_AGENT = "census-forecaster/1.0 (+https://github.com/dtomkatsu/Census-Forecaster)"
+USER_AGENT = "census-forecaster/1.0 (+https://github.com/Hawaii-Appleseed/Census-Forecaster)"
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "cor"
 OUT_PATH = DATA_DIR / "cor_iit_projections.json"
