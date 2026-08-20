@@ -18,6 +18,8 @@ Credit distribution methodology:
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 from typing import Optional
@@ -365,17 +367,48 @@ def compute_quintile_breaks(tax_units: pd.DataFrame) -> np.ndarray:
 
 
 # Hawaii Council on Revenues (COR) IIT projections, $M.
-# Source: COR March 10, 2026 (files.hawaii.gov/tax/useful/cor/2026gf03-10_attach_1.pdf).
-# FY→TY mapping: FY(n+1) = TY(n) per DOTAX fiscal-note convention.
-DEFAULT_COR_IIT_PROJECTIONS_M = {
-    2025: 2_986.920,   # FY 2026
-    2026: 2_900.330,   # FY 2027
-    2027: 2_825.329,   # FY 2028
-    2028: 2_815.274,   # FY 2029
-    2029: 2_749.758,   # FY 2030
-    2030: 2_851.075,   # FY 2031
-    2031: 2_944.872,   # FY 2032
+#
+# Loaded from the bundled data file that
+# `python -m census_forecaster.scripts.refresh_cor_iit` maintains, so a new COR
+# meeting propagates here without anyone re-transcribing a table. COR meets on
+# no fixed cadence (~4-5 times a year); this dict previously sat hardcoded on
+# the March 10, 2026 vintage while the May 21, 2026 forecast had already
+# superseded it.
+#
+# FY→TY mapping: FY(n+1) = TY(n) per DOTAX fiscal-note convention (applied
+# inside the loader).
+#
+# The literal below is a LAST-RESORT fallback for an installation whose data
+# file is missing; it is the May 21, 2026 vintage. Do not hand-edit it to
+# refresh — run the script.
+_COR_FALLBACK_M = {
+    2025: 3_139.079,   # FY 2026
+    2026: 2_923.065,   # FY 2027
+    2027: 2_874.134,   # FY 2028
+    2028: 2_872.305,   # FY 2029
+    2029: 2_780.166,   # FY 2030
+    2030: 2_881.860,   # FY 2031
+    2031: 2_971.795,   # FY 2032
 }
+
+
+def _load_cor_projections() -> dict[int, float]:
+    try:
+        from census_forecaster.cor import load_cor_iit_projections
+
+        return load_cor_iit_projections(by="tax_year")
+    except Exception:  # noqa: BLE001 - never let a data-file problem break scoring
+        warnings.warn(
+            "bundled COR projections unavailable; falling back to the "
+            "hardcoded May 21, 2026 vintage. Run "
+            "`python -m census_forecaster.scripts.refresh_cor_iit` to restore.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return dict(_COR_FALLBACK_M)
+
+
+DEFAULT_COR_IIT_PROJECTIONS_M = _load_cor_projections()
 
 
 def cor_scale_factor_for_year(

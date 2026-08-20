@@ -59,7 +59,7 @@ jobs:
       - name: Install census-forecaster package
         # --extra dotax pulls openpyxl, which refresh_dotax_collections
         # needs to read DOTAX's XLSX reports (it exits 2 without it).
-        run: uv sync --package census-forecaster --extra dev --extra markets --extra dotax
+        run: uv sync --package census-forecaster --extra dev --extra markets --extra dotax --extra cor
 
       - name: Refresh BLS multi-MSA panel
         env:
@@ -218,6 +218,25 @@ jobs:
           # that would otherwise fall off the DOTAX site unrecoverably.
           uv run python -m census_forecaster.scripts.refresh_dotax_collections
 
+      - name: Refresh Council on Revenues IIT projections
+        run: |
+          # No API key required (needs pdfplumber — see the --extra cor on the
+          # install step above). Scrapes the COR meeting page for the newest
+          # General Fund "Attachment 1" (the DOTAX Tax Research & Planning
+          # line-item table) and re-derives the IIT projections that
+          # tax_modeler's cor_scale_factor_for_year uses.
+          #
+          # COR meets on no fixed cadence (~4-5 times a year), which is
+          # exactly why this is automated: the constant it replaces had gone
+          # stale on the March 10, 2026 vintage while the May 21, 2026
+          # forecast was already published.
+          #
+          # SNAPSHOT semantics, not accumulate: each run replaces the file
+          # with the newest vintage. A network failure warns and keeps the
+          # committed data; a layout change fails the step loudly rather
+          # than writing a misaligned dict.
+          uv run python -m census_forecaster.scripts.refresh_cor_iit
+
       - name: Regenerate BLS v3 calibration
         run: |
           # Only regenerate if the BLS panel exists. If neither key is
@@ -274,6 +293,7 @@ jobs:
             packages/census_forecaster/src/census_forecaster/data/leading_indicators/ \
             packages/census_forecaster/src/census_forecaster/data/markets/ \
             packages/census_forecaster/src/census_forecaster/data/dotax_monthly/ \
+            packages/census_forecaster/src/census_forecaster/data/cor/ \
             backtests/results/
 
           if git diff --staged --quiet; then
@@ -298,6 +318,7 @@ jobs:
           - HTA historical visitor arrivals re-fetched
           - DOL weekly UI initial claims re-fetched
           - DOTAX monthly tax collections merged into the accumulating bundle
+          - Council on Revenues IIT projections re-derived from the newest GF attachment
           - BLS v3 calibration regenerated against the new panel
           - ACS v3 calibration regenerated against the bundled panel
 

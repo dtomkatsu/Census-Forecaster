@@ -36,6 +36,9 @@ markets = ["yfinance>=0.2", "numpy>=1.21"]
 # openpyxl is only needed by scripts/refresh_dotax_collections.py (DOTAX
 # publishes XLSX); the bundled JSON is readable without it.
 dotax = ["openpyxl>=3.1"]
+# pdfplumber is only needed by scripts/refresh_cor_iit.py (COR publishes its
+# line-item attachment as PDF); the bundled JSON is readable without it.
+cor = ["pdfplumber>=0.11"]
 
 [project.urls]
 Homepage = "https://github.com/dtomkatsu/Census-Forecaster"

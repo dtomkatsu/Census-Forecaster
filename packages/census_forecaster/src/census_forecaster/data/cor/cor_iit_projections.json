@@ -1,0 +1,31 @@
+{
+  "fy_to_ty_convention": "FY(n+1) = TY(n)",
+  "meeting_date": "2026-05-21",
+  "note": "Individual Income Tax line-item projections from the DOTAX Tax Research & Planning Office attachment to the COR General Fund forecast. Regenerate with `python -m census_forecaster.scripts.refresh_cor_iit`.",
+  "projections_by_fiscal_year": {
+    "2024": 3280.416,
+    "2025": 3288.541,
+    "2026": 3139.079,
+    "2027": 2923.065,
+    "2028": 2874.134,
+    "2029": 2872.305,
+    "2030": 2780.166,
+    "2031": 2881.86,
+    "2032": 2971.795
+  },
+  "projections_by_tax_year": {
+    "2023": 3280.416,
+    "2024": 3288.541,
+    "2025": 3139.079,
+    "2026": 2923.065,
+    "2027": 2874.134,
+    "2028": 2872.305,
+    "2029": 2780.166,
+    "2030": 2881.86,
+    "2031": 2971.795
+  },
+  "retrieved": "2026-08-19",
+  "source_page": "https://tax.hawaii.gov/useful/a9_1cor/",
+  "source_url": "https://files.hawaii.gov/tax/useful/cor/2026gf05-21_attach_1.pdf",
+  "units": "$M"
+}

@@ -132,6 +132,55 @@ administratively settled but not formally so.
 
 ---
 
+## COR projections are now auto-refreshed (added August 19, 2026)
+
+**What was wrong.** `DEFAULT_COR_IIT_PROJECTIONS_M` in
+`tax_modeler/scenarios/quintile_analysis.py` was a hand-transcribed dict pinned
+to the **March 10, 2026** COR meeting. COR had since met on **May 21, 2026**,
+so every COR-scaled figure was running on a stale vintage — with nothing in the
+repo to signal it. COR meets on no fixed cadence (~4-5 times a year), which
+makes "remember to check" the wrong mechanism.
+
+**What replaced it.** `census_forecaster.scripts.refresh_cor_iit` scrapes the
+COR meeting page for the newest General Fund **Attachment 1** — the DOTAX Tax
+Research & Planning line-item table, which is where the IIT row lives (the COR
+letter itself forecasts only *total* General Fund revenue) — parses the
+Individual Income Tax row, and writes
+`census_forecaster/data/cor/cor_iit_projections.json`. The constant now loads
+from that file via `census_forecaster.cor.load_cor_iit_projections()`.
+
+It runs as a step in the monthly **`refresh-data`** workflow, so a new COR
+meeting propagates on the next cron run with no human action. Failure modes are
+deliberately asymmetric: a network error warns and keeps the committed data,
+while a **layout change fails the step loudly** rather than writing a
+misaligned dict — a wrong scale factor is worse than a stale one. The parser
+refuses to zip a row whose number count doesn't match the FY header.
+
+**Vintage change (March 10 → May 21, 2026), $M by tax year:**
+
+| TY | Mar 10 | May 21 | Δ |
+|---|---:|---:|---:|
+| 2025 | 2,986.920 | 3,139.079 | +152.159 |
+| 2026 | 2,900.330 | 2,923.065 | +22.735 |
+| 2027 | 2,825.329 | 2,874.134 | +48.805 |
+| 2028 | 2,815.274 | 2,872.305 | +57.031 |
+| 2029 | 2,749.758 | 2,780.166 | +30.408 |
+| 2030 | 2,851.075 | 2,881.860 | +30.785 |
+| 2031 | 2,944.872 | 2,971.795 | +26.923 |
+
+The large TY2025 revision is COR's FY2026 growth upgrade (−4.5% → −2.5%);
+FY2028-FY2032 growth rates were left unchanged from March, so the out-year
+moves are the DOTAX line-item reconciliation only.
+
+**Blast radius: none to the headline tables.** `cor_scale_factor_for_year` feeds
+only the *parallel* diagnostic columns — `bracket_delta_cor_scaled_$M` and the
+`*_cor_$M` quintile columns — which sit alongside the unscaled figures rather
+than replacing them. Every fiscal-impact number in Section 10 is computed from
+the unscaled bracket delta and is unaffected. The scale factor itself rises
+~1.7% at TY2027 (1.2613 → 1.2831 against a $2.24B microsim baseline).
+
+---
+
 ## Reconciliation to ITEP's ~$1.4B Act 46 figure (added August 19, 2026)
 
 **The problem.** Section 10's "CD2 vs FY2026-frozen baseline" table reports a
@@ -197,6 +246,36 @@ below ITEP", Section 10), attributed to non-resident filers and PTE
 pass-through attribution that a PUMS-based microsim does not capture. The two
 estimates are consistent once the baseline is aligned; there was never a
 substantive disagreement, only a baseline mismatch.
+
+**Third check — COR publishes its own Act 46 estimate.** The May 21, 2026 COR
+General Fund letter states DOTAX's estimated loss from Act 46 directly: "$596.6
+million in FY 2026, $740.1 million in FY 2027, $922.7 million in FY 2028,
+$1,052.6 million in FY 2029, $1,262.3 million in FY 2030, $1,347.5 million in
+FY 2031, and **$1,453.2 million in FY 2032**." That is the *official State*
+figure, and it independently corroborates ITEP's ~$1.4B. Against our column
+A+B (FY→TY shifted):
+
+| Tax Year | This model (A+B) | COR official | Gap | % below |
+|---|---:|---:|---:|---:|
+| 2027 | −794.1 | −922.7 | +128.6 | 13.9% |
+| 2028 | −827.1 | −1,052.6 | +225.5 | 21.4% |
+| 2029 | −1,088.1 | −1,262.3 | +174.2 | 13.8% |
+| 2030 | −1,127.0 | −1,347.5 | +220.5 | 16.4% |
+| 2031 | −1,178.3 | −1,453.2 | +274.9 | 18.9% |
+| **5-year Σ** | **−5,014.6** | **−6,038.3** | **+1,023.7** | **17.0%** |
+
+The model tracks COR at a **stable 14-21% shortfall with no trend**, which is
+the signature of a *coverage* difference (non-residents, PTE, withholding-only
+filers — all absent from PUMS) rather than a modelling error, which would
+typically widen or oscillate. Three independent estimates — ITEP, COR, and this
+microsim — now agree on the shape of Act 46's cost and differ only by that
+known constant.
+
+> **Practical guidance.** When a headline number is wanted for *Act 46's* cost,
+> cite **COR's own** figure ($1.45B by FY2032) — it is official, it is the
+> State's own accounting, and this model does not attempt to beat it on level.
+> Use this model for the *incremental* Act 24 effect and the distributional
+> split, where the coverage gap largely cancels between baseline and scenario.
 
 **Total cost including Act 24 credit savings.** The credit overlay
 (REEC/CGEC/TCRA) is an **Act 24** effect; Act 46 did not amend those credits, so
@@ -968,7 +1047,8 @@ The tables below show every bracket for each filing status and each effective pe
 | Source | Description | Use |
 |--------|-------------|-----|
 | **DOTAX TY2023 aggregate statistics** | Revenue by filing status and AGI bracket | IPF calibration targets |
-| **Hawaii Council on Revenues (COR), September 2025 Forecast** | FY2027 individual income tax projection: $3.05B | Baseline validation (microsim gap documented) |
+| **Hawaii Council on Revenues (COR)** — newest General Fund meeting, auto-refreshed into `data/cor/cor_iit_projections.json` (currently **May 21, 2026**) | Individual income tax line-item projections by fiscal year, from the DOTAX Tax Research & Planning attachment | Baseline validation + `cor_scale_factor_for_year` diagnostic columns |
+| **COR / DOTAX Act 46 fiscal estimate** (May 21, 2026 letter) | Act 46 General Fund loss: $740.1M FY2027 rising to $1,453.2M FY2032 | Official cross-check on the pre-Act-46 reconciliation |
 
 ### Legal / Statutory
 | Source | Description |
@@ -1733,7 +1813,18 @@ quintile script re-run with income-range output.*
 
 ### Baseline Validation
 
-**Updated August 3, 2026** (corrected-CPI rerun): the microsim TY2027 Act 46 baseline is approximately $2.24B — roughly $810M (27%) below the COR's $3.05B FY2027 projection, versus $2.26B / $790M pre-correction. This gap is **expected and not a calibration error**:
+**Updated August 19, 2026** (COR vintage refresh): the microsim TY2027 Act 46
+baseline is approximately $2.24B against COR's **$2.87B** projection for TY2027
+— a gap of roughly **$634M (22%)**.
+
+*Two corrections to the prior text, which read "roughly $810M (27%) below the
+COR's $3.05B FY2027 projection."* First, the $3.05B came from COR's **September
+2025** forecast; the current bundled vintage is **May 21, 2026** (auto-refreshed
+— see the COR section above), where the comparable figure is $2,874.134M.
+Second, that sentence compared a **TY**-labelled microsim baseline against an
+**FY**-labelled COR column. Under this repo's stated `FY(n+1) = TY(n)`
+convention, TY2027 maps to **FY2028**, which is the $2,874.134M used here. The
+gap is **expected and not a calibration error**:
 
 - Pass-through entity (PTE) tax revenue (~$124M+): taxed at entity level, not on individual returns
 - Non-resident withholding: captured in DOTAX but not in PUMS-based microsim
