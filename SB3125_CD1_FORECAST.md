@@ -1,11 +1,250 @@
-# SB 3125 CD1 — Hawaii Income Tax Fiscal Impact Forecast
+# SB 3125 (enacted as Act 24, SLH 2026) — Hawaii Income Tax Fiscal Impact Forecast
 ## Tax Years 2027–2031
+
+> **Naming:** SB 3125 was signed by Gov. Josh Green on **May 21, 2026** and is
+> now **Act 24, SLH 2026**. "SB 3125 CD1/CD2" throughout this document refer to
+> the conference drafts as modeled; **CD2 is the enrolled text**, so CD2 results
+> are the ones to cite as "Act 24." CD1 is retained for continuity — its bracket
+> schedule is identical to CD2 and only the REEC credit model differs.
 
 **Last updated:** July 30, 2026
 **Analyst:** Hawaii Appleseed Center for Law and Economic Justice
 **Model version:** CD2 vintage carryforward model + Round-2 REEC refinements (May 14, 2026), on the corrected Hawaii CPI basis (July 30, 2026).
 
 > **Maintenance note:** This document must be updated whenever forecast methodology changes — including parameter recalibration, new behavioral channels, tax treatment corrections, or data source changes. Update the relevant section(s) and the Results table before committing.
+
+---
+
+## Executive Order 26-02 — REEC transition relief (added August 19, 2026)
+
+**What is retroactive, precisely.** Act 24 §9(1) makes §1 retroactive to taxable
+years beginning after 12/31/2025 (TY2026) — **"provided that the amendments to
+section 235-12.5(a) shall apply to taxable years beginning after December 31,
+2026."** Subsection (a) is where the $175K/$350K AGI test lives. So for TY2026
+the retroactive reach is the **$40M aggregate cap + HSEO certification
+requirement + sunset only** — *not* the AGI screen, which starts TY2027.
+DOTAX Announcement 2026-06 confirms the AGI limits are "effective for tax year
+2027." The model already encodes exactly this
+(`REEC_AGI_LIMIT_FIRST_YEAR = 2027`).
+
+**The EO.** Gov. Green signed **Executive Order 26-02 on June 8, 2026**
+(announced June 12; approved as to form by AG Anne Lopez). Note the two dates
+are different things: **June 8 is the signing date; May 21, 2026 is the
+eligibility cutoff written into the EO.** A system placed in service in CY2026
+"shall not be subject to the annual $40,000,000 aggregate cap" if it was either
+**completed before May 21, 2026**, or the taxpayer can show to HSEO and DOTAX
+that it **"reasonably relied"** on the credit when it invested resources in
+financing, planning, designing, permitting or installing the system before that
+date. Stated rationale: "the retroactivity of the RETITC annual cap presents a
+risk of litigation."
+
+**Scope is narrow — the cap only.** The EO exempts qualifying systems from the
+**$40M aggregate cap and nothing else**. The 35% rate, all per-system caps
+($5,000 single-family PV / $350 per unit multi-family / $500,000 commercial),
+the HSEO certification process, and the 2030 phase-out all still apply.
+
+**DOTAX implementing guidance: TIR No. 2026-02 (July 31, 2026).** Defines
+"investment of resources" as a payment made or cost incurred before 5/21/2026
+per Treas. Reg. §1.461-1(a)(1)–(2); "reasonable reliance" is **presumed** once
+that showing is made. Critically, the TIR confirms the cap operates on **claims
+made in 2027 for systems placed in service in 2026** — which is
+**interpretation A semantics** (see "5. TY2026 retroactive cap interpretation"
+below). Certification mechanics are still "to be provided later"; applications
+are due ~March 1, 2027 with certification by May 31, 2027.
+
+**What this means for the A-vs-B choice.** The picture is more nuanced than the
+model's binary flag:
+
+- **DOTAX's official reading is interpretation A** — the CY2027 cap binds TY2026
+  installations.
+- **EO 26-02 then carves most of that cohort back out of the cap.** With the
+  cutoff at May 21 and solar lead times running months, the large majority of
+  the CY2026 cohort qualifies.
+- So the correct effective treatment is **neither pure A nor pure B**: it is A
+  with a large carve-out, which lands close to B for the grandfathered majority
+  and at A for post-May-21 systems.
+
+**MID/HIGH/RECESSION (interpretation B) remain the right ones to cite** — they
+approximate the post-EO outcome for the bulk of the cohort. **LOW
+(interpretation A) is now clearly over-optimistic** about State savings: it caps
+a TY2026 vintage the EO largely exempts. The A-vs-B spread at that vintage is
+$98.5M of certifications (A: $40.0M capped vs B: $98.5M full), worth roughly
+**+$9-11M of cumulative TY2027-2031 savings** under A.
+
+**Size of the grandfathered pool — derived, not sourced.** No official or
+third-party estimate of the **credit-dollar** value exists. The $40M cap and
+certification regime were added in *conference committee* (CD1/CD2, floor
+amendments 5/6/2026) — they appear in neither SD1 nor HD1, no one testified on
+them, and Conference Committee Report 114-26 contains **no dollar figures at
+all**. There is therefore no published fiscal note, and HSEO/DOTAX cannot know
+the qualifying total until the 2027 certification round runs.
+
+The only quantified public figures are **project cost, not credit value**:
+Hawaii Solar Energy Association reported (Civil Beat, May 29 and June 12, 2026)
+that the eight largest solar firms had **265 commercial projects with $436M of
+private capital** committed for 2026 — explicitly a sample, excluding
+residential. *(Earlier text in this repo said "$400M"; the sourced figure is
+$436M.)*
+
+A top-down estimate anchored on program scale is more defensible than
+converting that figure:
+
+| Quantity | Estimate |
+|---|---|
+| Normal annual RETITC | **~$100M** (DOTAX TY2023 actual $100.1M; 6-yr mean $86.1M) |
+| Grandfathered share of CY2026 cohort | 75-95% (May 21 cutoff, multi-month lead times) |
+| **Grandfathered pool** | **≈ $85M (range $65M-$100M)** |
+| Cohort outcome without the EO | $40M (cap) |
+| **EO's incremental cost vs a strict cap** | **≈ $45M-$60M, one-time, FY2027-28** |
+
+> ⚠️ **Do not convert $436M at 35%.** The per-system caps make the blended
+> effective rate roughly **17-25%**, not 35% — a $30,000 residential system
+> yields $5,000 (16.7%), and multi-family is capped at $350/unit (Civil Beat's
+> lead example, Waiau Gardens Kai, is a 114-unit complex → $39,900, not
+> $500,000). A bottom-up conversion implies the commercial sample alone would
+> exceed the largest annual total the program has ever paid, which is not
+> credible.
+
+**Effect on this forecast's headline numbers: none.** The differential already
+treats TY2026 as uncapped under interpretation B in both the baseline and
+scenario paths, so the grandfathered stock largely cancels. The estimate above
+matters for *level* questions (what FY2027-28 collections will look like), not
+for the Act 24-vs-baseline *delta* this document scores.
+
+**No official post-EO revenue re-estimate exists yet.** The Council on Revenues'
+last General Fund forecast (**May 21, 2026**) predates the EO by three weeks and
+does **not** account for Act 24 — its own list of incorporated law changes names
+Acts 58/96 (2025) and Acts 46/47 (2024) only. The **September 3, 2026** COR
+meeting is the first with "major tax law changes in 2026" on the agenda; that
+will be the first official figure incorporating Act 24 and EO 26-02.
+
+**Administering agency.** Act 24 REEC certification runs through the **Hawai'i
+State Energy Office (HSEO)**, not DBEDT as older text in this document and in
+`RETITC_REPORT_METHODOLOGY.md` states. No number depends on this.
+
+**⚠️ Statutory inconsistency in Act 24, unresolved.** §235-12.5(c)(5) says
+allowable credits are "$0 beginning January 1, **2031**," while §235-12.5(p)
+sunsets the section after TY**2029**. DOTAX Announcement 2026-06 resolves it as
+$0 beginning January 1, 2030 — consistent with (p) and with this model
+(`REEC_SUNSET_LAST_VINTAGE = 2029`, TY2030+ certifications zero). The
+resolution appears only in the announcement, not in a TIR, so it is
+administratively settled but not formally so.
+
+---
+
+## Reconciliation to ITEP's ~$1.4B Act 46 figure (added August 19, 2026)
+
+**The problem.** Section 10's "CD2 vs FY2026-frozen baseline" table reports a
+5-year total of **−$1,854.5M** (2031: −$514.3M). ITEP's widely-cited estimate
+for Act 46 is roughly **$1.4B in *annual* General Fund loss** near full phase-in
+in 2031. These look irreconcilable. They are not — they use different baselines.
+
+**Why.** `forecast_sb3125_vs_fy26base.py` freezes the baseline at **Act 46 law
+as of TY2026** — TY2025 brackets plus TY2026 standard deductions. Act 46 phases
+in the standard deduction in **2024, 2026, 2028, 2030 and 2031** and widens
+brackets in **2025, 2027 and 2029**. So a TY2026-frozen baseline has *already
+banked* the two largest SD steps:
+
+| Tax year | Joint standard deduction | |
+|---|---:|---|
+| 2018 (pre-Act 46) | $4,400 | |
+| 2024 | $8,800 | Act 46 step 1 |
+| **2026 — baseline freezes here** | **$16,000** | Act 46 step 2 |
+| 2028 | $18,000 | |
+| 2030 | $20,000 | |
+| 2031 | $24,000 | |
+
+The joint SD had already risen **3.6×** before that baseline begins. The
+vs-frozen table therefore measures only the *remaining tail* of Act 46 plus
+Act 24 — not the cost of Hawaii's income tax cuts.
+
+Note also that the "ITEP estimate" column in the Section 10 vs-frozen table
+(−$227M … −$622M) is from **ITEP's SB 3125 analysis**
+(`26.05.06 HI SB 3125 CD Analysis.xlsx`), a different product from ITEP's
+Act 46 estimate. The two should not be compared to each other.
+
+**The true pre-Act-46 frame.** `forecast_act24_vs_pre_act46.py` scores four
+legal regimes on identical projected incomes and decomposes the total. Hawaii
+does not index brackets or the standard deduction, so the pre-Act-46
+counterfactual is the 2018 schedule held at **nominal** values — which is
+exactly why the measured cost grows so steeply.
+
+**Static bracket + SD + personal-exemption effect vs pre-Act-46 (2017) law ($M):**
+
+| Tax Year | A: Act 46 banked ≤2026 | B: Act 46 remaining | C: Act 24 increment | **TOTAL vs pre-Act-46** | memo: vs frozen 2026 |
+|---|---:|---:|---:|---:|---:|
+| 2027 | −558.3 | −235.8 | +75.6 | **−718.5** | −160.2 |
+| 2028 | −568.9 | −258.2 | +91.2 | **−735.9** | −167.0 |
+| 2029 | −578.1 | −510.0 | +120.4 | **−967.7** | −389.6 |
+| 2030 | −589.0 | −538.0 | +142.4 | **−984.6** | −395.6 |
+| 2031 | −598.6 | −579.7 | +170.0 | **−1,008.3** | −409.7 |
+| **5-year Σ** | **−2,892.9** | **−2,121.7** | **+599.5** | **−4,415.0** | **−1,522.2** |
+
+*Negative = revenue foregone. A+B+C = total. Static: no ETI/migration response,
+no credit overlay. The memo column differs from the −$1,854.5M published
+vs-frozen total because it scores the frozen baseline on target-year itemized
+deduction scales rather than TY2026 scales; the script's separate tie-out column
+reproduces the published −$1,854.5M **exactly ($0.0M difference in all five
+years)**, which is what validates the pre-Act-46 column.*
+
+**The reconciliation.** Act 46's own full annual cost in 2031 is column A + B:
+
+> **−$598.6M − $579.7M = −$1,178.3M/yr by 2031**
+
+against ITEP's ~$1.4B. That is **~16% below ITEP** — the *same* systematic gap
+this model already documents against ITEP on the vs-frozen comparison ("~15.9%
+below ITEP", Section 10), attributed to non-resident filers and PTE
+pass-through attribution that a PUMS-based microsim does not capture. The two
+estimates are consistent once the baseline is aligned; there was never a
+substantive disagreement, only a baseline mismatch.
+
+**Total cost including Act 24 credit savings.** The credit overlay
+(REEC/CGEC/TCRA) is an **Act 24** effect; Act 46 did not amend those credits, so
+it can be added to the pre-Act-46 bracket/SD total — but as a **separately
+labelled line**, because the overlay is scored against immediately-pre-Act-24
+credit law, not 2017 credit law (Act 261's TCRA repeal, OBBBA's §25D
+termination and other post-2017 changes sit inside the credit baseline).
+
+| Tax Year | Bracket+SD+PE vs pre-Act-46 | Act 24 credit savings (REEC yr-1 paused) | **Net** |
+|---|---:|---:|---:|
+| 2027 | −718.5 | 0.0 | **−718.5** |
+| 2028 | −735.9 | +67.4 | **−668.5** |
+| 2029 | −967.7 | +86.2 | **−881.5** |
+| 2030 | −984.6 | +119.2 | **−865.4** |
+| 2031 | −1,008.3 | +124.2 | **−884.1** |
+| **5-year Σ** | **−4,415.0** | **+397.1** | **−4,017.9** |
+
+With the **unpaused** (production) credit overlay of +$457.3M, the 5-year net is
+**−$3,957.7M**. Both figures exclude behavioral response.
+
+### REEC first-year-pause sensitivity
+
+Modeled as the $40M cap **and** the AGI screen deferred one year
+(`REEC_AGI_LIMIT_FIRST_YEAR = 2028`), i.e. TY2027 treated like TY2026: full
+demand certified, no cap, no screen. Sunset (last new-cert vintage TY2029)
+unchanged. Production MID credit parameters, reproduced to a clean tie-out
+against `runs/sb3125_cd2_enhanced/enhanced.csv` (max deviation $0.07M).
+
+| Tax Year | Production | REEC yr-1 paused | Δ |
+|---|---:|---:|---:|
+| 2027 | 49.2 | 0.0 | −49.2 |
+| 2028 | 74.7 | 67.4 | −7.3 |
+| 2029 | 88.8 | 86.2 | −2.6 |
+| 2030 | 120.1 | 119.2 | −0.9 |
+| 2031 | 124.5 | 124.2 | −0.3 |
+| **5-year Σ** | **457.3** | **397.1** | **−60.2** |
+
+**The pause costs $60.2M, not $49.2M.** Zeroing TY2027 removes that year's
+savings *and* pushes an uncapped TY2027 vintage into the §235-12.5(j)
+carryforward pool, which draws down against TY2028-2031 liability and suppresses
+savings in every later year. Simple subtraction of the first year understates
+the effect by ~$11M.
+
+> **Scope note.** This sensitivity is a **counterfactual**, not a scored
+> policy. EO 26-02 grandfathers **TY2026**, which the model already treats as
+> uncapped under interpretation B — it does *not* pause TY2027. No source has
+> been found for a TY2027 REEC pause. Cite the production numbers as Act 24;
+> cite this table only when explicitly modeling a deferred cap start.
 
 ---
 
@@ -1601,6 +1840,12 @@ columns.
 | `forecast_sb3125_cd2_enhanced.py` | **Primary CD2 forecast** — 4 scenarios (LOW/MID/HIGH/RECESSION) with behavioral response | `/tmp/sb3125_cd2_enhanced_2027_2031.csv` |
 | `forecast_sb3125_cd2_quintile.py` | Distributional quintile analysis (bracket only, all 5 years) | `/tmp/sb3125_cd2_quintile_2027_2031.csv` |
 | `forecast_sb3125_cd2_vs_fy26base.py` | ITEP-comparable: CD2 vs FY2026-frozen baseline | `/tmp/cd2_vs_fy26base_*.csv` |
+
+#### Baseline reconciliation
+
+| Script | Purpose | Output |
+|--------|---------|--------|
+| `forecast_act24_vs_pre_act46.py` | Act 24 vs **pre-Act-46 (2017) law** — the frame comparable to ITEP's ~$1.4B/yr Act 46 figure. Decomposes into Act 46 banked ≤2026 / Act 46 remaining / Act 24 increment, and carries a tie-out column that reproduces the published vs-frozen table exactly. | `runs/act24_vs_pre_act46/decomposition.csv` |
 
 ### Key Package Files
 

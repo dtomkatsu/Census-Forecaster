@@ -8,7 +8,44 @@ A plain-English walkthrough of every step, from raw data to the numbers on the p
 
 Hawaii's §235-12.5 **Renewable Energy Technologies Income Tax Credit (RETITC)** lets residents and businesses claim a tax credit for solar, wind, and other clean-energy installations. In Tax Year 2023 the state gave up roughly **$100M** in revenue through this credit.
 
-SB 3125 proposes three changes: a **$40M annual cap** on new certifications, an **income (AGI) limit** that cuts off high earners, and a **sunset date** that ends new credits after a few years. The report estimates how much the state saves, who bears the burden, and how uncertain those estimates are.
+SB 3125 — signed **May 21, 2026** and now **Act 24, SLH 2026** — makes three changes: a **$40M annual cap** on new certifications, an **income (AGI) limit** that cuts off high earners, and a **sunset date** that ends new credits after a few years. The report estimates how much the state saves, who bears the burden, and how uncertain those estimates are.
+
+> **What is retroactive.** Act 24 §9(1) makes §1 retroactive to TY2026 —
+> *except* the §235-12.5(a) amendments, which start TY2027. So for TY2026 only
+> the **$40M cap + HSEO certification + sunset** apply retroactively; the
+> **AGI limit does not** (DOTAX Announcement 2026-06: "effective for tax year
+> 2027"). The model encodes this as `REEC_AGI_LIMIT_FIRST_YEAR = 2027`.
+>
+> **Executive Order 26-02 — signed June 8, 2026** (announced June 12). Note the
+> two dates: **June 8 is the signing; May 21, 2026 is the eligibility cutoff
+> written into the EO.** A CY2026 system is exempt **from the $40M aggregate cap
+> — and nothing else** — if completed before May 21, 2026, or if the taxpayer
+> shows HSEO and DOTAX it **"reasonably relied"** on the credit when investing
+> resources before that date. The 35% rate, per-system caps, certification, and
+> the 2030 phase-out all still apply. **DOTAX TIR 2026-02 (July 31, 2026)**
+> defines "investment of resources" as a payment made or cost incurred before
+> 5/21/2026 (Treas. Reg. §1.461-1(a)(1)–(2)); reliance is then *presumed*.
+>
+> **Pipeline effect: none for the default model.** Step 6's carryforward
+> simulation already treats the TY2026 vintage as uncapped under
+> `interpretation="B"`. Note though that TIR 2026-02 describes the cap as
+> operating on *claims made in 2027 for systems placed in service in 2026* —
+> **interpretation A semantics** — with the EO then carving most of that cohort
+> back out. Effective treatment is A-with-a-large-carve-out, close to B for the
+> grandfathered majority. `interpretation="A"` (LOW scenario) is now
+> over-optimistic on State savings. See the "Executive Order 26-02" section of
+> `SB3125_CD1_FORECAST.md`.
+>
+> ⚠️ **No official estimate of the grandfathered credit dollars exists** — the
+> cap was added in conference committee with no fiscal note, and no post-EO COR
+> re-estimate has been published (the May 21, 2026 GF forecast predates the EO
+> and omits Act 24; **September 3, 2026** is the first meeting to take it up).
+> The public **$436M** figure (HSEA, 265 commercial projects) is *project cost,
+> not credit value* — **do not convert it at 35%**; per-system caps put the
+> blended effective rate nearer **17–25%**. A top-down estimate anchored on
+> normal program scale (~$100M/yr) puts the grandfathered pool at **≈$85M
+> (range $65M–$100M)**, i.e. **≈$45M–$60M more than a strict cap would have
+> allowed**, one-time in FY2027–28. That figure is *derived, not sourced*.
 
 ---
 
@@ -155,11 +192,21 @@ Corporations are **not subject to the AGI limit** under the default assumption (
 
 ## Step 5 — Apply the $40M cap and pro-rata allocation
 
-For TY2027–2030, total new RETITC certifications are capped at **$40M per year** across all eligible claimants. In TY2031 and beyond, no new credits are allowed at all (the sunset).
+For TY2027–2029, total new RETITC certifications are capped at **$40M per year** across all eligible claimants. From TY2030 on, no new credits are certified at all (the sunset).
+
+> **Why 2029 and not 2030.** Act 24 is internally inconsistent here:
+> §235-12.5(c)(4)–(5) reads as a cap through CY2030 with $0 "beginning January 1,
+> 2031," while §235-12.5(p) sunsets the whole section for taxable years beginning
+> after **12/31/2029**. The model resolves this in favor of (p)
+> (`REEC_SUNSET_LAST_VINTAGE = 2029`, TY2030+ certifications zero), which is also
+> how **DOTAX Announcement 2026-06** resolves it ($0 beginning January 1, 2030).
+> Treating TY2030 as a $40M cap year instead materially understates savings —
+> that was the May 14, 2026 vintage-model correction, worth ~+$50M. The
+> resolution is administratively settled but has not been issued as a TIR.
 
 ### How pro-rata works
 
-The cap is administered by DBEDT through the certification process (§235-12.5(h)). When aggregate eligible demand in a given year exceeds $40M, every eligible filer receives a **proportional share** of the cap rather than their full credit. The pro-rata factor is simply:
+The cap is administered through the certification process (§235-12.5(h)). *(Agency note: the statute and this pipeline's older text say DBEDT; sources contemporaneous with Act 24 attribute certification to the **Hawai'i State Energy Office (HSEO)**. The cap mechanics are identical either way — no number depends on this.)* When aggregate eligible demand in a given year exceeds $40M, every eligible filer receives a **proportional share** of the cap rather than their full credit. The pro-rata factor is simply:
 
 ```
 pro-rata factor = $40M cap ÷ total eligible demand

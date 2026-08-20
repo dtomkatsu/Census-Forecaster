@@ -2,7 +2,9 @@
 
 ## Hard rules
 
-- **`SB3125_CD2_FORECAST.md` MUST be updated before committing** whenever methodology, parameters, scenario design, behavioral channels, tax treatment, k-values, or results tables change. The doc has a maintenance note pointing here. Update the relevant sections, the Section 10 results table, and the decomposition.
+- **`SB3125_CD1_FORECAST.md` MUST be updated before committing** whenever methodology, parameters, scenario design, behavioral channels, tax treatment, k-values, or results tables change. The doc has a maintenance note pointing here. Update the relevant sections, the Section 10 results table, and the decomposition. *(This rule previously named `SB3125_CD2_FORECAST.md`, which has never existed — the single forecast doc is `SB3125_CD1_FORECAST.md` and it covers both CD1 and CD2. Corrected 2026-08-19.)*
+- **SB 3125 is law.** It was signed May 21, 2026 as **Act 24, SLH 2026**; the enrolled text is **CD2**, so CD2 results are the ones to cite as "Act 24." Bracket schedules are identical between CD1 and CD2; only the REEC credit model differs.
+- **Know which baseline a number uses.** `forecast_sb3125_*` scores **vs Act 46**; `forecast_sb3125_vs_fy26base.py` scores **vs Act 46 frozen at TY2026** (which already banks the TY2024+TY2026 SD steps — it is *not* pre-Act-46); `forecast_act24_vs_pre_act46.py` scores **vs pre-Act-46 (2017) law**, the frame comparable to ITEP's ~$1.4B/yr Act 46 figure. Never compare across these frames without saying which is which.
 - **Cadence-aware damping is non-negotiable**: φ=0.92/month for monthly series (CPI), φ=0.85/yr for annual (ACS). Half-lives explicitly documented in `METHODOLOGY.md` §2.3.1. Never copy a φ from one cadence to another.
 - **Recency-weighted geometric mean** for trend initialization. Empirically calibrated 90% PIs via backtest, not analytical.
 - **Repo-relative paths only** in commits/prompts. Madison's workdir is `~/repos/Census-Forecaster/`.
@@ -37,7 +39,8 @@
 ## Source-of-truth docs
 
 - `METHODOLOGY.md` — math and parameter discipline.
-- `SB3125_CD2_FORECAST.md` — SB 3125 CD2 methodology, scenarios, results.
+- `SB3125_CD1_FORECAST.md` — Act 24 (SB 3125 CD1/CD2) methodology, scenarios, results.
+- `RETITC_REPORT_METHODOLOGY.md` — REEC/RETITC credit pipeline walkthrough.
 - `CBO_COMPONENT_AGING_SCOPE.md` — scoping doc for a future feature.
 
 ## Companion docs (in vault)
