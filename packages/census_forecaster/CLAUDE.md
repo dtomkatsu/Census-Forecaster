@@ -27,9 +27,10 @@ ACS and BLS time-series forecasting for Hawaiʻi demographic/economic indicators
 
 ## Public API
 
+Import from the package root — `__init__.py` re-exports these (`project_acs_ensemble` is `acs.projection.project_ensemble` under an alias; importing from the submodule paths below works but not under these names):
+
 ```python
-from census_forecaster.acs.projection import project_acs_ensemble
-from census_forecaster.models import AcsObservation
+from census_forecaster import AcsObservation, project_acs_ensemble
 ```
 
 ## Non-negotiable parameters (from METHODOLOGY.md §2.3.1)
