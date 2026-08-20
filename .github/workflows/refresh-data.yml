@@ -219,6 +219,7 @@ jobs:
           uv run python -m census_forecaster.scripts.refresh_dotax_collections
 
       - name: Refresh Council on Revenues IIT projections
+        id: cor
         run: |
           # No API key required (needs pdfplumber — see the --extra cor on the
           # install step above). Scrapes the COR meeting page for the newest
@@ -235,7 +236,45 @@ jobs:
           # with the newest vintage. A network failure warns and keeps the
           # committed data; a layout change fails the step loudly rather
           # than writing a misaligned dict.
-          uv run python -m census_forecaster.scripts.refresh_cor_iit
+          #
+          # A new COR vintage is a REVIEW EVENT, not just a data bump: the
+          # forecast doc quotes COR figures in prose, and a new meeting may
+          # carry new DOTAX fiscal estimates for enacted acts. Capture the
+          # transition so the step below can open an issue instead of
+          # letting it land as a silent [skip ci] commit.
+          set -o pipefail
+          OUT=$(uv run python -m census_forecaster.scripts.refresh_cor_iit 2>&1 | tee /dev/stderr)
+          if echo "$OUT" | grep -q 'NEW VINTAGE'; then
+            {
+              echo "new_vintage=true"
+              echo "line=$(echo "$OUT" | grep 'NEW VINTAGE' | head -1)"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Flag a new COR vintage for review
+        if: steps.cor.outputs.new_vintage == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Deliberately an issue, not just a commit: someone needs to read the
+          # new COR letter for revised DOTAX estimates of enacted acts (the
+          # May 21, 2026 letter, for instance, carried COR's own Act 46 loss
+          # figures, which SB3125_CD1_FORECAST.md cross-checks against).
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          gh issue create \
+            --title "New COR vintage picked up — review the forecast doc" \
+            --body "The monthly refresh found a newer Council on Revenues General Fund forecast.
+
+          \`${{ steps.cor.outputs.line }}\`
+
+          The bundled \`cor_iit_projections.json\` has been updated automatically, so
+          \`cor_scale_factor_for_year\` is already on the new vintage. What still needs a human:
+
+          - [ ] Read the new COR letter for **revised DOTAX estimates of enacted acts** (Act 46, Act 24). These are prose in the letter, not in the line-item attachment, so nothing parses them.
+          - [ ] Update the COR figures quoted in \`SB3125_CD1_FORECAST.md\` (the COR vintage section, the Act 46 cross-check table, and Baseline Validation).
+          - [ ] Confirm the FY→TY mapping still holds if COR changed its column span.
+
+          Run: \$RUN_URL"
 
       - name: Regenerate BLS v3 calibration
         run: |
