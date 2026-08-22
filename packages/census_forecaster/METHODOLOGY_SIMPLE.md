@@ -45,14 +45,26 @@ produce a guess, and the guesses get blended:
    year-over-year moves, but noisier.
 3. **A tree-based pattern-finder** (gradient boosting) — the only one of
    the three that looks across *all* counties and *all* measurements at
-   once, rather than one county in isolation. This one is optional and
-   off by default; someone has to deliberately turn it on for a given
-   forecast run.
+   once, rather than one county in isolation. As of August 2026 this one
+   is **on by default**: a full walk-forward re-test showed it improves
+   accuracy on every measurement (often by 10–25%) without hurting the
+   honesty of the uncertainty bands. It quietly steps aside for any
+   county that isn't in its training panel, and callers can still switch
+   it off explicitly (the tax-model pipeline does, so published Act 24
+   numbers are unchanged by this flip).
 
 The three guesses aren't just averaged — each one also reports how
 confident it is, and the final blended forecast leans more heavily on
 whichever method has been more trustworthy for that particular measurement
 and situation.
+
+One exception (August 2026): for exactly two measurements — rent burden
+and the share of service-occupation jobs — a fourth approach (a Kalman
+filter, which tracks a hidden "true level and growth" through the noisy
+yearly readings) replaces the blend entirely, because back-testing showed
+it beats the blend by 10–15% on those two while staying honest about its
+uncertainty. For every other measurement it stays switched off — tried
+everywhere, it made more things worse than better.
 
 ## The tree-based method, in plain terms
 

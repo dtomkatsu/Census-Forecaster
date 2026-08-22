@@ -108,11 +108,21 @@ def _truncate(
 
 
 def _project_trend_only(
-    train: Sequence[AcsObservation], target_year: int
+    train: Sequence[AcsObservation], target_year: int,
+    phi: Optional[float] = None,
 ) -> Optional[ForecastPoint]:
-    """Run the trend-only ensemble (damped + ar1, no anchor)."""
+    """Run the trend-only ensemble (damped + ar1, no anchor).
+
+    `phi=None` projects at DEFAULT_PHI. Pass a per-cell phi only when the
+    calibration run has `enable_phi=True` — the folds must be built under
+    the same phi the consumer will apply, or every kappa/bias record fit
+    on them is calibrated for a different model than production runs.
+    """
     components: list[ForecastPoint] = []
-    f_damped = project_damped_trend(train, target_year)
+    if phi is None:
+        f_damped = project_damped_trend(train, target_year)
+    else:
+        f_damped = project_damped_trend(train, target_year, phi=phi)
     if f_damped is not None:
         components.append(f_damped)
     f_ar1 = project_ar1_log_diff(train, target_year)
@@ -765,6 +775,7 @@ def _estimate_bias_records(
     residuals: Sequence[FoldResidual],
     n_threshold: int,
     bias_clamp_log: float,
+    bias_half_life_years: "float | None" = None,
 ) -> list:
     """Compute geometric bias `b = mean(log(point/actual))` per cell.
 
@@ -780,12 +791,23 @@ def _estimate_bias_records(
     The applied bias is clamped to `[-bias_clamp_log, +bias_clamp_log]`;
     `extra["b_raw"]` records the unclamped value and `extra["clamped"]`
     flags whether the clamp fired.
+
+    bias_half_life_years : when set, fold log-ratios are weighted by
+        ``0.5 ** ((max_anchor − anchor_year) / half_life)`` — the repo's
+        standard recency convention — so regime-specific bias (e.g. the
+        2020–22 inflation-surge under-projection) decays out of the
+        estimate as newer anchors accumulate instead of being carried
+        frozen. ``None`` (default) keeps the unweighted mean. The
+        n-threshold gate stays count-based either way.
     """
     from .strata import StrataRecord, WILDCARD
+
+    max_anchor = max((r.anchor_year for r in residuals), default=0)
 
     def _cell_record(key: tuple, items: Sequence[FoldResidual]) -> StrataRecord:
         ind, method, pop, hb = key
         log_ratios: list[float] = []
+        weights: list[float] = []
         for r in items:
             if r.actual <= 0 or r.point <= 0:
                 continue
@@ -795,11 +817,21 @@ def _estimate_bias_records(
                 continue
             if math.isfinite(lr):
                 log_ratios.append(lr)
+                if bias_half_life_years:
+                    weights.append(
+                        0.5 ** ((max_anchor - r.anchor_year) / bias_half_life_years)
+                    )
+                else:
+                    weights.append(1.0)
         n = len(log_ratios)
         if n == 0:
             b_raw = 0.0
         else:
-            b_raw = sum(log_ratios) / n
+            wsum = sum(weights)
+            b_raw = (
+                sum(w * lr for w, lr in zip(weights, log_ratios)) / wsum
+                if wsum > 0 else 0.0
+            )
         # Apply n-threshold gate, then clamp.
         if n < n_threshold:
             b_applied = 0.0
@@ -1023,6 +1055,8 @@ def run_stratified_calibration(
     national_data: Optional[dict] = None,
     include_kalman: bool = False,
     include_conformal: bool = False,
+    enable_phi: bool = False,
+    bias_half_life_years: "float | None" = None,
 ) -> dict:
     """v3/v4 stratified hold-out calibration.
 
@@ -1055,6 +1089,18 @@ def run_stratified_calibration(
         in log space. Default `log(1.10)` ≈ ±10% multiplicative.
     include_conformal : when True, split anchor_years and compute
         per-stratum conformal quantiles (requires ≥ 3 anchor years).
+    bias_half_life_years : when set, Pass A weights fold log-ratios by
+        recency (half-life in anchor-years) so old-regime bias decays
+        out of the correction; None keeps the historical unweighted
+        mean. See _estimate_bias_records.
+    enable_phi : when True, the per-cell v4 phi values from Pass 0 are
+        (a) applied to the Pass 2 trend-fold projections, so kappa/bias
+        records are fit under the same phi production will use, and
+        (b) marked `phi_enabled: true` in the payload so the ensemble
+        consumer applies them. Default False: phi records are still
+        emitted as diagnostics, but folds project at DEFAULT_PHI and the
+        consumer ignores the records — the configuration the v4 ablation
+        validated (see METHODOLOGY.md §v4 phi calibration).
 
     Returns
     -------
@@ -1091,7 +1137,10 @@ def run_stratified_calibration(
         evaluation_anchors = []
 
     # ---- Pass 0: phi calibration from MOE-derived variance decomposition ----
-    # Runs before the fold-residual cache so Pass 2 uses calibrated phi values.
+    # Runs before the fold-residual cache so that, when enable_phi=True,
+    # Pass 2 can project trend folds at the calibrated per-cell phi. With
+    # enable_phi=False (default) the records are diagnostic only and Pass 2
+    # projects at DEFAULT_PHI — matching what the consumer applies.
     # Uses only the series data (no new fetches) — SE is derived from AcsObservation.moe.
     phi_strata_records: list = []
     _phi_pass_run = False
@@ -1167,6 +1216,24 @@ def run_stratified_calibration(
     except Exception:
         pass  # phi calibration is optional; fall back to DEFAULT_PHI everywhere
 
+    # Per-cell phi for Pass 2 fold projection — only when enable_phi. The
+    # lookup mirrors ensemble._lookup_phi (same records, same threshold) so
+    # folds are built under exactly the phi the consumer will apply.
+    _phi_for_cell = None
+    if enable_phi and phi_strata_records:
+        from .strata import index_records as _phi_index_records, PHI_N_THRESHOLD
+        from .projection import DEFAULT_PHI as _DEFAULT_PHI
+
+        _phi_lookup_fn = _phi_index_records(
+            records=phi_strata_records,
+            n_threshold=PHI_N_THRESHOLD,
+            floor_value=_DEFAULT_PHI,
+        )
+
+        def _phi_for_cell(indicator: str, pop_bucket: str, h_bucket: str) -> float:
+            rec, _src = _phi_lookup_fn(indicator, "trend_ensemble", pop_bucket, h_bucket)
+            return rec.value
+
     # Pass 1 uses all anchors (per-source RMSE is not split).
     # ---- Pass 1: per-source RMSE (h-marginalised; reused from v2 path) ----
     folds_pass1: list[HoldOutFold] = []
@@ -1239,7 +1306,13 @@ def run_stratified_calibration(
                     continue
                 h_bucket = classify_horizon(h) or WILDCARD
 
-                tr = _project_trend_only(train, target_year)
+                tr = _project_trend_only(
+                    train, target_year,
+                    phi=(
+                        _phi_for_cell(indicator, pop_bucket, h_bucket)
+                        if _phi_for_cell is not None else None
+                    ),
+                )
                 if tr is not None:
                     all_fold_residuals.append(FoldResidual(
                         indicator=indicator, method="trend_ensemble",
@@ -1431,6 +1504,50 @@ def run_stratified_calibration(
                     ci90_low=lv_fp.ci90_low, ci90_high=lv_fp.ci90_high,
                 ))
 
+    # ---- Pass 2e: mean_reversion FoldResidual cache (diagnostic only) ----
+    # AR(1)-toward-mean model for unemployment (S2301) built on the LAUS
+    # county series with a county ACS↔LAUS offset. Evaluated 2026-08-21:
+    # NULL — loses to trend/ml by 20+ RMSE points at every horizon (see
+    # acs/mean_reversion.py docstring and METHODOLOGY §S2301 null). Kept
+    # in the fold cache so the null is reproducible; the ensemble does
+    # NOT consume this method.
+    from .mean_reversion import (
+        project_mean_reversion as _project_mr,
+        METHOD_NAME as _MR_METHOD,
+        SUPPORTED_INDICATORS as _MR_INDICATORS,
+    )
+    for (geoid, indicator), full in series_by_key.items():
+        if indicator not in _MR_INDICATORS:
+            continue
+        full_sorted = sorted(full, key=lambda o: (effective_year(o), o.vintage))
+        pop_bucket = classify_pop(populations.get(geoid)) or WILDCARD
+        for anchor in anchor_list:
+            train = _truncate(full_sorted, anchor, as_of_date=_as_of(anchor))
+            if not train:
+                continue
+            for h in horizon_list:
+                target_year = anchor + h
+                actual_obs = next(
+                    (o for o in full_sorted
+                     if effective_year(o) == target_year and o.vintage == "1y"),
+                    None,
+                )
+                if actual_obs is None or actual_obs.estimate <= 0:
+                    continue
+                h_bucket = classify_horizon(h) or WILDCARD
+                mr_fp = _project_mr(train, target_year, end_year=anchor)
+                if mr_fp is None:
+                    continue
+                all_fold_residuals.append(FoldResidual(
+                    indicator=indicator, method=_MR_METHOD,
+                    geoid=geoid, anchor_year=anchor, horizon=h,
+                    pop_bucket=pop_bucket, h_bucket=h_bucket,
+                    actual=actual_obs.estimate,
+                    point=mr_fp.point, se_total=mr_fp.se_total,
+                    se_sample=mr_fp.se_sample, se_forecast=mr_fp.se_forecast,
+                    ci90_low=mr_fp.ci90_low, ci90_high=mr_fp.ci90_high,
+                ))
+
     # ---- Fold split: tuning / calibration / evaluation ----
     tuning_set = set(tuning_anchors)
     calibration_set = set(calibration_anchors)
@@ -1444,7 +1561,10 @@ def run_stratified_calibration(
         fold_residuals = all_fold_residuals
 
     # ---- Pass A: bias estimation per cell (with marginalisation) ----
-    bias_records = _estimate_bias_records(fold_residuals, n_threshold, bias_clamp_log)
+    bias_records = _estimate_bias_records(
+        fold_residuals, n_threshold, bias_clamp_log,
+        bias_half_life_years=bias_half_life_years,
+    )
 
     # ---- Pass A.5: apply bias to fold residuals in memory ----
     bias_lookup = _build_bias_lookup(bias_records, n_threshold)
@@ -1474,19 +1594,43 @@ def run_stratified_calibration(
         conformal_records = compute_conformal_quantiles(
             conformal_bc, target_coverage=0.90, n_threshold=n_threshold,
         )
-        # Honest evaluation coverage using conformal floor on evaluation folds.
+        # Honest evaluation coverage on evaluation folds, reproducing the
+        # production interval exactly (ensemble.py order: bias → κ →
+        # conformal). Two earlier defects fixed here: (1) "kappa_half" was
+        # the *raw* half-width — the κ override was never applied, so the
+        # reported evaluation didn't measure the production interval;
+        # (2) the conformal half used the non-bias-corrected se_total,
+        # while both the quantile computation above and the production
+        # consumer standardise by the bias-corrected SE.
         if evaluation_residuals:
+            from .strata import index_records as _idx_records
             conf_lookup = build_conformal_lookup(conformal_records)
+            _kappa_lookup = _idx_records(
+                records=se_records,
+                n_threshold=n_threshold,
+                floor_value=EMPIRICAL_SE_INFLATOR,
+            )
             eval_covered: dict[tuple[str, str], list[bool]] = {}
             for r in evaluation_residuals:
                 b = bias_lookup(r.indicator, r.method, r.pop_bucket, r.h_bucket)
                 r_bc = _apply_bias_to_residual(r, b)
+                # κ override, mirroring ensemble._apply_se_override.
+                k_rec, _src = _kappa_lookup(
+                    r.indicator, r.method, r.pop_bucket, r.h_bucket
+                )
+                kappa = k_rec.value
+                se_post_kappa = max(
+                    r_bc.se_total * (kappa / EMPIRICAL_SE_INFLATOR),
+                    r_bc.se_sample,
+                )
+                kappa_half = 1.645 * se_post_kappa
+                # Conformal half-width: q · se_total (bias-corrected, pre-κ),
+                # mirroring ensemble._apply_conformal_interval's se_pre_kappa.
+                # Conformal-primary policy (2026-08-21): where a stratum
+                # record exists the conformal interval replaces the κ CI;
+                # κ stands only for uncovered strata.
                 q = conf_lookup(r.indicator, r.method, r.pop_bucket, r.h_bucket)
-                # Apply κ override to get the kappa half-width.
-                kappa_half = (r_bc.ci90_high - r_bc.ci90_low) / 2.0
-                # Conformal half-width: q * se_total (pre-κ).
-                conf_half = (q * r.se_total) if q is not None else 0.0
-                half = max(kappa_half, conf_half)
+                half = (q * r_bc.se_total) if q is not None else kappa_half
                 in_ci = abs(r_bc.actual - r_bc.point) <= half
                 key = (r.indicator, r.method)
                 eval_covered.setdefault(key, []).append(in_ci)
@@ -1518,6 +1662,11 @@ def run_stratified_calibration(
         "anchor_years": anchor_list,
         "horizons": horizon_list,
         "as_of_mode": as_of_mode,
+        # Consumer gate for the v4 per-cell phi records: only when True did
+        # the Pass 2 folds project at per-cell phi, so only then may the
+        # ensemble apply it (ensemble._lookup_phi). Records are always
+        # emitted below for diagnostics.
+        "phi_enabled": bool(enable_phi and _phi_pass_run),
         # Pass 1 (h-marginalised): per-source RMSE
         "rmse_by_indicator_source": rmse_by_indicator_source,
         # v3 strata records

@@ -322,6 +322,75 @@ practical effect at h ≤ 3. It is **not the default** — the bundled
 calibration index remains v3. Re-enable and re-evaluate if longer-horizon
 forecasting becomes a requirement.
 
+**Drift correction (2026-08-21).** The "not the default" decision above
+had silently stopped being true: the monthly refresh workflow regenerates
+the bundled calibration with phi records included, and `_lookup_phi`
+applied whatever records the payload carried — so production was running
+per-cell phi while every κ/bias/conformal record was fit on Pass 2 folds
+projected at φ=0.85 (`_project_trend_only` never received phi; its
+"Pass 2 uses calibrated phi values" comment described plumbing that was
+never written). Production was therefore applying corrections calibrated
+for a different trend model than the one it ran.
+
+Fixed by an explicit gate: `_lookup_phi` now applies per-cell phi only
+when the payload carries `phi_enabled: true`, which
+`run_stratified_calibration(enable_phi=True)` (CLI `--enable-phi`) sets —
+and under that flag Pass 2 folds are also projected at the per-cell phi,
+so a future v4 re-evaluation is internally consistent. Default remains
+off on both sides: folds and production both run at DEFAULT_PHI=0.85,
+matching the configuration the phi ablation actually validated. phi
+records continue to be emitted as diagnostics either way. Note the MAPE
+comparison in the ablation above was already fair (phi moves the point
+forecast directly); what the confound corrupted was production *interval*
+calibration, not the ablation's point-accuracy verdict.
+
+### 8b. Conformal-primary intervals (August 2026)
+
+The v5 split-conformal layer originally applied as a **floor**:
+`final_half = max(κ_half, q·se_pre_κ)`. That policy stacks two
+half-widths that were each independently calibrated to the same 90%
+target — κ by bisection on the tuning folds, q as a finite-sample
+quantile on the calibration fold — so their max can only over-cover.
+The shipped payload's held-out evaluation confirmed it: coverage
+94–100% (median ≈96.6%) against the 90% target. (The evaluation pass
+itself had two bugs, fixed at the same time: its "κ half-width" never
+actually applied κ, and its conformal half used the non-bias-corrected
+SE — so the reported `evaluation_coverage` wasn't measuring the
+production interval at all.)
+
+Three policies were compared on the held-out 2022 anchor (publication
+as-of, bias→κ chain reproduced exactly, 6,912 folds across 16
+indicators × all default-path methods + ml_trend):
+
+| policy | coverage | mean relative half-width |
+|---|---:|---:|
+| κ only | 90.9% — but with an under-coverage tail (cells at 56%, 71%, 81–84%) | 22.6% |
+| **conformal-primary** | **92.7%, tail eliminated** | **20.7%** |
+| max(κ, conformal) — old | 94.3% | 24.0% |
+
+Conformal-primary strictly dominates the max policy (better centered
+AND sharper) and removes κ-only's dangerous cells; it is also what the
+split-conformal guarantee actually licenses — the guarantee attaches to
+the conformal interval itself, not to flooring another interval with it.
+**Production now replaces the κ CI with `point ± q·se_pre_κ` wherever a
+stratum record exists** (`ensemble._apply_conformal_interval`, renamed
+from `_apply_conformal_floor`); the κ-based CI stands for strata without
+records (n < 20 calibration folds, or pre-v5 payloads). κ itself is
+unchanged and still corrects `se_total` — the SE fields remain
+κ-calibrated moments; only the CI is the conformal product.
+
+Residual over-coverage under the new policy concentrates in the
+mean-reverting series (S2301 97–100%, S1701 93–97%) where no symmetric
+rescaling can fix the interval *shape* — the known model
+misspecification documented under "Unemployment is under-covered" above,
+which conformal can widen for but not reshape.
+
+Note: `tax_modeler.revenue`'s separate `apply_revenue_conformal_floor`
+still uses the max policy — it has its own records and its own
+evaluation surface, and switching it should be gated on the same
+three-policy comparison run on revenue folds, not inherited from this
+result.
+
 ### 9. 2020 1-year ACS hole
 
 The 2020 1-year ACS was suspended due to COVID-19 data quality issues.
@@ -558,13 +627,13 @@ Point accuracy improves on every indicator (5-25% RMSE drop). The
 stand-alone `ml_trend` method has CI90 coverage of 89-94% on all 16
 indicators — the model itself is well-calibrated.
 
-### Why opt-in (not default)
+### Why opt-in (not default) — RESOLVED 2026-08-21: default is now ON
 
 After v3 calibration the ensemble-level CI90 coverage with ml_trend is
 85-90% on every indicator, with one indicator (B25058) at exactly 85.0%
 (below the lower bound by less than 1 fold out of 2,984). The classical
 ensemble's coverage is uniformly 86-93% — slightly more conservative.
-The conservative call is to ship the ML member as opt-in until we have
+The conservative call was to ship the ML member as opt-in until we had
 either:
 
 1. A "ensemble_with_ml"-level κ stratum in the v3 calibration (so the
@@ -573,8 +642,34 @@ either:
 2. A cross-correlation parameter sweep showing ρ values that put the
    ensemble coverage uniformly inside [85%, 95%].
 
-Both are mechanical follow-ups; the ML implementation itself is
-production-ready and tested.
+**Condition (2) was satisfied on 2026-08-21**
+(`backtests/results/ml_default_ablation_2026-08-21.md`): the re-run
+ship gate passed all three rules — 13/16 indicators improve RMSE ≥5%
+(up to −25%; the other three improve 3.2–4.2%), blended CI90 coverage
+in [85%, 95%] on all 16 indicators, zero regressions — and the ρ_inner
+sweep shows **all 16 indicators in band at the production ρ=0.7**
+(15/16 at ρ=0.5–0.6; 16/16 at 0.7/0.8/0.9). ρ_inner stays 0.7.
+`use_ml` now defaults to True; when the caller supplies no panel, the
+bundled calibration panel is lazily loaded with a shared process-level
+model cache (first call per (indicator, cutoff) trains for ~2s, later
+calls are cache hits). Geoids absent from the panel degrade gracefully
+to the classical ensemble (no feature row → no ML member).
+
+History note: the default was first flipped to True in April 2026
+(Phase C) citing a SHIP verdict, then reverted 2026-05-30 to match this
+section's opt-in stance — the committed `phase_c_bps_ablation.md` had a
+degenerate (empty) comparison table, so the flip stood on unverifiable
+evidence. The 2026-08-21 report supersedes it with the comparison table
+populated. Note tax_modeler's income/supplement forecast call sites
+pass `use_ml=False` explicitly — Act 24 / SB 3125 numbers are pinned to
+the classical ensemble until that choice is revisited deliberately.
+
+Follow-up that remains open: condition (1), a blend-level κ/conformal
+stratum. Today the final blended CI is Gaussian from the blended
+κ-corrected `se_total`; per-member conformal intervals apply only when
+a single member is returned (which is the common path — 11/16
+indicators have no macro anchor). A post-blend calibration stratum
+would give anchored indicators the same treatment.
 
 ### How to enable
 
@@ -611,6 +706,130 @@ Runs the v3 calibration twice (with `include_ml=True` and `False`),
 applies v3 corrections to each method's residuals, synthesises the
 two-stage ensemble, and writes a per-indicator comparison table. Total
 runtime: ~6-8 minutes (the ML half adds ~5 min of HGB training).
+
+---
+
+## S2301 mean-reversion model — informative null (August 2026)
+
+The long-prescribed fix for unemployment's misspecification ("a
+dedicated mean-reversion model — AR(1) toward a long-run mean", §8
+above) was built and evaluated: `acs/mean_reversion.py` forecasts the
+ACS S2301 print as ``delta_c + mu_c + phi^h·(u_LAUS − mu_c)`` — pooled
+AR(1) phi across the 90-county LAUS panel, county long-run mean, and a
+county-specific ACS↔LAUS offset (the raw level anchor's missing piece).
+Walk-forward on the calibration panel (anchors 2014–2022, h 1–5,
+n=2,937 folds):
+
+| Design | RMSE-pct | h=1 → h=5 |
+|---|---:|---|
+| trend_ensemble (incumbent) | **36.1%** | 36.2% → 39.1% |
+| ml_trend (incumbent) | **33.4%** | — |
+| level_anchor (raw LAUS carry) | 52.3% | 38.2% → 43.1% |
+| mean_reversion (full-history mean) | 59.0% | 52.6% → 84.8% |
+| … mu recency-weighted (hl=4y) | 66.8%* | 48.2% → 78.5% |
+| … mu = last-3-year mean, recency offset | 59.0%* | 46.1% → 62.5% |
+| … pure LAUS carry + recency offset | 63.7%* | 45.0% → 51.9% |
+
+(*variant sweep in the standalone harness; same folds.)
+
+**Verdict: NULL — every LAUS-driven design loses to the ACS-trained
+incumbents by 20+ RMSE points, at every horizon.** The reading is not
+that unemployment fails to mean-revert; it's that the *forecast target
+is the ACS print*, and at county level the print's variance is
+dominated by its own idiosyncratic measurement structure (1-year ACS
+sampling noise, universe/definitional gaps vs the LAUS model) rather
+than by the underlying labor market. Predictors trained on the ACS
+series' own history model that idiosyncrasy; LAUS-state predictors
+cannot, no matter how the reversion target is chosen. This is the same
+lesson as the rejected national CPS rate anchor and the level anchor's
+52%-vs-33% deficit, now established directly against the prescribed
+mean-reversion design.
+
+Practical consequences: (1) the S2301 accuracy gain available today is
+the ML member (−3.5% blended RMSE, raw coverage 90.5%), which is now
+default-on; (2) the model ships as calibration Pass 2e diagnostic
+records only (`method="mean_reversion"`) — deliberately NOT an ensemble
+member — so the null is reproducible; (3) the still-open S2301 idea is
+a *nowcast* channel (UI claims → Hawaii counties), which needs a
+Hawaii-restricted evaluation design, not a panel-wide one.
+
+---
+
+## Batch-2 diagnostics — two nulls and a pass (August 2026)
+
+Three assessment items were taken to evidence on the calibration panel
+(anchors 2014–2022, tuning 2014–2020, held-out eval 2022), in one
+diagnostics run over the shared fold cache:
+
+**QCEW → B20002 anchor: PASS, shipped.** Worker earnings (B20002) had
+no macro anchor. Registering it on the existing QCEW wage file (the
+conceptually closest cell to a payroll-tax wage base) improves the
+blend RMSE 10.47% → 9.12% on 2,977 folds, with the anchor member alone
+at 6.91% vs trend 7.97%. Raw blend coverage 95.6% — mild over-coverage
+of exactly the kind κ already deflates for B19013. Registry:
+`sources/base.py` (affinity extended).
+
+**Recency-weighted bias: NULL — keep the unweighted estimator.** The
+hypothesis was that the frozen COVID-era dollar bias (−7…−9%) should
+decay via recency weighting. The A/B on held-out 2022 folds says
+otherwise: mean per-cell |residual bias| is 3.95% unweighted vs 5.15% /
+4.70% / 4.35% at half-lives 2/3/5 years — down-weighting old folds
+costs more estimation variance than the regime drift it removes, at
+this panel size. The mechanism ships as
+`run_stratified_calibration(bias_half_life_years=...)` (default None =
+unweighted) for re-evaluation once post-surge anchors (2023+) enter the
+panel — the concern is about *future* regime turnover this A/B cannot
+yet see. Monitor `b_raw` drift release-over-release.
+
+**Log-space intervals: NULL — the asymmetry is bias, not shape.** The
+assessment presumed symmetric level-space CIs on log-space models lose
+the right-skew of multiplicative growth. The tails ARE imbalanced on
+eval folds (dollar series: 5.4% of actuals miss below the band vs 2.0%
+above; rates/shares near-balanced at 4.0%/3.2%) — but in the *opposite*
+direction the log-normal story predicts: a log-space interval has a
+HIGHER lower bound than the level-space one, so it would increase the
+dominant (lower-tail) miss rate. The imbalance traces to a residual
++0.8% mean over-projection on 2022 eval folds that tuning-fold bias
+correction under-corrects — a location problem, not a shape problem.
+Symmetric intervals stay; the open question is the residual eval-fold
+bias, which recency weighting (above) also fails to fix.
+
+---
+
+## Kalman per-indicator promotion (August 2026)
+
+The Kalman state-space member (`kalman/`, opt-in since Phase D) remains
+**HOLD as a wholesale replacement** — the 2026-08-21 re-run of
+`compare_kalman_ablation` on the current calibration machinery fails all
+three ship-gate rules, same as the original (8/16 improve, 7 regress,
+10 coverage violations from 66% to 99.8%). But the report's own
+per-indicator reading identifies two indicators that pass BOTH gates
+(RMSE ≥5% better than the best existing baseline AND raw CI90 coverage
+in [85%, 95%]):
+
+| Indicator | RMSE vs best baseline | Cov90 (raw) |
+|---|---:|---:|
+| `pct_service_occupations` | **−15.0%** | 90.8% |
+| `B25071_001E` (rent burden) | **−10.6%** | 93.8% |
+
+These two are promoted via `ensemble.KALMAN_PROMOTED_INDICATORS`:
+`use_kalman` is now tri-state (`None` default = auto by allowlist;
+`True`/`False` force). Both are trend-only indicators (no macro anchor),
+so Kalman replaces the classical trend ensemble exactly where it
+demonstrated the largest gains.
+
+**Correction-chain note.** The bundled payload carries no
+`kalman_state_space` strata records (the refresh workflow does not pass
+`--include-kalman`), so the production Kalman path receives zero net
+correction (fallback κ = base inflator → factor 1.0, b = 0, no
+conformal) — i.e. production runs the exact raw intervals the ablation
+validated. **Do not add `--include-kalman` to the refresh workflow
+without first re-running the ablation with corrections applied**: records
+in the payload would silently shift promoted-indicator behavior from
+raw-as-validated to corrected-but-unvalidated — the same drift class as
+the v4 phi incident above. Near-miss candidates for future promotion
+(S1501_C02_015E −11.2%/96.3%, S1701 −11.7%/84.7%) each fail one gate by
+1–2 points; per-indicator process-noise (Q) tuning is the named lever.
 
 ---
 

@@ -5,10 +5,10 @@ Baseline is multi_anchor where anchor sources exist, trend_ensemble otherwise.
 | Indicator | Baseline | RMSE base | RMSE kalman | Δ (rel) | Cov90 kalman |
 |---|---|---:|---:|---:|---:|
 | B01002_001E | trend | 2.25% | 2.69% | +19.64% | 99.5% |
-| B19013_001E | anchor | 6.89% | 7.25% | +5.19% | 94.9% |
+| B19013_001E | anchor | 6.89% | 7.25% | +5.14% | 94.9% |
 | B20002_001E | trend | 7.81% | 8.15% | +4.26% | 92.3% |
-| B25058_001E | anchor | 7.83% | 7.98% | +1.97% | 92.1% |
-| B25064_001E | anchor | 7.60% | 7.96% | +4.84% | 92.7% |
+| B25058_001E | anchor | 7.75% | 7.98% | +2.85% | 92.2% |
+| B25064_001E | anchor | 7.51% | 7.95% | +5.84% | 92.7% |
 | B25071_001E | trend | 12.08% | 10.80% | -10.60% | 93.8% |
 | B25077_001E | anchor | 8.93% | 10.83% | +21.23% | 79.0% |
 | S1501_C02_014E | trend | 2.57% | 3.12% | +21.33% | 99.5% |
@@ -24,18 +24,7 @@ Baseline is multi_anchor where anchor sources exist, trend_ensemble otherwise.
 ## Ship gate verdict
 
 * Rule 1 (≥75% indicators improve RMSE by ≥5% vs best baseline): **FAIL** (8/16 = 50.0%)
-* Rule 2 (CI90 coverage ∈ [85%, 95%] for all indicators): **FAIL** (failing: B01002_001E 99.5%, homeownership_rate 99.8%, S1501_C02_014E 99.5%, in_migration_rate 77.8%, vacancy_rate 70.0%, S2301_C04_001E 66.4%, B25077_001E 79.0%, S1701_C03_001E 84.7%, S1501_C02_015E 96.3%, pct_professional 97.5%)
-* Rule 3 (no indicator regresses by > 2% RMSE): **FAIL** (6 regressed: B01002, B19013, B20002, B25058, B25064, B25077, S1501_C02_014E)
+* Rule 2 (CI90 coverage ∈ [85%, 95%] for all indicators): **FAIL** (failing: B01002_001E, B25077_001E, S1501_C02_014E, S1501_C02_015E, S1701_C03_001E, S2301_C04_001E, homeownership_rate, in_migration_rate, pct_professional, vacancy_rate)
+* Rule 3 (no indicator regresses by > 2% RMSE): **FAIL** (7 regressed)
 
-## **Verdict: HOLD** — kalman opt-in only (`use_kalman=False` default retained).
-
-## Notes
-
-- Infrastructure complete: `kalman/` module, 24 unit tests, fold residuals in calibration.
-- Coverage failures driven by diffuse init (too-wide CIs on smooth indicators:
-  B01002 age, S1501_C02_014E education, homeownership_rate) and COVID-era shocks
-  (too-narrow CIs on S2301 unemployment, vacancy_rate, in_migration_rate).
-- Per-indicator allowlist candidates (≥5% RMSE improvement AND coverage in [85%, 95%]):
-  **pct_service_occupations** (−15.0% RMSE, 90.8% CI90), **B25071** gross rent (−10.6%, 93.8%).
-- Next steps for promotion: tune per-indicator process noise Q; add `kalman_promoted_indicators`
-  allowlist to calibration JSON; use Kalman only for those indicators when `use_kalman=True`.
+## **Verdict: HOLD** — ship as opt-in only (`use_kalman=False` default).

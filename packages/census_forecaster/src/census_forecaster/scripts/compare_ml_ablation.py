@@ -87,6 +87,8 @@ def _build_with_ml_residuals(
     fold_residuals: Sequence[FoldResidual],
     series_by_key: dict,
     populations: dict,
+    rho_inner: float = 0.7,
+    rho_anchor: float = 0.5,
 ) -> list[FoldResidual]:
     """Synthesise the ``ensemble_with_ml`` residuals from cached per-method residuals.
 
@@ -121,18 +123,18 @@ def _build_with_ml_residuals(
         components = [m for m in (trend, ml) if m is not None]
         if not components and anchor is None:
             continue
-        # Inner: trend + ml at ρ=0.7.
+        # Inner: trend + ml at ρ=rho_inner (default 0.7).
         if trend is not None and ml is not None:
-            inner = _combine_two_residuals(trend, ml, rho=0.7, label="target_ensemble")
+            inner = _combine_two_residuals(trend, ml, rho=rho_inner, label="target_ensemble")
         elif trend is not None:
             inner = trend
         elif ml is not None:
             inner = ml
         else:
             inner = None
-        # Outer: inner + anchor at ρ=0.5.
+        # Outer: inner + anchor at ρ=rho_anchor (default 0.5).
         if inner is not None and anchor is not None:
-            ens = _combine_two_residuals(inner, anchor, rho=0.5, label="ensemble_with_ml")
+            ens = _combine_two_residuals(inner, anchor, rho=rho_anchor, label="ensemble_with_ml")
         elif inner is not None:
             ens = _replace_method(inner, "ensemble_with_ml")
         elif anchor is not None:
@@ -417,6 +419,13 @@ def main(argv: Iterable[str] | None = None) -> int:
         "--horizons", type=str, default="1,2,3,4,5",
         help="Comma-separated horizons in years (default: 1..5)",
     )
+    p.add_argument(
+        "--rho-sweep", action="store_true", default=False,
+        help=(
+            "Append a ρ_inner ∈ {0.5..0.9} sweep of ensemble_with_ml CI90 "
+            "coverage (METHODOLOGY §'Why opt-in' condition 2)."
+        ),
+    )
     args = p.parse_args(list(argv) if argv is not None else None)
 
     anchor_years = [int(s) for s in args.anchors.split(",")]
@@ -490,6 +499,52 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     report = format_report(no_ml_metrics, ml_bps_metrics, ml_only_metrics,
                            ml_no_bps_metrics=ml_no_bps_metrics)
+
+    if args.rho_sweep:
+        # METHODOLOGY §"Why opt-in" condition (2): a ρ sweep showing the
+        # combined ensemble's coverage stays uniformly inside [85%, 95%].
+        # Cheap: re-synthesises the blend from the cached corrected
+        # residuals at each ρ_inner — no re-training, no re-projection.
+        rho_lines = [
+            "",
+            "## ρ_inner sweep — ensemble_with_ml CI90 coverage by indicator",
+            "",
+            "Coverage of the trend+ML inner blend correlation. ρ_anchor "
+            "stays 0.5 throughout. In-band = [85%, 95%].",
+            "",
+        ]
+        rhos = [0.5, 0.6, 0.7, 0.8, 0.9]
+        per_rho: dict[float, dict[str, IndicatorMetrics]] = {}
+        for rho in rhos:
+            ens = _build_with_ml_residuals(
+                resid_ml_bps, series, populations, rho_inner=rho,
+            )
+            per_rho[rho] = _aggregate_per_indicator(ens, "ensemble_with_ml")
+        indicators = sorted(set().union(*[m.keys() for m in per_rho.values()]))
+        rho_lines.append(
+            "| Indicator | " + " | ".join(f"ρ={r:.1f}" for r in rhos) + " |"
+        )
+        rho_lines.append("|---|" + "---:|" * len(rhos))
+        for ind in indicators:
+            cells = []
+            for rho in rhos:
+                m = per_rho[rho].get(ind)
+                if m is None:
+                    cells.append("—")
+                else:
+                    flag = "" if COVERAGE_LOWER_BOUND <= m.coverage <= COVERAGE_UPPER_BOUND else " ⚠"
+                    cells.append(f"{m.coverage * 100:.1f}%{flag}")
+            rho_lines.append(f"| {ind} | " + " | ".join(cells) + " |")
+        rho_lines.append("")
+        for rho in rhos:
+            n_in_band = sum(
+                1 for m in per_rho[rho].values()
+                if COVERAGE_LOWER_BOUND <= m.coverage <= COVERAGE_UPPER_BOUND
+            )
+            rho_lines.append(
+                f"* ρ={rho:.1f}: {n_in_band}/{len(per_rho[rho])} indicators in band"
+            )
+        report = report + "\n" + "\n".join(rho_lines)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(report)

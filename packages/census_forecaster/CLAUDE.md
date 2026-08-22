@@ -20,14 +20,14 @@ ACS and BLS time-series forecasting for Hawaiʻi demographic/economic indicators
 
 | File | Purpose |
 |------|---------|
-| `src/census_forecaster/acs/projection.py` | `project_acs_ensemble()` — primary public API |
+| `src/census_forecaster/acs/ensemble.py` | `project_ensemble_multi()` — primary public API, exported as `project_acs_ensemble` |
 | `src/census_forecaster/acs/calibration.py` | ACS calibration panel construction |
 | `src/census_forecaster/kalman/filter.py` | Kalman filter core |
 | `src/census_forecaster/bls/projection.py` | BLS employment projections |
 
 ## Public API
 
-Import from the package root — `__init__.py` re-exports these (`project_acs_ensemble` is `acs.projection.project_ensemble` under an alias; importing from the submodule paths below works but not under these names):
+Import from the package root — `__init__.py` re-exports these. Since 2026-08-21, `project_acs_ensemble` aliases the **production** path `acs.ensemble.project_ensemble_multi` (v3 bias/κ calibration + conformal floor, bundled calibration auto-loaded). It previously aliased the legacy uncalibrated `project_ensemble`, which is still importable from `acs.ensemble` for back-test baselines.
 
 ```python
 from census_forecaster import AcsObservation, project_acs_ensemble

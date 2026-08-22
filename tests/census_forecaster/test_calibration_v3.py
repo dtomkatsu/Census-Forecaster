@@ -453,3 +453,46 @@ class TestWriteCalibrationDropsFolds:
         assert "strata_records" in on_disk
         assert "rmse_by_indicator_method" in on_disk
         assert on_disk["schema_version"] in (3, 4)
+
+
+class TestPhiEnableGate:
+    """enable_phi controls both payload flagging and Pass 2 phi threading."""
+
+    def test_default_payload_is_phi_disabled(self, simple_panel, simple_populations):
+        payload = run_stratified_calibration(
+            series_by_key=simple_panel,
+            anchor_years=[2015, 2017, 2019, 2021],
+            horizons=[1, 2, 3],
+            populations=simple_populations,
+        )
+        assert payload["phi_enabled"] is False
+
+    def test_enable_phi_flags_payload_and_moves_trend_folds(
+        self, simple_panel, simple_populations
+    ):
+        kwargs = dict(
+            series_by_key=simple_panel,
+            anchor_years=[2015, 2017, 2019, 2021],
+            horizons=[1, 2, 3],
+            populations=simple_populations,
+        )
+        base = run_stratified_calibration(**kwargs)
+        phi_on = run_stratified_calibration(**kwargs, enable_phi=True)
+        assert phi_on["phi_enabled"] is True
+
+        # When any calibrated phi differs from DEFAULT_PHI, at least one
+        # trend fold point must move — proving Pass 2 actually consumed the
+        # per-cell phi rather than only flagging the payload.
+        from census_forecaster.acs.projection import DEFAULT_PHI
+        phis = {r["value"] for r in phi_on["strata_records"]["phi"]}
+        if any(abs(p - DEFAULT_PHI) > 1e-9 for p in phis):
+            def trend_points(payload):
+                return {
+                    (d["geoid"], d["indicator"], d["anchor_year"], d["horizon"]): d["point"]
+                    for d in payload["fold_residuals"]
+                    if d["method"] == "trend_ensemble"
+                }
+            a, b = trend_points(base), trend_points(phi_on)
+            common = set(a) & set(b)
+            assert common
+            assert any(abs(a[k] - b[k]) > 1e-9 for k in common)

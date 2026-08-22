@@ -7,11 +7,38 @@
 > are the ones to cite as "Act 24." CD1 is retained for continuity — its bracket
 > schedule is identical to CD2 and only the REEC credit model differs.
 
-**Last updated:** July 30, 2026
+**Last updated:** August 21, 2026
 **Analyst:** Hawaii Appleseed Center for Law and Economic Justice
 **Model version:** CD2 vintage carryforward model + Round-2 REEC refinements (May 14, 2026), on the corrected Hawaii CPI basis (July 30, 2026).
 
 > **Maintenance note:** This document must be updated whenever forecast methodology changes — including parameter recalibration, new behavioral channels, tax treatment corrections, or data source changes. Update the relevant section(s) and the Results table before committing.
+
+---
+
+## ACS engine changes — August 21, 2026 (results tables unchanged)
+
+Three changes landed in the `census_forecaster` ACS engine; their effect on
+this document's numbers is negligible-to-none, so the Section 10 tables
+stand:
+
+1. **v4 per-cell φ no longer applies by default.** The bundled calibration
+   had drifted into shipping φ records that production applied while every
+   κ/bias record was fit at φ=0.85; application is now gated behind an
+   explicit `phi_enabled` payload flag (off), restoring the configuration
+   the φ ablation validated. Effect on the income path (B19013 Honolulu
+   trend member, TY2026 anchor): point moves **+0.03%** — an order of
+   magnitude below this forecast's ±1pp scenario granularity.
+2. **Conformal-primary CIs** replaced the max(κ, conformal) floor in the
+   ACS engine. `RealGrowthDetail` and the credit-overlay bands read
+   `se_total`, which the conformal policy does not touch — **no effect**
+   on any band in this document. (`tax_modeler.revenue`'s own
+   `apply_revenue_conformal_floor` is unchanged.)
+3. **`use_ml` defaults to True in `project_ensemble_multi`** after its
+   ship-gate ablation passed (see METHODOLOGY §"Why opt-in"). The income
+   and ACS-supplement forecast call sites in `tax_modeler` pass
+   `use_ml=False` explicitly, so **all Act 24 numbers remain on the
+   classical ensemble**. Revisiting that pin is a deliberate future
+   decision that would require regenerating Section 10.
 
 ---
 

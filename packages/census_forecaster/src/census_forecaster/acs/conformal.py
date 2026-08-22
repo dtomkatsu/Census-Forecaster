@@ -10,13 +10,21 @@ For a set of calibration-fold residuals {(point_i, actual_i, se_total_i)}:
 
 The conformal CI is:  point ± q · se_total.
 
-When used alongside the κ-based CI, take the maximum half-width:
-    final_half = max(kappa_half, q · se_total)
+Where a stratum record exists, the conformal CI REPLACES the κ-based CI
+(consumer: `ensemble._apply_conformal_interval`); κ stands only for
+strata with no record (n < 20 calibration folds). The original policy
+took max(kappa_half, q · se_total) — but both half-widths are
+independently calibrated to the same 90% target, so their max
+systematically over-covers, and the split-conformal guarantee attaches
+to the conformal interval itself, not to flooring another interval with
+it. On the held-out 2022 anchor (6,912 folds) the max policy covered
+94.3% at mean relative half-width 24.0%; conformal-primary covered 92.7%
+at 20.7% and eliminated the κ-only under-coverage tail (2026-08-21).
 
-This provides a marginal-coverage floor: across all forecasts in the
-stratum, at least (1-α) fraction will contain the truth — provably, not
-just empirically.  See Angelopoulos & Bates (2022) "A Gentle Introduction
-to Conformal Prediction and Distribution-Free Uncertainty Quantification".
+Marginal coverage: across all forecasts in the stratum, at least (1-α)
+fraction will contain the truth — provably, not just empirically. See
+Angelopoulos & Bates (2022) "A Gentle Introduction to Conformal
+Prediction and Distribution-Free Uncertainty Quantification".
 
 Reference: Venn, Shafer, Vovk (2005); Papadopoulos et al. (2002).
 """

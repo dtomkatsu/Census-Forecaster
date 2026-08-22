@@ -335,9 +335,18 @@ _REGISTRY_SPEC = [
     # PCE deflator (national) — anchors income as alternate macro proxy.
     ("pce_deflator.json", 0,
      ("B19013_001E",), 0.005, "national", "rate", 0.0),
-    # QCEW HI wages — anchors income.
+    # QCEW HI wages — anchors income, and (added 2026-08-21) worker
+    # earnings: B20002 is median earnings for workers 16+, conceptually
+    # the closest ACS cell to QCEW's payroll-tax wage base — arguably a
+    # tighter match than B19013 household income, which QCEW anchored
+    # from the start. Gate PASSED on the calibration panel (2,977 folds,
+    # anchors 2014-2022): blended RMSE 9.12% vs trend-only 10.47%
+    # (−12.9% relative) at Bates-Granger weight 0.571; the anchor member
+    # alone runs 6.91% vs trend 7.97%. Raw blend coverage 95.6% — the
+    # slight over-coverage is what the κ machinery deflates, exactly as
+    # it already does for B19013's multi_anchor (κ ≈ 0.715).
     ("qcew_hawaii_wages.json", 1,  # final annual averages release ~Aug of year+1
-     ("B19013_001E",), 0.005, "state", "rate", 0.0),
+     ("B19013_001E", "B20002_001E"), 0.005, "state", "rate", 0.0),
     # HUD FMR Honolulu — *validation* anchor for rent (lags 2y so its
     # back-test weight will be small; primarily used for checks).
     ("hud_fmr_honolulu.json", 2,

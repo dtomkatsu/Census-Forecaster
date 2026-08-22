@@ -413,6 +413,64 @@ def _coverage_warning_note(
 # Both consumers (_apply_se_override, _apply_bias_correction) need the same
 # lookup machinery, so factor it here.
 
+# Indicators for which the Kalman state-space member replaces the
+# Bates-Granger blend by default (`use_kalman=None` → auto). Promotion
+# requires passing BOTH per-indicator ship gates in the Kalman ablation
+# (RMSE improvement ≥5% vs best baseline AND raw CI90 coverage in
+# [85%, 95%]) — re-verified 2026-08-21 on the current calibration
+# machinery (backtests/results/phase_d_kalman_ablation.md):
+#   pct_service_occupations  −15.0% RMSE, 90.8% Cov90
+#   B25071_001E rent burden  −10.6% RMSE, 93.8% Cov90
+# Every other indicator FAILS at least one gate (wholesale verdict:
+# HOLD). Do not add an indicator here without a fresh ablation pass.
+KALMAN_PROMOTED_INDICATORS: frozenset[str] = frozenset({
+    "B25071_001E",
+    "pct_service_occupations",
+})
+
+
+# Lazily-loaded bundled calibration panel for the ML ensemble member.
+# Mirrors the `populations` lazy-load: callers may pass their own
+# panel/populations, but `use_ml=True` alone must be sufficient — the
+# bundled panel is the training set the shipped ml_trend calibration
+# records were fit on. The sentinel {} marks "tried and unavailable" so
+# a missing panel is probed only once per process.
+_ML_BUNDLED: dict | None = None
+_ML_DEFAULT_MODEL_CACHE: dict = {}
+
+
+def _load_bundled_ml_panel() -> dict | None:
+    global _ML_BUNDLED
+    if _ML_BUNDLED is None:
+        try:
+            from ..scripts.load_calibration_panel import load_panel
+            from .ml_features import (
+                build_panel_index,
+                load_county_data,
+                load_market_signals_data,
+                load_national_macro_data,
+            )
+            series, pops, _manifest = load_panel()
+            # Build the panel WITH the auxiliary channels (BPS/SAIPE/LAUS,
+            # screen-gated market signals, national macro) — the shipped
+            # ml_trend calibration records were fit on models trained with
+            # these features (calibration.py Pass 2b loads the same three),
+            # so the production model must see the same columns.
+            _ML_BUNDLED = {
+                "series": series,
+                "populations": pops,
+                "panel": build_panel_index(
+                    series,
+                    county_data=load_county_data(),
+                    market_data=load_market_signals_data(),
+                    national_data=load_national_macro_data(),
+                ),
+            }
+        except Exception:
+            _ML_BUNDLED = {}
+    return _ML_BUNDLED or None
+
+
 def _lookup_phi(
     calibration: dict | None,
     indicator: str,
@@ -424,16 +482,21 @@ def _lookup_phi(
 
     Uses the same 4-level strata fallback chain as kappa/bias. phi records
     are emitted by the v4 calibration pass (Pass 0 in calibration.py) under
-    strata_records["phi"]. When absent (v2/v3 calibration), returns DEFAULT_PHI.
+    strata_records["phi"], but are applied only when the payload carries
+    `phi_enabled: true` (set by `run_stratified_calibration(enable_phi=True)`).
+    The v4 phi ablation failed its acceptance bar (see METHODOLOGY.md §v4),
+    so the records ship as diagnostics and the production default is
+    DEFAULT_PHI — a payload without the flag (v2/v3, or v4/v5 with phi
+    disabled) must project at the same phi its kappa/bias records were
+    calibrated under.
     """
     from .projection import DEFAULT_PHI
     from .strata import PHI_N_THRESHOLD
-    phi_lookup = _v3_strata_lookup(calibration, "phi", floor_value=DEFAULT_PHI)
-    if phi_lookup is None:
+    if calibration is None or not calibration.get("phi_enabled"):
         return DEFAULT_PHI
     # phi strata use PHI_N_THRESHOLD (15), not DEFAULT_N_THRESHOLD (20)
     from .strata import index_records, record_from_dict
-    sr = (calibration or {}).get("strata_records", {})
+    sr = calibration.get("strata_records", {})
     raw = sr.get("phi")
     if not raw:
         return DEFAULT_PHI
@@ -622,7 +685,7 @@ def _apply_bias_correction(
     )
 
 
-def _apply_conformal_floor(
+def _apply_conformal_interval(
     fp: ForecastPoint,
     indicator: str,
     method_key: str,
@@ -631,12 +694,25 @@ def _apply_conformal_floor(
     pop_bucket: str | None = None,
     h_bucket: str | None = None,
 ) -> ForecastPoint:
-    """Widen the CI to the split-conformal floor when it would be tighter.
+    """Replace the CI with the split-conformal interval where a record exists.
 
     The conformal half-width is  q · se_pre_kappa  where q is the
     per-stratum quantile stored in calibration["conformal_quantile_by_stratum"].
-    If this exceeds the current κ-based half-width, replace the CI; otherwise
-    return fp unchanged (κ-based CI already wider — the floor doesn't bind).
+    When a stratum record exists, the conformal interval REPLACES the κ-based
+    CI — narrower or wider. When no record covers the stratum (n < 20 on the
+    calibration folds, or a pre-conformal payload), the κ-based CI stands.
+
+    This replaced the original max(κ_half, conformal_half) "floor" policy
+    on 2026-08-21: both half-widths are independently calibrated to 90%,
+    so their max systematically over-covers. On the held-out 2022 anchor
+    (6,912 folds) the max policy covered 94.3% at mean relative half-width
+    24.0%; conformal-primary covered 92.7% at 20.7% — better centered AND
+    sharper — while also eliminating the κ-only policy's under-coverage
+    tail (cells at 56–84%). The split-conformal guarantee applies to the
+    conformal interval itself, not to flooring another interval with it.
+
+    `se_total` is left as the κ-corrected SE (the CI is the conformal
+    product; the SE fields remain the κ-calibrated moments, as before).
 
     Parameters
     ----------
@@ -678,12 +754,12 @@ def _apply_conformal_floor(
     conformal_half = q * se_pre_kappa
     kappa_half = (fp.ci90_high - fp.ci90_low) / 2.0
 
-    if conformal_half <= kappa_half:
-        return fp  # κ already wider; floor doesn't bind
+    if math.isclose(conformal_half, kappa_half, rel_tol=1e-12):
+        return fp  # identical width; nothing to replace
 
     ci_lo = fp.point - conformal_half
     ci_hi = fp.point + conformal_half
-    notes = f"{fp.notes}; conformal_floor(q={q:.3f})" if fp.notes else f"conformal_floor(q={q:.3f})"
+    notes = f"{fp.notes}; conformal_ci(q={q:.3f})" if fp.notes else f"conformal_ci(q={q:.3f})"
     return ForecastPoint(
         point=fp.point,
         se_total=fp.se_total,
@@ -815,12 +891,12 @@ def project_ensemble_multi(
     correlation_rho_inner: float = 0.7,
     correlation_rho_anchor: float = 0.5,
     populations: dict[str, int] | None = None,
-    use_ml: bool = False,
+    use_ml: bool = True,
     ml_series_by_key: dict[tuple[str, str], Sequence[AcsObservation]] | None = None,
     ml_populations: dict[str, int] | None = None,
     ml_model_cache: dict | None = None,
     ml_panel=None,
-    use_kalman: bool = False,
+    use_kalman: "bool | None" = None,
 ) -> "ForecastPoint | None":
     """Multi-source anchor ensemble.
 
@@ -868,11 +944,22 @@ def project_ensemble_multi(
         `data/calibration_panel/county_population_2020.json` is loaded
         lazily if available; otherwise pop_bucket is None and the v3
         lookup chain falls through to globally marginalised cells.
-    use_ml : bool, default False
+    use_ml : bool, default True
         Include the cross-county ``ml_trend`` member in the ensemble.
-        Requires ``ml_series_by_key`` and ``ml_populations`` to be
-        non-None; sklearn must be importable. Falls back gracefully
-        (ml_fp = None) when those preconditions don't hold.
+        Default flipped False → True on 2026-08-21: the ship-gate
+        ablation passed all three rules (13/16 indicators improve RMSE
+        ≥5%, blended CI90 coverage in [85%, 95%] on all 16, zero
+        regressions) and the ρ_inner sweep put all 16 indicators in
+        band at the production ρ=0.7 — the flip condition documented in
+        METHODOLOGY §"Why opt-in". See
+        backtests/results/ml_default_ablation_2026-08-21.md.
+        When ``ml_series_by_key``/``ml_populations`` are not supplied,
+        the bundled calibration panel is lazily loaded (once per
+        process, with a shared model cache) — the same training set the
+        shipped ml_trend calibration records were fit on; expect a
+        several-second first-call cost per (indicator, cutoff). Falls
+        back gracefully (ml_fp = None) when the panel is unavailable or
+        sklearn is not importable.
     ml_series_by_key, ml_populations : the calibration panel + 2020
         population lookup needed by the HGB trainer. Pass the same dicts
         across many forecasts so the model cache (below) is effective.
@@ -884,6 +971,17 @@ def project_ensemble_multi(
         Pre-built panel index (output of ``ml_features.build_panel_index``).
         Pass it explicitly when projecting many counties at the same
         cutoff to avoid rebuilding it for each forecast.
+    use_kalman : bool or None, default None
+        ``None`` (default): the Kalman state-space member replaces the
+        Bates-Granger blend only for indicators in
+        ``KALMAN_PROMOTED_INDICATORS`` — the per-indicator allowlist
+        whose members passed both Kalman ship gates (RMSE ≥5% better
+        than the best baseline AND raw CI90 coverage in [85%, 95%];
+        2026-08-21 re-verification in
+        backtests/results/phase_d_kalman_ablation.md). ``True`` forces
+        the Kalman path for any indicator (experiments/ablations);
+        ``False`` disables it unconditionally. The wholesale Kalman
+        verdict remains HOLD — promotion is strictly per-indicator.
     """
     # Local import to avoid a circular dependency between ensemble and anchors.
     from .anchors import (
@@ -907,7 +1005,13 @@ def project_ensemble_multi(
     h_bucket = classify_horizon(horizon_years) if horizon_years > 0 else None
     pop_bucket = _resolve_pop_bucket(geoid, populations)
 
-    # Kalman state-space path — replaces the Bates-Granger blend when requested.
+    # Kalman state-space path — replaces the Bates-Granger blend when
+    # requested (True), never runs when False, and with the default None
+    # runs only for the per-indicator allowlist (KALMAN_PROMOTED_INDICATORS,
+    # the indicators that passed both Kalman ship gates — see the constant's
+    # comment and backtests/results/phase_d_kalman_ablation.md).
+    if use_kalman is None:
+        use_kalman = indicator in KALMAN_PROMOTED_INDICATORS
     if use_kalman:
         try:
             from ..kalman import project_kalman, METHOD_NAME as _KAL_METHOD
@@ -930,7 +1034,7 @@ def project_ensemble_multi(
                 kal_fp, indicator, _KAL_METHOD, calibration,
                 pop_bucket=pop_bucket, h_bucket=h_bucket,
             )
-            kal_fp = _apply_conformal_floor(
+            kal_fp = _apply_conformal_interval(
                 kal_fp, indicator, _KAL_METHOD, calibration,
                 _se_pre_kappa_kal, pop_bucket=pop_bucket, h_bucket=h_bucket,
             )
@@ -961,7 +1065,7 @@ def project_ensemble_multi(
             inner, indicator, "trend_ensemble", calibration,
             pop_bucket=pop_bucket, h_bucket=h_bucket,
         )
-        inner = _apply_conformal_floor(
+        inner = _apply_conformal_interval(
             inner, indicator, "trend_ensemble", calibration,
             _se_pre_kappa_inner, pop_bucket=pop_bucket, h_bucket=h_bucket,
         )
@@ -972,6 +1076,21 @@ def project_ensemble_multi(
     # target-side models that share the same (geoid, indicator) input
     # series, hence high correlation).
     ml_fp: ForecastPoint | None = None
+    if use_ml and (ml_series_by_key is None or ml_populations is None):
+        # Caller asked for ML without supplying a panel: fall back to the
+        # bundled calibration panel (the training set the shipped ml_trend
+        # calibration records were fit on), with a shared module-level
+        # model cache so repeated calls amortise HGB training.
+        _bundled = _load_bundled_ml_panel()
+        if _bundled is not None:
+            if ml_series_by_key is None:
+                ml_series_by_key = _bundled["series"]
+                if ml_panel is None:
+                    ml_panel = _bundled["panel"]
+            if ml_populations is None:
+                ml_populations = _bundled["populations"]
+            if ml_model_cache is None:
+                ml_model_cache = _ML_DEFAULT_MODEL_CACHE
     if use_ml and ml_series_by_key is not None and ml_populations is not None:
         try:
             from .ml_trend import project_ml_trend_one_shot, METHOD_NAME as _ML_METHOD
@@ -996,7 +1115,7 @@ def project_ensemble_multi(
                 ml_fp, indicator, _ML_METHOD, calibration,
                 pop_bucket=pop_bucket, h_bucket=h_bucket,
             )
-            ml_fp = _apply_conformal_floor(
+            ml_fp = _apply_conformal_interval(
                 ml_fp, indicator, _ML_METHOD, calibration,
                 _se_pre_kappa_ml, pop_bucket=pop_bucket, h_bucket=h_bucket,
             )
@@ -1045,7 +1164,7 @@ def project_ensemble_multi(
             anchor_fp, indicator, "multi_anchor", calibration,
             pop_bucket=pop_bucket, h_bucket=h_bucket,
         )
-        anchor_fp = _apply_conformal_floor(
+        anchor_fp = _apply_conformal_interval(
             anchor_fp, indicator, "multi_anchor", calibration,
             _se_pre_kappa_anchor, pop_bucket=pop_bucket, h_bucket=h_bucket,
         )
@@ -1105,7 +1224,7 @@ def project_ensemble_multi(
             level_anchor_fp, indicator, METHOD_LEVEL_ANCHOR, calibration,
             pop_bucket=pop_bucket, h_bucket=h_bucket,
         )
-        level_anchor_fp = _apply_conformal_floor(
+        level_anchor_fp = _apply_conformal_interval(
             level_anchor_fp, indicator, METHOD_LEVEL_ANCHOR, calibration,
             _se_pre_kappa_level, pop_bucket=pop_bucket, h_bucket=h_bucket,
         )

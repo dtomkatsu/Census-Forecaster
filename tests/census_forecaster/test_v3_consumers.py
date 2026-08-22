@@ -369,3 +369,64 @@ class TestProjectEnsembleMultiV3:
         assert fp is not None
         # Notes on the inner trend should show strata=global
         assert "strata=global" in fp.notes or "trend:" in fp.notes
+
+
+# -----------------------------------------------------------------------------
+# _lookup_phi gating (v4 phi is diagnostic-only unless phi_enabled)
+# -----------------------------------------------------------------------------
+
+class TestLookupPhiGating:
+    """Per-cell phi must only apply when the payload opts in.
+
+    The kappa/bias records in a payload are calibrated on Pass 2 folds. A
+    payload without `phi_enabled: true` built those folds at DEFAULT_PHI, so
+    applying per-cell phi at projection time would run production under a
+    different trend model than its calibration was fit for.
+    """
+
+    @staticmethod
+    def _phi_calibration(*, phi_enabled=None):
+        cal = _v3_calibration()
+        cal["strata_records"]["phi"] = [
+            _strata_record_dict(
+                indicator="B19013_001E", method="trend_ensemble",
+                pop_bucket="xlarge", h_bucket="short",
+                value=0.72, n_folds=50,
+            ),
+            _strata_record_dict(
+                indicator="B19013_001E", method="trend_ensemble",
+                pop_bucket=WILDCARD, h_bucket=WILDCARD,
+                value=0.78, n_folds=200,
+            ),
+        ]
+        if phi_enabled is not None:
+            cal["phi_enabled"] = phi_enabled
+        return cal
+
+    def test_records_without_flag_are_ignored(self):
+        from census_forecaster.acs.ensemble import _lookup_phi
+        from census_forecaster.acs.projection import DEFAULT_PHI
+        cal = self._phi_calibration()  # no phi_enabled key (bundled payloads)
+        phi = _lookup_phi(cal, "B19013_001E", "trend_ensemble", "xlarge", "short")
+        assert phi == DEFAULT_PHI
+
+    def test_flag_false_is_ignored(self):
+        from census_forecaster.acs.ensemble import _lookup_phi
+        from census_forecaster.acs.projection import DEFAULT_PHI
+        cal = self._phi_calibration(phi_enabled=False)
+        phi = _lookup_phi(cal, "B19013_001E", "trend_ensemble", "xlarge", "short")
+        assert phi == DEFAULT_PHI
+
+    def test_flag_true_applies_per_cell_value(self):
+        from census_forecaster.acs.ensemble import _lookup_phi
+        cal = self._phi_calibration(phi_enabled=True)
+        phi = _lookup_phi(cal, "B19013_001E", "trend_ensemble", "xlarge", "short")
+        assert phi == pytest.approx(0.72)
+
+    def test_flag_true_without_records_falls_back(self):
+        from census_forecaster.acs.ensemble import _lookup_phi
+        from census_forecaster.acs.projection import DEFAULT_PHI
+        cal = _v3_calibration()
+        cal["phi_enabled"] = True
+        phi = _lookup_phi(cal, "B19013_001E", "trend_ensemble", "xlarge", "short")
+        assert phi == DEFAULT_PHI

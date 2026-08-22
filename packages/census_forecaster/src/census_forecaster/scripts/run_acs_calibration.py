@@ -63,6 +63,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         ),
     )
     parser.add_argument(
+        "--enable-phi", action="store_true", default=False,
+        help=(
+            "Apply v4 per-cell phi: project Pass 2 trend folds at the "
+            "calibrated phi and mark the payload phi_enabled so the ensemble "
+            "applies it. Off by default — the v4 phi ablation failed its "
+            "acceptance bar (METHODOLOGY.md §v4); phi records are emitted as "
+            "diagnostics either way."
+        ),
+    )
+    parser.add_argument(
         "--as-of-mode", choices=["instant", "publication"], default="instant",
         help=(
             "How to truncate training data per fold. "
@@ -119,6 +129,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         include_ml=args.include_ml,
         include_kalman=args.include_kalman,
         include_conformal=args.include_conformal,
+        enable_phi=args.enable_phi,
     )
 
     sr = payload.get("strata_records", {})

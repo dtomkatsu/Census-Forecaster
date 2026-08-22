@@ -197,8 +197,17 @@ class TestEnsembleMultiWithMl:
                 series[(geoid, ind)] = obs_list
         return series, pops
 
-    def test_use_ml_false_is_default_and_noop(self):
-        """Default use_ml=False must produce identical numerics to the legacy path."""
+    def test_default_is_use_ml_true(self):
+        """use_ml defaults to True since the 2026-08-21 ship-gate pass
+        (see backtests/results/ml_default_ablation_2026-08-21.md)."""
+        import inspect
+        from census_forecaster.acs.ensemble import project_ensemble_multi
+        sig = inspect.signature(project_ensemble_multi)
+        assert sig.parameters["use_ml"].default is True
+
+    def test_out_of_panel_geoid_degrades_to_classical(self):
+        """A geoid absent from the ML panel gets no feature row, so the
+        default path must produce the classical ensemble unchanged."""
         from census_forecaster.acs.ensemble import project_ensemble_multi
         series, pops = self._toy_panel()
         obs = [o for o in series[("15030", "B19013_001E")] if o.year <= 2020]
@@ -207,8 +216,24 @@ class TestEnsembleMultiWithMl:
         fp_explicit = project_ensemble_multi(obs, target_year=2022, populations=pops, use_ml=False)
         assert fp_default is not None
         assert fp_explicit is not None
+        assert "ml_trend" not in fp_default.notes
         assert fp_default.point == pytest.approx(fp_explicit.point)
         assert fp_default.se_total == pytest.approx(fp_explicit.se_total)
+
+    def test_default_path_engages_ml_for_panel_county(self):
+        """For a county in the bundled panel (Honolulu), the default path
+        must include the ml_trend member via the lazy panel load."""
+        import census_forecaster.acs.ensemble as ens
+        bundled = ens._load_bundled_ml_panel()
+        if not bundled:
+            pytest.skip("bundled calibration panel not present")
+        obs = [
+            o for o in bundled["series"][("15003", "B19013_001E")]
+            if o.year <= 2023 and o.vintage == "1y"
+        ]
+        fp = ens.project_ensemble_multi(obs, target_year=2026)
+        assert fp is not None
+        assert "ml_trend" in fp.notes
 
     def test_use_ml_true_inserts_third_member(self):
         from census_forecaster.acs.ensemble import project_ensemble_multi
@@ -231,15 +256,105 @@ class TestEnsembleMultiWithMl:
         # CI brackets the point
         assert fp.ci90_low <= fp.point <= fp.ci90_high
 
-    def test_use_ml_true_falls_back_when_panel_missing(self):
-        """When ml_series_by_key is None and use_ml=True, fall back gracefully."""
-        from census_forecaster.acs.ensemble import project_ensemble_multi
+    def test_use_ml_true_loads_bundled_panel_when_none_supplied(self, monkeypatch):
+        """use_ml=True with no panel kwargs lazily loads the bundled panel."""
+        import census_forecaster.acs.ensemble as ens
         series, pops = self._toy_panel()
         obs = [o for o in series[("15030", "B19013_001E")] if o.year <= 2020]
-        # use_ml=True but no panel handed in → no ML, but still produces a result
-        fp = project_ensemble_multi(
+        # Substitute the toy panel for the bundled one so the test stays
+        # fast and hermetic; the lookup path is identical.
+        from census_forecaster.acs.ml_features import build_panel_index
+        monkeypatch.setattr(ens, "_ML_BUNDLED", None)
+        monkeypatch.setattr(
+            ens, "_load_bundled_ml_panel",
+            lambda: {"series": series, "populations": pops,
+                     "panel": build_panel_index(series)},
+        )
+        fp = ens.project_ensemble_multi(
+            obs, target_year=2022, populations=pops,
+            use_ml=True, ml_series_by_key=None, ml_populations=None,
+        )
+        assert fp is not None
+        assert "ml_trend" in fp.notes
+
+    def test_use_ml_true_falls_back_when_panel_missing(self, monkeypatch):
+        """When no panel is supplied AND the bundled panel is unavailable,
+        fall back gracefully to trend+anchor."""
+        import census_forecaster.acs.ensemble as ens
+        series, pops = self._toy_panel()
+        obs = [o for o in series[("15030", "B19013_001E")] if o.year <= 2020]
+        monkeypatch.setattr(ens, "_load_bundled_ml_panel", lambda: None)
+        fp = ens.project_ensemble_multi(
             obs, target_year=2022, populations=pops,
             use_ml=True, ml_series_by_key=None, ml_populations=None,
         )
         assert fp is not None  # falls back to trend+anchor only
         assert "ml_trend" not in fp.notes
+
+
+class TestPublicApiAlias:
+    def test_project_acs_ensemble_is_the_calibrated_path(self):
+        """The advertised public API must be the production (calibrated)
+        ensemble, not the legacy uncorrected trend path."""
+        import census_forecaster
+        from census_forecaster.acs.ensemble import project_ensemble_multi
+
+        assert census_forecaster.project_acs_ensemble is project_ensemble_multi
+        assert census_forecaster.project_ensemble_multi is project_ensemble_multi
+
+
+class TestKalmanPromotion:
+    """Per-indicator Kalman promotion (2026-08-21).
+
+    The wholesale Kalman verdict is HOLD; only indicators that passed
+    both per-indicator ship gates are promoted (see
+    KALMAN_PROMOTED_INDICATORS and phase_d_kalman_ablation.md).
+    """
+
+    def _series(self, indicator, geoid="15003", n=12):
+        from census_forecaster.models import AcsObservation
+        return [
+            AcsObservation(
+                estimate=100.0 * (1.02 ** i), moe=5.0,
+                year=2010 + i, vintage="1y", geoid=geoid, indicator=indicator,
+            )
+            for i in range(n)
+        ]
+
+    def test_allowlist_contents_are_the_gated_indicators(self):
+        from census_forecaster.acs.ensemble import KALMAN_PROMOTED_INDICATORS
+        assert KALMAN_PROMOTED_INDICATORS == {
+            "B25071_001E", "pct_service_occupations",
+        }
+
+    def test_promoted_indicator_uses_kalman_by_default(self):
+        from census_forecaster.acs.ensemble import project_ensemble_multi
+        from census_forecaster.kalman import METHOD_NAME
+        obs = self._series("B25071_001E")
+        fp = project_ensemble_multi(obs, target_year=2023, use_ml=False)
+        assert fp is not None
+        assert fp.method == METHOD_NAME
+
+    def test_non_promoted_indicator_ignores_kalman_by_default(self):
+        from census_forecaster.acs.ensemble import project_ensemble_multi
+        from census_forecaster.kalman import METHOD_NAME
+        obs = self._series("B19013_001E")
+        fp = project_ensemble_multi(obs, target_year=2023, use_ml=False)
+        assert fp is not None
+        assert fp.method != METHOD_NAME
+
+    def test_explicit_false_disables_kalman_for_promoted_indicator(self):
+        from census_forecaster.acs.ensemble import project_ensemble_multi
+        from census_forecaster.kalman import METHOD_NAME
+        obs = self._series("B25071_001E")
+        fp = project_ensemble_multi(obs, target_year=2023, use_ml=False, use_kalman=False)
+        assert fp is not None
+        assert fp.method != METHOD_NAME
+
+    def test_explicit_true_forces_kalman_for_any_indicator(self):
+        from census_forecaster.acs.ensemble import project_ensemble_multi
+        from census_forecaster.kalman import METHOD_NAME
+        obs = self._series("B19013_001E")
+        fp = project_ensemble_multi(obs, target_year=2023, use_ml=False, use_kalman=True)
+        assert fp is not None
+        assert fp.method == METHOD_NAME

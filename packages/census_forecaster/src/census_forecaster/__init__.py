@@ -17,6 +17,13 @@ Quick start (ACS):
     >>> forecast = project_acs_ensemble(obs, target_year=2026)
     >>> forecast.point, forecast.ci90_low, forecast.ci90_high
 
+`project_acs_ensemble` is the production path (`project_ensemble_multi`):
+multi-source macro anchors, v3 stratified bias/κ calibration, and the
+split-conformal floor, with the bundled calibration payload auto-loaded.
+The pre-calibration trend-only path survives as
+`census_forecaster.acs.ensemble.project_ensemble` for callers that need
+the uncorrected two-model ensemble (back-test baselines, ablations).
+
 Quick start (BLS CPI):
     >>> from datetime import date
     >>> from census_forecaster.bls import (
@@ -44,7 +51,8 @@ from .acs.projection import (
     EMPIRICAL_SE_INFLATOR,
 )
 from .acs.ensemble import (
-    project_ensemble as project_acs_ensemble,
+    project_ensemble_multi as project_acs_ensemble,
+    project_ensemble_multi,
     macro_anchor_projection,
     combine_forecasts,
 )
@@ -61,6 +69,7 @@ __all__ = [
     "project_damped_trend",
     "project_ar1_log_diff",
     "project_acs_ensemble",
+    "project_ensemble_multi",
     "fit_damped_trend",
     "fit_ar1_log_diff",
     "DampedTrendFit",

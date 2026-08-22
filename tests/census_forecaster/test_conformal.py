@@ -232,11 +232,11 @@ class TestBuildConformalLookup:
 
 
 # ---------------------------------------------------------------------------
-# _apply_conformal_floor integration (via ensemble helpers)
+# _apply_conformal_interval integration (via ensemble helpers)
 # ---------------------------------------------------------------------------
 
-class TestApplyConformalFloor:
-    """Test the ensemble._apply_conformal_floor helper directly."""
+class TestApplyConformalInterval:
+    """Test the ensemble._apply_conformal_interval helper directly."""
 
     def _make_fp(self, point=100_000.0, se=5_000.0, half=8_225.0):
         from census_forecaster.models import ForecastPoint
@@ -273,60 +273,63 @@ class TestApplyConformalFloor:
         }
 
     def test_widens_ci_when_conformal_larger(self):
-        from census_forecaster.acs.ensemble import _apply_conformal_floor
+        from census_forecaster.acs.ensemble import _apply_conformal_interval
         fp = self._make_fp(point=100_000.0, se=5_000.0, half=8_225.0)
         # q=2.0 → conformal_half = 2.0 * 5000 = 10_000 > 8_225
         cal = self._make_calibration(quantile=2.0)
-        result = _apply_conformal_floor(fp, "B19013_001E", "trend_ensemble", cal, se_pre_kappa=5_000.0)
+        result = _apply_conformal_interval(fp, "B19013_001E", "trend_ensemble", cal, se_pre_kappa=5_000.0)
         expected_half = 2.0 * 5_000.0
         assert result.ci90_low == pytest.approx(100_000.0 - expected_half)
         assert result.ci90_high == pytest.approx(100_000.0 + expected_half)
 
-    def test_no_change_when_kappa_wider(self):
-        from census_forecaster.acs.ensemble import _apply_conformal_floor
+    def test_narrows_ci_when_conformal_narrower(self):
+        # Conformal-primary policy (2026-08-21): where a record exists the
+        # conformal interval replaces the κ CI in BOTH directions.
+        from census_forecaster.acs.ensemble import _apply_conformal_interval
         fp = self._make_fp(point=100_000.0, se=5_000.0, half=8_225.0)
-        # q=1.0 → conformal_half = 5_000 < 8_225 → no change
+        # q=1.0 → conformal_half = 5_000 < 8_225 → CI narrows to conformal
         cal = self._make_calibration(quantile=1.0)
-        result = _apply_conformal_floor(fp, "B19013_001E", "trend_ensemble", cal, se_pre_kappa=5_000.0)
-        assert result is fp  # unchanged
+        result = _apply_conformal_interval(fp, "B19013_001E", "trend_ensemble", cal, se_pre_kappa=5_000.0)
+        assert result.ci90_low == pytest.approx(100_000.0 - 5_000.0)
+        assert result.ci90_high == pytest.approx(100_000.0 + 5_000.0)
 
     def test_returns_unchanged_when_calibration_none(self):
-        from census_forecaster.acs.ensemble import _apply_conformal_floor
+        from census_forecaster.acs.ensemble import _apply_conformal_interval
         fp = self._make_fp()
-        result = _apply_conformal_floor(fp, "B19013_001E", "trend_ensemble", None, se_pre_kappa=5_000.0)
+        result = _apply_conformal_interval(fp, "B19013_001E", "trend_ensemble", None, se_pre_kappa=5_000.0)
         assert result is fp
 
     def test_returns_unchanged_when_no_conformal_records(self):
-        from census_forecaster.acs.ensemble import _apply_conformal_floor
+        from census_forecaster.acs.ensemble import _apply_conformal_interval
         fp = self._make_fp()
         cal = {"schema_version": 3}  # no conformal_quantile_by_stratum key
-        result = _apply_conformal_floor(fp, "B19013_001E", "trend_ensemble", cal, se_pre_kappa=5_000.0)
+        result = _apply_conformal_interval(fp, "B19013_001E", "trend_ensemble", cal, se_pre_kappa=5_000.0)
         assert result is fp
 
-    def test_notes_updated_when_floor_binds(self):
-        from census_forecaster.acs.ensemble import _apply_conformal_floor
+    def test_notes_updated_when_conformal_applies(self):
+        from census_forecaster.acs.ensemble import _apply_conformal_interval
         fp = self._make_fp()
         cal = self._make_calibration(quantile=2.0)
-        result = _apply_conformal_floor(fp, "B19013_001E", "trend_ensemble", cal, se_pre_kappa=5_000.0)
-        assert "conformal_floor" in result.notes
+        result = _apply_conformal_interval(fp, "B19013_001E", "trend_ensemble", cal, se_pre_kappa=5_000.0)
+        assert "conformal_ci" in result.notes
 
     def test_point_unchanged(self):
-        from census_forecaster.acs.ensemble import _apply_conformal_floor
+        from census_forecaster.acs.ensemble import _apply_conformal_interval
         fp = self._make_fp(point=100_000.0)
         cal = self._make_calibration(quantile=2.0)
-        result = _apply_conformal_floor(fp, "B19013_001E", "trend_ensemble", cal, se_pre_kappa=5_000.0)
+        result = _apply_conformal_interval(fp, "B19013_001E", "trend_ensemble", cal, se_pre_kappa=5_000.0)
         assert result.point == pytest.approx(100_000.0)
 
     def test_se_total_unchanged(self):
-        from census_forecaster.acs.ensemble import _apply_conformal_floor
+        from census_forecaster.acs.ensemble import _apply_conformal_interval
         fp = self._make_fp(se=5_000.0)
         cal = self._make_calibration(quantile=2.0)
-        result = _apply_conformal_floor(fp, "B19013_001E", "trend_ensemble", cal, se_pre_kappa=5_000.0)
+        result = _apply_conformal_interval(fp, "B19013_001E", "trend_ensemble", cal, se_pre_kappa=5_000.0)
         assert result.se_total == pytest.approx(5_000.0)  # se_total comes from κ, not conformal
 
     def test_zero_se_pre_kappa_returns_unchanged(self):
-        from census_forecaster.acs.ensemble import _apply_conformal_floor
+        from census_forecaster.acs.ensemble import _apply_conformal_interval
         fp = self._make_fp()
         cal = self._make_calibration(quantile=2.0)
-        result = _apply_conformal_floor(fp, "B19013_001E", "trend_ensemble", cal, se_pre_kappa=0.0)
+        result = _apply_conformal_interval(fp, "B19013_001E", "trend_ensemble", cal, se_pre_kappa=0.0)
         assert result is fp
